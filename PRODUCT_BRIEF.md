@@ -28,7 +28,40 @@ The supplier promise:
 3. CPAP
    - Later wedge. More regulatory and product-fit complexity.
 
+## First Supply Vertical
+
+Onboard 10-15 suppliers via Thomasnet and direct outreach.
+
+Start with PT / Chiro / Rehab clinics and aim for renewable, reorder-heavy products where clinics already buy repeatedly:
+
+- Therapy bands.
+- Tape.
+- Electrodes.
+- Table paper.
+- Gloves.
+- Disinfectant wipes.
+- Hot/cold packs.
+- Face cradle covers.
+- Towels.
+- Foam rollers.
+
+Avoid injectables, Class II/III medical devices, and other higher-regulation products in v1.
+
 ## Core Workflows
+
+Sean's sketch frames the v1 as a concierge/incubation-to-marketplace loop:
+
+```text
+Buyer uploads anything
+  -> Admin parses SKUs
+  -> Admin sends RFQs to suppliers
+  -> Supplier responds through email or quote link
+  -> Admin builds buyer quote chart
+  -> Buyer approves and pays
+  -> Admin places supplier order
+  -> Supplier ships
+  -> Buyer receives tracking and reorder reminder
+```
 
 ```text
 Buyer need upload -> Product/category extraction -> Supplier offer matching
@@ -40,6 +73,66 @@ Supplier catalog upload -> SKU parsing -> Canonical product mapping
                         -> Vetting/certification check -> Live offers
 ```
 
+Upload intake should accept messy buyer inputs:
+
+- PDF invoices and PDF orders.
+- Conventional CSV/XLSX exports.
+- Photos or screenshots of invoices, packing slips, and reorder lists.
+- Forwarded emails.
+- Images/photos from the back office.
+
+Normalized line-item fields:
+
+- Invoice number.
+- Vendor name.
+- Invoice date.
+- Buyer name.
+- Shipping address.
+- Line item description.
+- Supplier SKU.
+- Manufacturer SKU.
+- Brand/manufacturer.
+- Quantity.
+- Unit of measure.
+- Pack size.
+- Unit price.
+- Extended price.
+- Shipping/freight.
+- Order date.
+- Delivery date.
+- Notes.
+
+The normalization goal is to turn messy procurement artifacts into comparable price rows.
+
+```text
+Messy upload -> Extract fields -> Normalize price/unit/pack -> Quote chart -> Best-value pick
+```
+
+## MVP Screen Scope
+
+Sean's sketch lists six MVP screens total:
+
+1. Landing page.
+2. Invoice upload form.
+3. Admin dashboard.
+4. Quote builder.
+5. Buyer quote approval page.
+6. Order status page.
+
+Explicitly out of scope for the first version:
+
+- Supplier profiles.
+- Product reviews.
+- Public product browsing.
+- Promotions.
+- Supplier analytics.
+- Full vendor dashboard.
+- Marketplace search.
+- Complex product pages.
+- Self-service catalog uploads.
+
+This implies v1 should feel less like a self-serve Amazon clone and more like a procurement concierge with enough software to make the concierge workflow repeatable.
+
 ## Marketplace Model
 
 This is closer to Amazon Business plus concierge procurement than pure drop-shipping.
@@ -49,6 +142,7 @@ This is closer to Amazon Business plus concierge procurement than pure drop-ship
 - MedMKP normalizes products so buyers compare comparable offers.
 - Buyer pays supplier, MedMKP takes commission.
 - Stripe ACH is preferred for lower B2B payment cost. Stripe Connect can support payouts and commission tracking. Plaid may help later for bank/account verification.
+- Early pricing can be a procurement/reorder platform fee for small healthcare operators, with commission routed only once orders move through MedMKP.
 
 ## Matching Criteria
 
@@ -93,7 +187,7 @@ This lets one product category show multiple comparable offers without flooding 
 
 - Do suppliers have portals/APIs, or will most start with catalog uploads?
 - How fresh does inventory need to be for v1: live count, daily estimate, or supplier-confirmed after request?
-- Should v1 be an RFQ/concierge workflow before checkout, or a direct order checkout?
+- Should v1 route approved orders to ACH/Stripe checkout immediately, or should admin still place orders manually while demand is being proven?
 - What product categories produce the fastest first ten supplier conversations?
 - What non-binding LOI language should clinics sign before implementation?
 - What HIPAA posture is required if the platform avoids patient data entirely?
