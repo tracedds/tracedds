@@ -1,264 +1,257 @@
-const products = [
+const lineItems = [
   {
-    id: "theraband-yellow",
-    name: "Resistance Band Roll, Yellow",
-    category: "Therapy Exercise",
-    unit: "50 yd roll",
-    score: 94,
-    tags: ["best value", "PT staple"],
-    offers: [
-      { seller: "Rehab Supply Co.", price: 42.5, deliveryDays: 2, rating: 4.8, stock: 68 },
-      { seller: "Clinical Direct", price: 39.9, deliveryDays: 5, rating: 4.6, stock: 120 },
-      { seller: "OrthoPro Wholesale", price: 44.0, deliveryDays: 1, rating: 4.9, stock: 22 },
-    ],
+    product: "Resistance Band Roll, Yellow",
+    extractedFrom: "TheraBand Yellow 50 yd",
+    qty: 12,
+    unit: "rolls",
+    oldVendor: "Integrated Medical",
+    oldUnitPrice: 48.2,
+    neededBy: "May 24",
+    status: "Parsed",
+    outreach: "4 / 5",
+    selected: {
+      supplier: "Rehab Supply Co.",
+      unitPrice: 42.5,
+      total: 510,
+      reason: "Exact brand, 2-day delivery",
+    },
+    lowest: "Clinical Direct · $39.90",
+    fastest: "OrthoPro · 1 day",
+    bestValue: "Rehab Supply Co. · $42.50",
   },
   {
-    id: "kinesiology-tape",
-    name: "Kinesiology Tape, Beige",
-    category: "Taping",
-    unit: "6-pack case",
-    score: 91,
-    tags: ["fast ship"],
-    offers: [
-      { seller: "MotionMed", price: 58.25, deliveryDays: 1, rating: 4.7, stock: 41 },
-      { seller: "Rehab Supply Co.", price: 55.1, deliveryDays: 3, rating: 4.8, stock: 35 },
-      { seller: "Summit Therapy", price: 52.4, deliveryDays: 4, rating: 4.4, stock: 76 },
-    ],
+    product: "Kinesiology Tape, Beige",
+    extractedFrom: "K-tape beige 6 pack",
+    qty: 18,
+    unit: "cases",
+    oldVendor: "Integrated Medical",
+    oldUnitPrice: 62.75,
+    neededBy: "May 24",
+    status: "Needs review",
+    outreach: "3 / 5",
+    selected: {
+      supplier: "MotionMed",
+      unitPrice: 58.25,
+      total: 1048.5,
+      reason: "Fastest delivery, vetted brand",
+    },
+    lowest: "Summit Therapy · $52.40",
+    fastest: "MotionMed · 1 day",
+    bestValue: "MotionMed · $58.25",
   },
   {
-    id: "electrodes-2x2",
-    name: "Reusable Electrodes, 2 x 2",
-    category: "Electrotherapy",
-    unit: "40-pack",
-    score: 88,
-    tags: ["clinic favorite"],
-    offers: [
-      { seller: "Clinical Direct", price: 31.75, deliveryDays: 2, rating: 4.5, stock: 91 },
-      { seller: "NeuroStim Supply", price: 34.2, deliveryDays: 1, rating: 4.9, stock: 48 },
-      { seller: "MotionMed", price: 29.95, deliveryDays: 6, rating: 4.2, stock: 200 },
-    ],
+    product: "Reusable Electrodes, 2 x 2",
+    extractedFrom: "Reusable electrodes 2x2",
+    qty: 20,
+    unit: "packs",
+    oldVendor: "Integrated Medical",
+    oldUnitPrice: 38.4,
+    neededBy: "May 28",
+    status: "Parsed",
+    outreach: "5 / 5",
+    selected: {
+      supplier: "NeuroStim Supply",
+      unitPrice: 34.2,
+      total: 684,
+      reason: "Exact spec, top reliability",
+    },
+    lowest: "MotionMed · $29.95",
+    fastest: "NeuroStim · 1 day",
+    bestValue: "NeuroStim · $34.20",
   },
   {
-    id: "cold-pack-standard",
-    name: "Reusable Cold Pack, Standard",
-    category: "Hot & Cold Therapy",
-    unit: "12-pack",
-    score: 86,
-    tags: ["bulk savings"],
-    offers: [
-      { seller: "OrthoPro Wholesale", price: 72.0, deliveryDays: 2, rating: 4.7, stock: 27 },
-      { seller: "Summit Therapy", price: 68.5, deliveryDays: 5, rating: 4.3, stock: 88 },
-      { seller: "Rehab Supply Co.", price: 74.25, deliveryDays: 1, rating: 4.8, stock: 16 },
-    ],
+    product: "Exam Table Paper, Smooth",
+    extractedFrom: "Table paper smooth, 12 rolls",
+    qty: 10,
+    unit: "cases",
+    oldVendor: "Integrated Medical",
+    oldUnitPrice: 71.1,
+    neededBy: "May 30",
+    status: "Parsed",
+    outreach: "4 / 5",
+    selected: {
+      supplier: "Clinical Direct",
+      unitPrice: 63.5,
+      total: 635,
+      reason: "Lowest total with 2-day delivery",
+    },
+    lowest: "OrthoPro · $60.80",
+    fastest: "Rehab Supply Co. · 1 day",
+    bestValue: "Clinical Direct · $63.50",
   },
   {
-    id: "massage-lotion",
-    name: "Clinical Massage Lotion",
-    category: "Treatment Room",
-    unit: "1 gal, 4-pack",
-    score: 84,
-    tags: ["low scent"],
-    offers: [
-      { seller: "MotionMed", price: 49.0, deliveryDays: 3, rating: 4.7, stock: 34 },
-      { seller: "Clinical Direct", price: 46.9, deliveryDays: 4, rating: 4.4, stock: 58 },
-      { seller: "Summit Therapy", price: 52.1, deliveryDays: 2, rating: 4.6, stock: 21 },
-    ],
+    product: "Nitrile Exam Gloves, Medium",
+    extractedFrom: "Nitrile gloves M",
+    qty: 24,
+    unit: "boxes",
+    oldVendor: "Integrated Medical",
+    oldUnitPrice: 9.6,
+    neededBy: "May 30",
+    status: "Alternative",
+    outreach: "5 / 5",
+    selected: {
+      supplier: "PrimeMed Distributors",
+      unitPrice: 8.75,
+      total: 210,
+      reason: "Vetted equivalent, lower unit cost",
+    },
+    lowest: "PrimeMed · $8.75",
+    fastest: "HealthPro · 2 days",
+    bestValue: "PrimeMed · $8.75",
   },
   {
-    id: "exam-table-paper",
-    name: "Exam Table Paper, Smooth",
-    category: "Treatment Room",
-    unit: "12 rolls",
-    score: 82,
-    tags: ["reorder common"],
-    offers: [
-      { seller: "Clinical Direct", price: 63.5, deliveryDays: 2, rating: 4.5, stock: 110 },
-      { seller: "Rehab Supply Co.", price: 66.75, deliveryDays: 1, rating: 4.8, stock: 44 },
-      { seller: "OrthoPro Wholesale", price: 60.8, deliveryDays: 6, rating: 4.1, stock: 180 },
-    ],
+    product: "Reusable Cold Pack, Standard",
+    extractedFrom: "Cold pack standard 12 pack",
+    qty: 9,
+    unit: "cases",
+    oldVendor: "Integrated Medical",
+    oldUnitPrice: 83.25,
+    neededBy: "Jun 2",
+    status: "Parsed",
+    outreach: "3 / 5",
+    selected: {
+      supplier: "OrthoPro Wholesale",
+      unitPrice: 72,
+      total: 648,
+      reason: "Best value, sufficient stock",
+    },
+    lowest: "Summit Therapy · $68.50",
+    fastest: "Rehab Supply Co. · 1 day",
+    bestValue: "OrthoPro · $72.00",
   },
 ];
 
-const adminQueue = [
-  {
-    title: "Seller SKU THERA-Y-50 needs category confirmation",
-    detail: "Likely maps to Resistance Band Roll, Yellow. Confidence 92%.",
-    risk: "Medium",
-  },
-  {
-    title: "Duplicate electrode listing detected",
-    detail: "Three sellers submitted 2 x 2 reusable electrodes with inconsistent pack sizes.",
-    risk: "High",
-  },
-  {
-    title: "Massage lotion compliance doc expires soon",
-    detail: "Seller MotionMed certificate expires in 21 days.",
-    risk: "Low",
-  },
+const suppliers = [
+  { name: "Rehab Supply Co.", signal: "EIN verified · PT catalog · 97% on-time" },
+  { name: "Clinical Direct", signal: "ACH ready · 2-day Southeast lanes" },
+  { name: "NeuroStim Supply", signal: "Electrotherapy specialist · certificate current" },
+  { name: "PrimeMed Distributors", signal: "Thomasnet sourced · glove alternatives" },
+  { name: "OrthoPro Wholesale", signal: "Bulk therapy equipment · stock confirmed" },
 ];
 
-let state = {
-  view: "buyer",
-  search: "",
-  category: "All categories",
-  sort: "best",
-  cart: JSON.parse(localStorage.getItem("medmkp-cart") || "[]"),
-};
+const orderSteps = [
+  { label: "Approved", detail: "Buyer approved quote", done: true },
+  { label: "PO sent", detail: "Supplier orders placed", done: true },
+  { label: "Supplier confirmed", detail: "Awaiting confirmations", done: false },
+  { label: "Shipped", detail: "Tracking pending", done: false },
+  { label: "Reorder reminder", detail: "Scheduled for 30 days", done: false },
+];
+
+let activeOrderStep = 1;
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-
 const byId = (id) => document.getElementById(id);
 
-function bestOffer(product) {
-  return [...product.offers].sort((a, b) => {
-    const aScore = a.price * 0.55 + a.deliveryDays * 4 - a.rating * 3;
-    const bScore = b.price * 0.55 + b.deliveryDays * 4 - b.rating * 3;
-    return aScore - bScore;
-  })[0];
+function statusClass(status) {
+  if (status === "Parsed") return "success";
+  if (status === "Alternative" || status === "Needs review") return "warning";
+  return "info";
 }
 
-function filteredProducts() {
-  const query = state.search.toLowerCase().trim();
-  let list = products.filter((product) => {
-    const matchesQuery = !query || `${product.name} ${product.category}`.toLowerCase().includes(query);
-    const matchesCategory = state.category === "All categories" || product.category === state.category;
-    return matchesQuery && matchesCategory;
+function setView(view) {
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.view === view);
   });
 
-  return list.sort((a, b) => {
-    if (state.sort === "price") return bestOffer(a).price - bestOffer(b).price;
-    if (state.sort === "delivery") return bestOffer(a).deliveryDays - bestOffer(b).deliveryDays;
-    if (state.sort === "rating") return bestOffer(b).rating - bestOffer(a).rating;
-    return b.score - a.score;
-  });
+  document.querySelectorAll(".view").forEach((section) => section.classList.remove("active"));
+  byId(`${view}View`).classList.add("active");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function renderCategories() {
-  const select = byId("categoryFilter");
-  const categories = ["All categories", ...new Set(products.map((product) => product.category))];
-  select.innerHTML = categories.map((category) => `<option>${category}</option>`).join("");
-  select.value = state.category;
-}
-
-function productCard(product) {
-  const offers = [...product.offers]
-    .sort((a, b) => {
-      if (state.sort === "delivery") return a.deliveryDays - b.deliveryDays;
-      if (state.sort === "rating") return b.rating - a.rating;
-      return a.price - b.price;
-    })
-    .map((offer) => {
-      return `
-        <div class="offer-row">
-          <div>
-            <strong>${offer.seller}</strong>
-            <span>${money.format(offer.price)} · ${offer.deliveryDays}d · ${offer.stock} in stock · ${offer.rating}★</span>
-          </div>
-          <button data-add="${product.id}" data-seller="${offer.seller}" title="Add offer">Add</button>
-        </div>
-      `;
-    })
-    .join("");
-
-  return `
-    <article class="product-card">
-      <div class="product-image">
-        <div class="product-visual" aria-hidden="true"></div>
-        <div class="product-score">${product.score}</div>
-      </div>
-      <div class="product-body">
-        <div class="product-title-row">
-          <h3>${product.name}</h3>
-          <span class="badge">${product.tags[0]}</span>
-        </div>
-        <p class="product-meta">${product.category} · ${product.unit}</p>
-        <div class="offer-list">${offers}</div>
-      </div>
-    </article>
-  `;
-}
-
-function renderProducts() {
-  const list = filteredProducts();
-  byId("resultCount").textContent = list.length;
-  byId("productGrid").innerHTML = list.map(productCard).join("");
-}
-
-function renderCart() {
-  const items = byId("cartItems");
-  const count = state.cart.reduce((sum, item) => sum + item.quantity, 0);
-  const total = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-  byId("cartCount").textContent = count;
-  byId("cartTotal").textContent = money.format(total);
-  byId("approvalState").textContent = total > 500 ? "Approval needed" : "Ready";
-
-  if (!state.cart.length) {
-    items.innerHTML = `<div class="cart-empty">Compare offers, then add the best seller option.</div>`;
-    return;
-  }
-
-  items.innerHTML = state.cart
+function renderExtractedRows() {
+  byId("extractedRows").innerHTML = lineItems
     .map((item) => {
       return `
-        <div class="cart-item">
-          <div>
-            <strong>${item.name}</strong>
-            <span>${item.seller} · Qty ${item.quantity}</span>
-          </div>
-          <strong>${money.format(item.price * item.quantity)}</strong>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderSeller() {
-  const rows = products
-    .flatMap((product) => product.offers.map((offer) => ({ product, offer })))
-    .slice(0, 8)
-    .map(({ product, offer }, index) => {
-      const needsReview = index === 2 || index === 6;
-      return `
         <tr>
-          <td><strong>${product.name}</strong><br><span>${offer.seller}</span></td>
-          <td>${offer.stock}</td>
-          <td>${money.format(offer.price)}</td>
-          <td>${offer.deliveryDays} days</td>
-          <td class="${needsReview ? "status-review" : "status-live"}">${needsReview ? "Review" : "Live"}</td>
+          <td><strong>${item.product}</strong><br><span>${item.extractedFrom}</span></td>
+          <td>${item.qty}</td>
+          <td>${item.unit}</td>
+          <td>${item.oldVendor}</td>
+          <td>${money.format(item.oldUnitPrice)}</td>
+          <td><span class="status-chip ${statusClass(item.status)}">${item.status}</span></td>
         </tr>
       `;
     })
     .join("");
-
-  byId("sellerRows").innerHTML = rows;
 }
 
-function renderAdmin() {
-  byId("adminQueue").innerHTML = adminQueue
+function renderAdminRows() {
+  byId("adminRows").innerHTML = lineItems
     .map((item) => {
       return `
-        <article class="queue-card">
-          <div class="queue-title">
-            <div>
-              <h3>${item.title}</h3>
-              <p>${item.detail}</p>
-            </div>
-            <span class="badge">${item.risk}</span>
-          </div>
-          <div class="queue-actions">
-            <button data-toast="Approved catalog match">Approve</button>
-            <button data-toast="Sent back to seller">Request fix</button>
-            <button data-toast="Merged duplicate listing">Merge</button>
-          </div>
-        </article>
+        <tr>
+          <td><strong>${item.product}</strong><br><span>${item.qty} ${item.unit}</span></td>
+          <td>${item.extractedFrom}</td>
+          <td>${item.outreach}</td>
+          <td>${item.neededBy}</td>
+          <td><span class="status-chip ${statusClass(item.status)}">${item.status}</span></td>
+        </tr>
       `;
     })
     .join("");
 }
 
-function persistCart() {
-  localStorage.setItem("medmkp-cart", JSON.stringify(state.cart));
+function renderSupplierList() {
+  byId("supplierList").innerHTML = suppliers
+    .map((supplier) => {
+      return `
+        <div class="supplier-card">
+          <strong>${supplier.name}</strong>
+          <span>${supplier.signal}</span>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderQuoteRows() {
+  byId("quoteRows").innerHTML = lineItems
+    .map((item) => {
+      return `
+        <tr>
+          <td><strong>${item.product}</strong><br><span>${item.qty} ${item.unit}</span></td>
+          <td>${item.bestValue}</td>
+          <td>${item.lowest}</td>
+          <td>${item.fastest}</td>
+          <td><span class="status-chip success">${item.selected.supplier}</span></td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderApprovalRows() {
+  byId("approvalRows").innerHTML = lineItems
+    .map((item) => {
+      return `
+        <tr>
+          <td><strong>${item.product}</strong><br><span>${item.qty} ${item.unit}</span></td>
+          <td>${item.selected.supplier}</td>
+          <td>${money.format(item.selected.total)}</td>
+          <td>${item.selected.reason}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderTimeline() {
+  byId("orderTimeline").innerHTML = orderSteps
+    .map((step, index) => {
+      const state = index <= activeOrderStep ? "done" : "pending";
+      return `
+        <div class="timeline-step ${state}">
+          <div class="timeline-dot">${index + 1}</div>
+          <div>
+            <strong>${step.label}</strong>
+            <span>${step.detail}</span>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  byId("orderState").textContent = orderSteps[activeOrderStep].label;
 }
 
 function showToast(message) {
@@ -269,98 +262,42 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2200);
 }
 
-function setView(view) {
-  state.view = view;
-  document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
-  document.querySelectorAll(".view").forEach((section) => section.classList.remove("active"));
-  byId(`${view}View`).classList.add("active");
-
-  const titles = {
-    buyer: "Find the best clinical supplies",
-    seller: "Operate a trusted seller storefront",
-    admin: "Keep the marketplace catalog clean",
-  };
-  byId("viewTitle").textContent = titles[view];
-}
-
-function addToCart(productId, seller) {
-  const product = products.find((item) => item.id === productId);
-  const offer = product.offers.find((item) => item.seller === seller);
-  const existing = state.cart.find((item) => item.productId === productId && item.seller === seller);
-
-  if (existing) {
-    existing.quantity += 1;
-  } else {
-    state.cart.push({
-      productId,
-      seller,
-      name: product.name,
-      price: offer.price,
-      quantity: 1,
-    });
-  }
-
-  persistCart();
-  renderCart();
-  showToast(`${product.name} added from ${seller}`);
-}
-
 function bindEvents() {
-  document.querySelectorAll(".nav-tab").forEach((tab) => {
-    tab.addEventListener("click", () => setView(tab.dataset.view));
+  document.querySelectorAll("[data-view], [data-view-link]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.view || button.dataset.viewLink));
   });
 
-  byId("searchInput").addEventListener("input", (event) => {
-    state.search = event.target.value;
-    renderProducts();
+  byId("simulateUpload").addEventListener("click", () => {
+    showToast("Invoice parsed into 6 normalized line items");
+    setView("admin");
   });
 
-  byId("categoryFilter").addEventListener("change", (event) => {
-    state.category = event.target.value;
-    renderProducts();
+  byId("sendRfqs").addEventListener("click", () => {
+    showToast("RFQs sent to 5 vetted suppliers");
+    setView("quote");
   });
 
-  byId("sortSelect").addEventListener("change", (event) => {
-    state.sort = event.target.value;
-    renderProducts();
+  byId("approveQuote").addEventListener("click", () => {
+    showToast("Quote approved. PO sent to suppliers.");
+    activeOrderStep = 1;
+    renderTimeline();
+    setView("order");
   });
 
-  byId("productGrid").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-add]");
-    if (!button) return;
-    addToCart(button.dataset.add, button.dataset.seller);
-  });
-
-  byId("clearCart").addEventListener("click", () => {
-    state.cart = [];
-    persistCart();
-    renderCart();
-    showToast("Cart cleared");
-  });
-
-  byId("submitOrder").addEventListener("click", () => {
-    if (!state.cart.length) {
-      showToast("Add at least one offer before submitting");
-      return;
-    }
-    showToast("Buy order submitted for review");
-  });
-
-  byId("addOffer").addEventListener("click", () => showToast("Offer intake form is next MVP slice"));
-  byId("approveAll").addEventListener("click", () => showToast("Clean catalog matches approved"));
-
-  byId("adminQueue").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-toast]");
-    if (button) showToast(button.dataset.toast);
+  byId("advanceOrder").addEventListener("click", () => {
+    activeOrderStep = Math.min(activeOrderStep + 1, orderSteps.length - 1);
+    renderTimeline();
+    showToast(`Order moved to ${orderSteps[activeOrderStep].label}`);
   });
 }
 
 function init() {
-  renderCategories();
-  renderProducts();
-  renderCart();
-  renderSeller();
-  renderAdmin();
+  renderExtractedRows();
+  renderAdminRows();
+  renderSupplierList();
+  renderQuoteRows();
+  renderApprovalRows();
+  renderTimeline();
   bindEvents();
 }
 

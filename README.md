@@ -4,11 +4,14 @@ MedMKP is an early B2B medical-supply marketplace prototype for PT, chiro, and r
 
 The MVP currently runs as a dependency-free browser app:
 
-- Buyer marketplace with category search, offer comparison, best-match scoring, and draft buy orders.
-- Buyer needs upload and concierge request language.
-- Seller workspace with catalog upload, offer, stock, delivery, and catalog-review status.
-- Admin catalog operations queue for supplier vetting and product normalization.
-- Local cart persistence via `localStorage`.
+- Six-screen concierge procurement flow based on Sean's sketch.
+- Landing page for the core promise: upload an invoice and get a better reorder quote.
+- Invoice/reorder upload form for messy buyer inputs.
+- Admin dashboard for parsing SKUs, matching suppliers, and sending RFQs.
+- Quote builder that compares supplier responses and highlights best value.
+- Buyer quote approval page with savings, brand-match, and alternative-product context.
+- Order status page with PO, supplier confirmation, shipment, and reorder reminder states.
+- Seeded client-side data for the demo request, supplier RFQs, quote chart, and order timeline.
 - Visual direction based on the supplied MedMKP Figma export: white procurement dashboard, blue brand accent, compact cards, and operational status tables.
 
 ## Run
@@ -38,7 +41,8 @@ That lets buyers compare price, stock, delivery time, seller trust, and complian
 1. Add real buyer and seller organization auth.
 2. Move mock data into Postgres.
 3. Add buyer upload intake for invoices, reorder lists, catalogs, and free-form needs.
-4. Add supplier catalog/SKU upload and parsing.
-5. Add admin supplier vetting and catalog approval persistence.
-6. Replace local cart with real concierge request creation.
-7. Add Stripe ACH / Stripe Connect commission tracking.
+4. Add OCR/document parsing for normalized line items.
+5. Add admin RFQ sending and supplier quote-link responses.
+6. Add quote approval persistence and order-status tracking.
+7. Add supplier catalog/SKU upload and parsing.
+8. Add Stripe ACH / Stripe Connect commission tracking.
