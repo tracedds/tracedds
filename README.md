@@ -1,6 +1,6 @@
-# MedMKP MVP
+# medMKP MVP
 
-MedMKP is an early B2B medical-supply marketplace prototype for PT, chiro, and rehab offices.
+medMKP is an early B2B medical-supply marketplace prototype for PT, chiro, and rehab offices.
 
 The MVP currently has three layers:
 
@@ -18,14 +18,14 @@ The clickable demo includes:
 - Buyer quote approval page with savings, brand-match, and alternative-product context.
 - Order status page with PO, supplier confirmation, shipment, and reorder reminder states.
 - Seeded client-side data for the demo request, supplier RFQs, quote chart, and order timeline.
-- Visual direction based on the supplied MedMKP Figma export: white procurement dashboard, blue brand accent, compact cards, and operational status tables.
+- Visual direction based on the supplied medMKP Figma export: white procurement dashboard, blue brand accent, compact cards, and operational status tables.
 
 ## Run Locally
 
-MedMKP currently has three runnable pieces:
+medMKP currently has three runnable pieces:
 
 - Docker infrastructure: Postgres and Redis.
-- Medusa backend: commerce backend, admin app, and MedMKP API routes.
+- Medusa backend: commerce backend, admin app, and medMKP API routes.
 - Next.js frontend: the clickable buyer/admin prototype.
 
 ### 1. Start Docker Infrastructure
@@ -66,7 +66,7 @@ npm run seed:demo
 `db:migrate` is safe to rerun. Medusa tracks which migrations have already
 been applied.
 
-`seed:demo` is also safe to rerun for our demo data. It resets the MedMKP
+`seed:demo` is also safe to rerun for our demo data. It resets the medMKP
 sample suppliers, catalog items, requests, and quotes to a known state.
 
 `seed:medmkp` remains available as a backwards-compatible alias for
@@ -74,7 +74,7 @@ sample suppliers, catalog items, requests, and quotes to a known state.
 
 ### 3. Create the Local Medusa Admin User
 
-The MedMKP seed data does not create an admin login. Create the local admin
+The medMKP seed data does not create an admin login. Create the local admin
 user separately:
 
 ```bash
@@ -113,7 +113,7 @@ Medusa admin:
 http://127.0.0.1:9000/app
 ```
 
-Prototype MedMKP API endpoints:
+Prototype medMKP API endpoints:
 
 ```text
 http://127.0.0.1:9000/medmkp/categories
@@ -176,7 +176,7 @@ npm run build
 
 The Medusa backend runs against local Postgres and Redis from
 `docker-compose.yml`. Postgres is published on `127.0.0.1:55432` to avoid
-colliding with Supabase or other local Postgres projects. Its first MedMKP
+colliding with Supabase or other local Postgres projects. Its first medMKP
 routes are available under unauthenticated prototype endpoints:
 
 - `GET /medmkp/categories`
@@ -192,13 +192,13 @@ normal auth applies:
 
 ### Product Model
 
-MedMKP uses Medusa's native Product model for canonical buyer-facing products.
-Supplier-specific listings live in the MedMKP module as catalog items/offers.
+medMKP uses Medusa's native Product model for canonical buyer-facing products.
+Supplier-specific listings live in the medMKP module as catalog items/offers.
 
 ```text
 Medusa Product = canonical product buyers search and compare
-MedMKP Supplier = vendor/distributor record
-MedMKP Catalog Item = supplier-specific SKU, price, stock, lead time, and score
+medMKP Supplier = vendor/distributor record
+medMKP Catalog Item = supplier-specific SKU, price, stock, lead time, and score
 ```
 
 For example, a buyer should see one canonical therapy band product, with
@@ -225,7 +225,7 @@ The demo seed currently creates canonical Medusa Products for:
 
 ## Deploy
 
-MedMKP is deployed as two services from the same GitHub repo:
+medMKP is deployed as two services from the same GitHub repo:
 
 ```text
 Vercel: Next.js frontend at the repo root
@@ -290,6 +290,7 @@ use this configuration:
 ```text
 Root directory: medusa-backend/apps/backend
 Build command: npm install --include=dev --no-audit --no-fund --loglevel=info --foreground-scripts && npm run build
+Pre-deploy command: npm run db:migrate
 Start command: npm start
 ```
 
@@ -297,12 +298,12 @@ The start command must bind Medusa to Render's assigned port. The backend
 `npm start` script already does this with:
 
 ```bash
-medusa start --host 0.0.0.0 --port ${PORT:-9000}
+sh ./scripts/start-render.sh
 ```
 
-If the Render deploy builds successfully but the web service times out, check
-the start command first. A plain `medusa start` defaults to port `9000`, while
-Render expects the process to listen on its injected `$PORT`.
+The start script locates `.medusa/server/public/admin/index.html`, changes into
+the built Medusa server directory, and then starts Medusa on Render's injected
+`$PORT`.
 
 The Medusa backend is pinned to Node `20.x`. If Render logs show Node `26.x`,
 redeploy from the latest `main` commit or set `NODE_VERSION=20` on the Render

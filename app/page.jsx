@@ -246,7 +246,7 @@ export default function Home() {
         <aside className="sidebar">
           <div className="brand-block">
             <BrandMark />
-            <h1>MedMKP</h1>
+            <h1>medMKP</h1>
             <button
               className="mobile-menu-button"
               type="button"
@@ -266,11 +266,6 @@ export default function Home() {
               </button>
             ))}
           </nav>
-
-          <button className="upload-button" onClick={() => setView("upload")} title="Upload invoice">
-            <Icon name="icon-cloud-upload" className="button-icon" />
-            Upload Invoice
-          </button>
 
           <div className="org-panel">
             <div className="avatar">AK</div>
@@ -314,7 +309,7 @@ export default function Home() {
                   <p className="pill">Buyer portal for clinics</p>
                   <h2 id="landingHeading">Upload an invoice. Turn it into a reorder.</h2>
                   <p>
-                    MedMKP helps PT, chiro, and rehab offices reorder medical supplies
+                    medMKP helps PT, chiro, and rehab offices reorder medical supplies
                     from a PDF invoice without rebuilding carts line by line.
                   </p>
                   <div className="hero-actions">
@@ -353,7 +348,7 @@ export default function Home() {
 
               <div className="flow-steps">
                 <div><strong>1</strong><span>Clinic uploads PDF invoice</span></div>
-                <div><strong>2</strong><span>MedMKP extracts line items</span></div>
+                <div><strong>2</strong><span>medMKP extracts line items</span></div>
                 <div><strong>3</strong><span>Products are matched and grouped</span></div>
                 <div><strong>4</strong><span>Buyer reviews draft order</span></div>
               </div>
@@ -404,7 +399,7 @@ export default function Home() {
                 >
                   <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
                   <h3>{isDraggingInvoice ? "Drop invoice to upload" : "Upload a PDF invoice"}</h3>
-                  <p>Drop or select a PDF and MedMKP will start building the draft order immediately.</p>
+                  <p>Drop or select a PDF and medMKP will start building the draft order immediately.</p>
                   <input
                     className="file-input"
                     data-testid="invoice-file-input"
@@ -543,7 +538,7 @@ export default function Home() {
                   </div>
                   <div className="summary-list">
                     <div><span>Previous spend</span><strong>{money.format(previousTotal)}</strong></div>
-                    <div><span>MedMKP quote</span><strong>{money.format(quoteTotal)}</strong></div>
+                    <div><span>medMKP quote</span><strong>{money.format(quoteTotal)}</strong></div>
                     <div><span>Projected savings</span><strong className="positive">{money.format(savings)}</strong></div>
                     <div><span>Suppliers used</span><strong>3</strong></div>
                   </div>
@@ -640,7 +635,7 @@ export default function Home() {
                       <h3>{money.format(quoteTotal || 0)}</h3>
                     </div>
                   </div>
-                  <p className="side-copy">Confirm quantities and substitutions, then MedMKP can place the order with the best available supplier path.</p>
+                  <p className="side-copy">Confirm quantities and substitutions, then medMKP can place the order with the best available supplier path.</p>
                   <button className="primary-action" onClick={() => { const nextStep = Math.min(orderStep + 1, orderSteps.length - 1); setOrderStep(nextStep); showToast(`Order moved to ${orderSteps[nextStep].label}`); }}>Approve Draft Order</button>
                 </aside>
               </div>
@@ -651,7 +646,7 @@ export default function Home() {
             <section className="view active" aria-labelledby="supplierHeading">
               <div className="supplier-landing">
                 <p className="pill">For Suppliers</p>
-                <h2 id="supplierHeading">Sell into PT, chiro, and rehab clinics through MedMKP.</h2>
+                <h2 id="supplierHeading">Sell into PT, chiro, and rehab clinics through medMKP.</h2>
                 <p>
                   Supplier onboarding is coming next. For now, this portal will support catalog uploads,
                   compliance review, storefront setup, inventory updates, and order fulfillment.

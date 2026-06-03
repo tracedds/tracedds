@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MEDMKP_MODULE } from "../../../../modules/medmkp"
-import type MedMKPModuleService from "../../../../modules/medmkp/service"
+import type medMKPModuleService from "../../../../modules/medmkp/service"
 import {
   medmkpCatalogItems,
   medmkpQuotes,
@@ -8,7 +8,7 @@ import {
 } from "../../../../seed/medmkp-fixtures"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  const medmkp = req.scope.resolve<MedMKPModuleService>(MEDMKP_MODULE)
+  const medmkp = req.scope.resolve<medMKPModuleService>(MEDMKP_MODULE)
   const [dbRequests, dbItems, dbQuotes] = await Promise.all([
     medmkp.listProcurementRequests(),
     medmkp.listCatalogItems(),
@@ -30,7 +30,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
-  const medmkp = req.scope.resolve<MedMKPModuleService>(MEDMKP_MODULE)
+  const medmkp = req.scope.resolve<medMKPModuleService>(MEDMKP_MODULE)
   const body = (req.body ?? {}) as {
     buyer_name?: string
     buyer_email?: string

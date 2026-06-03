@@ -42,7 +42,7 @@ Visit the [Quickstart Guide](https://docs.medusajs.com/learn/installation) to se
 
 Visit the [Docs](https://docs.medusajs.com/learn/installation#get-started) to learn more about our system requirements.
 
-## MedMKP First Pass
+## medMKP First Pass
 
 This backend starts from the Medusa v2 starter and adds a small procurement
 module for the marketplace demo:
@@ -59,7 +59,7 @@ module for the marketplace demo:
 The current routes use `src/seed/medmkp-fixtures.ts` so we can develop the
 product flow before requiring a local Postgres database and migrations. The next
 backend step is to run Medusa migrations for the `medmkp` module and replace
-fixture reads with `MedMKPModuleService` calls.
+fixture reads with `medMKPModuleService` calls.
 
 ## What is Medusa
 
