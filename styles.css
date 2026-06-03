@@ -577,6 +577,7 @@ kbd {
 }
 
 .upload-dropzone {
+  position: relative;
   display: grid;
   min-height: 320px;
   place-items: center;
@@ -599,7 +600,7 @@ kbd {
 
 .upload-dropzone p {
   max-width: 520px;
-  margin: 10px auto 20px;
+  margin: 10px auto 0;
   color: var(--muted);
   line-height: 1.6;
 }
@@ -650,22 +651,16 @@ kbd {
 }
 
 .file-input {
-  width: min(420px, 100%);
-  padding: 10px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
-.selected-file {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.selected-file.show {
-  color: var(--blue);
+.hidden-submit {
+  display: none;
 }
 
 .extracted-preview {

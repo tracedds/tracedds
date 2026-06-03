@@ -123,6 +123,7 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [isDraggingInvoice, setIsDraggingInvoice] = useState(false);
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
+  const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
   const [catalog, setCatalog] = useState([]);
   const [catalogSource, setCatalogSource] = useState("loading");
   const [searchTerm, setSearchTerm] = useState("");
@@ -228,6 +229,7 @@ export default function Home() {
     const { request } = await response.json();
     setRequests((current) => [request, ...current]);
     setSelectedRequestId(request.id);
+    setHasUploadedInvoice(true);
     setOrderStep(1);
     showToast("Invoice saved and converted into a draft reorder");
     setView("order");
@@ -398,8 +400,8 @@ export default function Home() {
                   onDrop={handleInvoiceDrop}
                 >
                   <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
-                  <h3>{isDraggingInvoice ? "Drop invoice to upload" : "Upload a PDF invoice"}</h3>
-                  <p>Drop or select a PDF and medMKP will start building the draft order immediately.</p>
+                  <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop PDF invoice" : "Drop PDF invoice here"}</h3>
+                  <p>{selectedInvoiceName || "or click to choose a file"}</p>
                   <input
                     className="file-input"
                     data-testid="invoice-file-input"
@@ -409,10 +411,7 @@ export default function Home() {
                     required
                     onChange={(event) => uploadInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
                   />
-                  <span className={`selected-file ${selectedInvoiceName ? "show" : ""}`}>
-                    {uploading ? "Processing invoice..." : selectedInvoiceName || "Drag a PDF here or choose a file"}
-                  </span>
-                  <button className="primary-action compact" data-testid="save-parse-request" type="submit" disabled={uploading}>{uploading ? "Processing..." : "Create Draft Order"}</button>
+                  <button className="primary-action compact hidden-submit" data-testid="save-parse-request" type="submit" disabled={uploading}>Create Draft Order</button>
                 </div>
 
                 <div className="form-card">
@@ -430,8 +429,12 @@ export default function Home() {
                 </div>
               </form>
 
-              <RequestPicker requests={requests} selectedRequestId={selectedRequestId} onSelect={setSelectedRequestId} />
-              <ExtractedTable lineItems={lineItems} />
+              {hasUploadedInvoice && (
+                <>
+                  <RequestPicker requests={requests} selectedRequestId={selectedRequestId} onSelect={setSelectedRequestId} />
+                  <ExtractedTable lineItems={lineItems} />
+                </>
+              )}
             </section>
           )}
 
