@@ -300,12 +300,10 @@ export default function Home() {
               />
             )}
             <div className="topbar-actions">
-              <button className="secondary-action compact" onClick={() => setView("catalog")}>Catalog</button>
               <button className="secondary-action compact" onClick={() => setView("supplier")}>
                 <Icon name="icon-store" className="button-icon" />
                 For Suppliers
               </button>
-              <button className="primary-action compact" data-testid="topbar-new-upload" onClick={() => setView("upload")}>New Upload</button>
             </div>
           </section>
 
