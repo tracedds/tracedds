@@ -1,8 +1,8 @@
-# medMKP Product Brief
+# MedMKP Product Brief
 
 ## Wedge
 
-medMKP is a concierge procurement marketplace for medical offices. The first target is PT, chiro, and rehab clinics because the supplies are lower-regulation, frequently purchased, fragmented across vendors, and painful to compare.
+MedMKP is a concierge procurement marketplace for medical offices. The first target is PT, chiro, and rehab clinics because the supplies are lower-regulation, frequently purchased, fragmented across vendors, and painful to compare.
 
 The buyer promise:
 
@@ -139,10 +139,10 @@ This is closer to Amazon Business plus concierge procurement than pure drop-ship
 
 - Suppliers create their own accounts.
 - Buyers can search or upload needs.
-- medMKP normalizes products so buyers compare comparable offers.
-- Buyer pays supplier, medMKP takes commission.
+- MedMKP normalizes products so buyers compare comparable offers.
+- Buyer pays supplier, MedMKP takes commission.
 - Stripe ACH is preferred for lower B2B payment cost. Stripe Connect can support payouts and commission tracking. Plaid may help later for bank/account verification.
-- Early pricing can be a procurement/reorder platform fee for small healthcare operators, with commission routed only once orders move through medMKP.
+- Early pricing can be a procurement/reorder platform fee for small healthcare operators, with commission routed only once orders move through MedMKP.
 
 ## Matching Criteria
 

@@ -4,11 +4,11 @@ import ProcurementRequest from "./models/procurement-request"
 import Quote from "./models/quote"
 import Supplier from "./models/supplier"
 
-class medMKPModuleService extends MedusaService({
+class MedMKPModuleService extends MedusaService({
   Supplier,
   CatalogItem,
   ProcurementRequest,
   Quote,
 }) {}
 
-export default medMKPModuleService
+export default MedMKPModuleService

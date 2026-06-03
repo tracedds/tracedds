@@ -9,7 +9,7 @@ import {
   deleteProductsWorkflow,
 } from "@medusajs/medusa/core-flows"
 import { MEDMKP_MODULE } from "../modules/medmkp"
-import type medMKPModuleService from "../modules/medmkp/service"
+import type MedMKPModuleService from "../modules/medmkp/service"
 import {
   medmkpCatalogItems,
   medmkpCanonicalProducts,
@@ -24,16 +24,16 @@ const demoProductCategories = medmkpCanonicalProducts.map(
   (product) => product.category
 )
 
-export default async function seedmedMKP({
+export default async function seedMedMKP({
   container,
 }: {
   container: MedusaContainer
 }) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER)
   const query = container.resolve(ContainerRegistrationKeys.QUERY)
-  const medmkp = container.resolve<medMKPModuleService>(MEDMKP_MODULE)
+  const medmkp = container.resolve<MedMKPModuleService>(MEDMKP_MODULE)
 
-  logger.info("Seeding medMKP marketplace data...")
+  logger.info("Seeding MedMKP marketplace data...")
 
   const existingQuotes = await medmkp.listQuotes()
   const existingRequests = await medmkp.listProcurementRequests()
@@ -66,7 +66,7 @@ export default async function seedmedMKP({
   )
   await medmkp.createQuotes(medmkpQuotes as Parameters<typeof medmkp.createQuotes>[0])
 
-  logger.info("Resetting Medusa product catalog for medMKP demo...")
+  logger.info("Resetting Medusa product catalog for MedMKP demo...")
 
   const { data: existingProducts } = await query.graph({
     entity: "product",
@@ -125,7 +125,7 @@ export default async function seedmedMKP({
 
   if (!shippingProfileId || !salesChannelId) {
     throw new Error(
-      "Cannot seed medMKP demo products without a shipping profile and sales channel. Run npm run db:migrate first."
+      "Cannot seed MedMKP demo products without a shipping profile and sales channel. Run npm run db:migrate first."
     )
   }
 
@@ -171,5 +171,5 @@ export default async function seedmedMKP({
     },
   })
 
-  logger.info("Finished seeding medMKP marketplace data.")
+  logger.info("Finished seeding MedMKP marketplace data.")
 }

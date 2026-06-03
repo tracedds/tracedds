@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MEDMKP_MODULE } from "../../../../modules/medmkp"
-import type medMKPModuleService from "../../../../modules/medmkp/service"
+import type MedMKPModuleService from "../../../../modules/medmkp/service"
 import {
   medmkpCatalogItems,
   medmkpCategories,
@@ -8,7 +8,7 @@ import {
 } from "../../../../seed/medmkp-fixtures"
 
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  const medmkp = req.scope.resolve<medMKPModuleService>(MEDMKP_MODULE)
+  const medmkp = req.scope.resolve<MedMKPModuleService>(MEDMKP_MODULE)
   const [dbItems, dbSuppliers] = await Promise.all([
     medmkp.listCatalogItems(),
     medmkp.listSuppliers(),
