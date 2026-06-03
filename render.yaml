@@ -4,11 +4,11 @@ services:
     runtime: node
     repo: https://github.com/demuizon/medmkp-demo
     branch: main
-    rootDir: medusa-backend
+    rootDir: medusa-backend/apps/backend
     plan: starter
-    buildCommand: npm ci --include=dev --no-audit --no-fund --loglevel=info --foreground-scripts && npm run build --workspace=@dtc/backend
-    preDeployCommand: npm run db:migrate --workspace=@dtc/backend
-    startCommand: npm run start:render --workspace=@dtc/backend
+    buildCommand: npm install --include=dev --no-audit --no-fund --loglevel=info --foreground-scripts && npm run build
+    preDeployCommand: npm run db:migrate
+    startCommand: npm start
     healthCheckPath: /medmkp/categories
     envVars:
       - key: NODE_ENV

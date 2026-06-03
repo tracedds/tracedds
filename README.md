@@ -229,7 +229,7 @@ MedMKP is deployed as two services from the same GitHub repo:
 
 ```text
 Vercel: Next.js frontend at the repo root
-Render: Medusa backend from medusa-backend/
+Render: Medusa backend from medusa-backend/apps/backend/
 Render Postgres: database for Medusa
 ```
 
@@ -272,7 +272,7 @@ The Blueprint creates:
 Render runs Medusa migrations before each deploy:
 
 ```bash
-npm run db:migrate --workspace=@dtc/backend
+npm run db:migrate
 ```
 
 It does not automatically run `seed:demo` on every deploy because that seed is
@@ -280,24 +280,16 @@ destructive/resetting by design. Run it manually after the first deploy, or any
 time you want to reset the demo catalog:
 
 ```bash
-cd medusa-backend
+cd medusa-backend/apps/backend
 npm run seed:demo
 ```
 
 If you create the Render web service manually instead of using the Blueprint,
-use one of these matching configurations:
-
-```text
-Root directory: medusa-backend
-Build command: npm ci --include=dev --no-audit --no-fund --loglevel=info --foreground-scripts && npm run build --workspace=@dtc/backend
-Start command: npm run start --workspace=@dtc/backend
-```
-
-or:
+use this configuration:
 
 ```text
 Root directory: medusa-backend/apps/backend
-Build command: npm install && npm run build
+Build command: npm install --include=dev --no-audit --no-fund --loglevel=info --foreground-scripts && npm run build
 Start command: npm start
 ```
 
@@ -319,7 +311,7 @@ web service.
 Create a Medusa admin user after the first deploy:
 
 ```bash
-cd medusa-backend
+cd medusa-backend/apps/backend
 npm run admin:create
 ```
 
