@@ -131,6 +131,8 @@ export default function Home() {
   const [isDraggingInvoice, setIsDraggingInvoice] = useState(false);
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
+  const [uploadStep, setUploadStep] = useState("upload");
+  const [draftItems, setDraftItems] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [catalogSource, setCatalogSource] = useState("loading");
   const [searchTerm, setSearchTerm] = useState("");
@@ -187,6 +189,8 @@ export default function Home() {
   const quoteTotal = sumSelected(lineItems);
   const previousTotal = sumPrevious(lineItems);
   const savings = Math.max(previousTotal - quoteTotal, 0);
+  const activeDraftItems = draftItems.filter((item) => item.included);
+  const draftTotal = activeDraftItems.reduce((total, item) => total + item.draftQty * item.selected.unitPrice, 0);
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const catalogMatches = useMemo(() => {
     if (!catalog.length) return [];
@@ -260,10 +264,29 @@ export default function Home() {
     setRequests((current) => [request, ...current]);
     setSelectedRequestId(request.id);
     setHasUploadedInvoice(true);
+    setUploadStep("review");
+    setDraftItems(request.lineItems.map((item) => ({
+      ...item,
+      draftQty: item.qty,
+      included: true,
+    })));
     setOrderStep(1);
     setUploading(false);
-    showToast("Invoice saved and converted into a draft reorder");
-    setView("order");
+    showToast("Invoice matched to draft order");
+  }
+
+  function updateDraftQty(product, nextQty) {
+    setDraftItems((items) => items.map((item) => {
+      if (item.product !== product) return item;
+      return { ...item, draftQty: Math.max(1, Number(nextQty) || 1) };
+    }));
+  }
+
+  function removeDraftItem(product) {
+    setDraftItems((items) => items.map((item) => {
+      if (item.product !== product) return item;
+      return { ...item, included: false };
+    }));
   }
 
   const navItems = [
@@ -412,65 +435,87 @@ export default function Home() {
                   <h2 id="uploadHeading">Upload invoice or reorder need</h2>
                   <p>Start with the buyer's easiest input: a PDF invoice from their current supplier.</p>
                 </div>
-                <button className="secondary-action compact" onClick={() => setView("order")}>View Draft Order</button>
+                <div className="wizard-steps" aria-label="Upload progress">
+                  {["Upload", "Review", "Confirm"].map((label, index) => {
+                    const currentIndex = uploadStep === "review" ? 1 : 0;
+                    const isActive = index === currentIndex;
+                    const isDone = index < currentIndex;
+
+                    return (
+                      <span className={`${isActive ? "active" : ""} ${isDone ? "done" : ""}`} key={label}>
+                        <i>{index + 1}</i>
+                        <strong>{label}</strong>
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
 
-              <form ref={uploadFormRef} onSubmit={handleUpload} className="upload-layout">
-                <div
-                  className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""}`}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setIsDraggingInvoice(true);
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget)) {
-                      setIsDraggingInvoice(false);
-                    }
-                  }}
-                  onDrop={handleInvoiceDrop}
-                >
-                  <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
-                  <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop PDF invoice" : "Drop PDF invoice here"}</h3>
-                  <p>{selectedInvoiceName || "or click to choose a file"}</p>
+              {uploadStep === "upload" && (
+                <form ref={uploadFormRef} onSubmit={handleUpload} className="upload-layout">
+                  <div
+                    className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""}`}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsDraggingInvoice(true);
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) {
+                        setIsDraggingInvoice(false);
+                      }
+                    }}
+                    onDrop={handleInvoiceDrop}
+                  >
+                    <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
+                    <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop PDF invoice" : "Drop PDF invoice here"}</h3>
+                    <p>{selectedInvoiceName || "or click to choose a file"}</p>
                   {uploading && (
                     <div className="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}>
-                      <div style={{ width: `${uploadProgress}%` }}></div>
+                      <div className="processing-track">
+                        <div style={{ width: `${uploadProgress}%` }}></div>
+                      </div>
                       <span>{uploadProgress < 45 ? "Reading PDF" : uploadProgress < 80 ? "Matching products" : "Building draft order"}</span>
                     </div>
                   )}
-                  <input
-                    className="file-input"
-                    data-testid="invoice-file-input"
-                    name="file"
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    required
-                    onChange={(event) => uploadInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
-                  />
-                  <button className="primary-action compact hidden-submit" data-testid="save-parse-request" type="submit" disabled={uploading}>Create Draft Order</button>
-                </div>
+                    <input
+                      className="file-input"
+                      data-testid="invoice-file-input"
+                      name="file"
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      required
+                      onChange={(event) => uploadInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
+                    />
+                    <button className="primary-action compact hidden-submit" data-testid="save-parse-request" type="submit" disabled={uploading}>Create Draft Order</button>
+                  </div>
 
-                <div className="form-card">
-                  <p className="eyebrow">Buyer Context</p>
-                  <label>Clinic <input name="clinic" defaultValue="Northline Rehab" /></label>
-                  <label>Buyer <input name="buyer" defaultValue="Alex Kim" /></label>
-                  <label>Shipping address <input name="shippingAddress" defaultValue="500 Healthcare Blvd, Nashville, TN" /></label>
-                  <label>Preference
-                    <select name="preference" defaultValue="Exact brand if possible, alternatives allowed">
-                      <option>Exact brand if possible, alternatives allowed</option>
-                      <option>Exact brand only</option>
-                      <option>Best equivalent at lowest total cost</option>
-                    </select>
-                  </label>
-                </div>
-              </form>
+                  <div className="form-card">
+                    <p className="eyebrow">Buyer Context</p>
+                    <label>Clinic <input name="clinic" defaultValue="Northline Rehab" /></label>
+                    <label>Buyer <input name="buyer" defaultValue="Alex Kim" /></label>
+                    <label>Shipping address <input name="shippingAddress" defaultValue="500 Healthcare Blvd, Nashville, TN" /></label>
+                    <label>Preference
+                      <select name="preference" defaultValue="Exact brand if possible, alternatives allowed">
+                        <option>Exact brand if possible, alternatives allowed</option>
+                        <option>Exact brand only</option>
+                        <option>Best equivalent at lowest total cost</option>
+                      </select>
+                    </label>
+                  </div>
+                </form>
+              )}
 
-              {hasUploadedInvoice && (
-                <>
-                  <RequestPicker requests={requests} selectedRequestId={selectedRequestId} onSelect={setSelectedRequestId} />
-                  <ExtractedTable lineItems={lineItems} />
-                </>
+              {uploadStep === "review" && (
+                <DraftOrderReview
+                  items={draftItems}
+                  activeItems={activeDraftItems}
+                  total={draftTotal}
+                  onBack={() => setUploadStep("upload")}
+                  onApprove={() => showToast("Draft order approved")}
+                  onRemove={removeDraftItem}
+                  onQtyChange={updateDraftQty}
+                />
               )}
             </section>
           )}
@@ -813,6 +858,57 @@ function SearchResults({ results, onViewCatalog }) {
       {!results.length && (
         <p>Try therapy bands, gloves, tape, electrodes, or foam rollers.</p>
       )}
+    </div>
+  );
+}
+
+function DraftOrderReview({ items, activeItems, total, onBack, onApprove, onRemove, onQtyChange }) {
+  return (
+    <div className="draft-review">
+      <div className="draft-review-main">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Matched Draft Order</p>
+            <h3>{activeItems.length} items ready to review</h3>
+          </div>
+          <span>{money.format(total)}</span>
+        </div>
+
+        <div className="draft-items">
+          {items.map((item) => (
+            <article className={`draft-item ${item.included ? "" : "removed"}`} key={item.product}>
+              <div>
+                <strong>{item.product}</strong>
+                <span>{item.extractedFrom} · {item.selected.supplier}</span>
+              </div>
+              <div className="qty-control">
+                <button type="button" disabled={!item.included} onClick={() => onQtyChange(item.product, item.draftQty - 1)} aria-label={`Decrease ${item.product} quantity`}>-</button>
+                <input
+                  aria-label={`${item.product} quantity`}
+                  disabled={!item.included}
+                  min="1"
+                  type="number"
+                  value={item.draftQty}
+                  onChange={(event) => onQtyChange(item.product, event.target.value)}
+                />
+                <button type="button" disabled={!item.included} onClick={() => onQtyChange(item.product, item.draftQty + 1)} aria-label={`Increase ${item.product} quantity`}>+</button>
+              </div>
+              <strong>{item.included ? money.format(item.draftQty * item.selected.unitPrice) : "Removed"}</strong>
+              <button className="text-action" type="button" disabled={!item.included} onClick={() => onRemove(item.product)}>Remove</button>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <aside className="draft-review-side">
+        <p className="eyebrow">Buyer Review</p>
+        <h3>Customize only if needed</h3>
+        <p>Quantities can be adjusted before medMKP places the order. Removed items stay visible so the buyer can see what changed.</p>
+        <div className="wizard-actions">
+          <button className="secondary-action compact" type="button" onClick={onBack}>Back</button>
+          <button className="primary-action compact" type="button" onClick={onApprove}>Continue</button>
+        </div>
+      </aside>
     </div>
   );
 }

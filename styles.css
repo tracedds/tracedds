@@ -615,17 +615,14 @@ kbd {
   font-weight: 700;
 }
 
-.processing-progress::before {
-  content: "";
-  display: block;
-  grid-row: 1;
+.processing-track {
+  overflow: hidden;
   height: 3px;
   border-radius: 999px;
   background: #e8eef8;
 }
 
-.processing-progress div {
-  grid-row: 1;
+.processing-track div {
   height: 3px;
   border-radius: 999px;
   background: var(--blue);
@@ -714,6 +711,184 @@ kbd {
 .request-picker select {
   min-height: 42px;
   padding: 0 10px;
+}
+
+.wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  width: min(420px, 100%);
+}
+
+.wizard-steps span {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.wizard-steps span::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: calc(-50% + 13px);
+  width: calc(100% - 26px);
+  height: 2px;
+  background: var(--line);
+}
+
+.wizard-steps span:first-child::before {
+  display: none;
+}
+
+.wizard-steps i {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.wizard-steps strong {
+  font-size: 12px;
+}
+
+.wizard-steps span.active {
+  color: var(--blue);
+}
+
+.wizard-steps span.done::before,
+.wizard-steps span.active::before {
+  background: var(--blue);
+}
+
+.wizard-steps span.done i,
+.wizard-steps span.active i {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: white;
+}
+
+.draft-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+
+.draft-review-main,
+.draft-review-side {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.draft-review-main {
+  overflow: hidden;
+}
+
+.draft-review-main .panel-header {
+  padding: 18px;
+}
+
+.draft-items {
+  display: grid;
+}
+
+.draft-item {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 142px 110px auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.draft-item > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.draft-item span,
+.draft-review-side p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.draft-item.removed {
+  color: var(--muted);
+  background: #fbfcff;
+}
+
+.draft-item.removed > div:first-child,
+.draft-item.removed .qty-control {
+  opacity: 0.55;
+}
+
+.qty-control {
+  display: grid;
+  grid-template-columns: 34px 56px 34px;
+  align-items: center;
+  gap: 4px;
+}
+
+.qty-control button,
+.qty-control input {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  text-align: center;
+  font-weight: 900;
+}
+
+.qty-control button:disabled,
+.qty-control input:disabled,
+.text-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.text-action {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.draft-review-side {
+  position: sticky;
+  top: 104px;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.draft-review-side h3 {
+  font-size: 22px;
+}
+
+.wizard-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.wizard-actions .primary-action,
+.wizard-actions .secondary-action {
+  flex: 1;
 }
 
 .status-chip {
@@ -1355,7 +1530,8 @@ th {
   .quote-layout,
   .order-layout,
   .buyer-layout,
-  .admin-layout {
+  .admin-layout,
+  .draft-review {
     grid-template-columns: 1fr;
   }
 
@@ -1370,6 +1546,14 @@ th {
 
   .decision-panel {
     position: static;
+  }
+
+  .draft-review-side {
+    position: static;
+  }
+
+  .draft-item {
+    grid-template-columns: minmax(0, 1fr) 142px;
   }
 }
 
@@ -1469,6 +1653,26 @@ th {
 
   .flow-diagram {
     grid-template-columns: 1fr;
+  }
+
+  .wizard-steps,
+  .wizard-actions {
+    width: 100%;
+  }
+
+  .wizard-actions .primary-action,
+  .wizard-actions .secondary-action {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .draft-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .qty-control {
+    width: 132px;
   }
 }
 
