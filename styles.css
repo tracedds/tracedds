@@ -607,33 +607,34 @@ kbd {
 
 .processing-progress {
   display: grid;
-  gap: 8px;
-  width: min(360px, 100%);
-  margin-top: 20px;
+  gap: 10px;
+  width: min(320px, 100%);
+  margin-top: 22px;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .processing-progress::before {
   content: "";
   display: block;
   grid-row: 1;
-  height: 8px;
+  height: 3px;
   border-radius: 999px;
-  background: #dbe6ff;
+  background: #e8eef8;
 }
 
 .processing-progress div {
   grid-row: 1;
-  height: 8px;
+  height: 3px;
   border-radius: 999px;
   background: var(--blue);
-  transition: width 420ms ease;
+  transition: width 520ms ease;
 }
 
 .processing-progress span {
   display: block;
+  text-align: center;
 }
 
 .upload-icon {
