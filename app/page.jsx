@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -113,6 +113,7 @@ function Icon({ name, className = "nav-icon" }) {
 }
 
 export default function Home() {
+  const uploadFormRef = useRef(null);
   const [view, setViewState] = useState("landing");
   const [menuOpen, setMenuOpen] = useState(false);
   const [requests, setRequests] = useState([]);
@@ -183,8 +184,8 @@ export default function Home() {
     showToast.timer = window.setTimeout(() => setToast(""), 2200);
   }
 
-  function setInvoiceFile(fileInput, file) {
-    if (!file || !fileInput) return;
+  function uploadInvoiceFile(fileInput, file) {
+    if (!file || !fileInput || !uploadFormRef.current || uploading) return;
 
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       showToast("Upload a PDF invoice for this demo");
@@ -195,12 +196,15 @@ export default function Home() {
     transfer.items.add(file);
     fileInput.files = transfer.files;
     setSelectedInvoiceName(file.name);
+    window.setTimeout(() => {
+      uploadFormRef.current?.requestSubmit();
+    }, 0);
   }
 
   function handleInvoiceDrop(event) {
     event.preventDefault();
     setIsDraggingInvoice(false);
-    setInvoiceFile(event.currentTarget.querySelector('input[type="file"]'), event.dataTransfer.files?.[0]);
+    uploadInvoiceFile(event.currentTarget.querySelector('input[type="file"]'), event.dataTransfer.files?.[0]);
   }
 
   async function handleUpload(event) {
@@ -385,7 +389,7 @@ export default function Home() {
                 <button className="secondary-action compact" onClick={() => setView("order")}>View Draft Order</button>
               </div>
 
-              <form onSubmit={handleUpload} className="upload-layout">
+              <form ref={uploadFormRef} onSubmit={handleUpload} className="upload-layout">
                 <div
                   className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""}`}
                   onDragEnter={(event) => {
@@ -402,7 +406,7 @@ export default function Home() {
                 >
                   <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
                   <h3>{isDraggingInvoice ? "Drop invoice to upload" : "Upload a PDF invoice"}</h3>
-                  <p>The demo saves the file and turns it into normalized reorder line items for buyer review.</p>
+                  <p>Drop or select a PDF and MedMKP will start building the draft order immediately.</p>
                   <input
                     className="file-input"
                     data-testid="invoice-file-input"
@@ -410,12 +414,12 @@ export default function Home() {
                     type="file"
                     accept=".pdf,application/pdf"
                     required
-                    onChange={(event) => setSelectedInvoiceName(event.target.files?.[0]?.name || "")}
+                    onChange={(event) => uploadInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
                   />
                   <span className={`selected-file ${selectedInvoiceName ? "show" : ""}`}>
-                    {selectedInvoiceName || "Drag a PDF here or choose a file"}
+                    {uploading ? "Processing invoice..." : selectedInvoiceName || "Drag a PDF here or choose a file"}
                   </span>
-                  <button className="primary-action compact" data-testid="save-parse-request" type="submit" disabled={uploading}>{uploading ? "Uploading..." : "Create Draft Order"}</button>
+                  <button className="primary-action compact" data-testid="save-parse-request" type="submit" disabled={uploading}>{uploading ? "Processing..." : "Create Draft Order"}</button>
                 </div>
 
                 <div className="form-card">
