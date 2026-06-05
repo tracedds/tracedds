@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import medmkpLogo from "../logo/Blue Logo Vertical Large - MedMKP.svg";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -183,7 +182,7 @@ function IconSprite() {
 
 function BrandMark() {
   return (
-    <img className="brand-mark" src={medmkpLogo.src} alt="MedMKP" />
+    <img className="brand-mark" src="/icon.svg" alt="MedMKP" />
   );
 }
 
