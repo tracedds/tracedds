@@ -3,5 +3,7 @@
 node_modules/
 .next/
 .data/
-gudid_full_release_20260601/
+logo/
+research/
+wireframes/
 .env*
