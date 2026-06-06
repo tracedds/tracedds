@@ -6,6 +6,7 @@ import type {
   FailedProductExtraction,
   IndexedSupplierUrl,
   SupplierSitemapSummary,
+  SupplierSourceUrlSummary,
 } from "./types"
 
 const indexedHeaders = [
@@ -53,6 +54,7 @@ export function writePipelineDebugOutput(
   payload: {
     summary: Record<string, unknown>
     sitemaps: SupplierSitemapSummary[]
+    sourceUrlSummaries?: SupplierSourceUrlSummary[]
     indexedUrls: IndexedSupplierUrl[]
     products: ExtractedProductRow[]
     failures: FailedProductExtraction[]
@@ -75,6 +77,10 @@ export function writePipelineDebugOutput(
   writeFileSync(
     resolve(absoluteOutputDir, "sitemaps.json"),
     JSON.stringify(payload.sitemaps, null, 2)
+  )
+  writeFileSync(
+    resolve(absoluteOutputDir, "source-urls.json"),
+    JSON.stringify(payload.sourceUrlSummaries ?? [], null, 2)
   )
   writeCsv(resolve(absoluteOutputDir, "all-urls.csv"), indexedHeaders, payload.indexedUrls)
   writeCsv(

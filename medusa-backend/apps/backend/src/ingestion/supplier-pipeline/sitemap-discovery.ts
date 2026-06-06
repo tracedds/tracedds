@@ -63,13 +63,41 @@ export async function downloadText(
   }
 }
 
+function debugLog(enabled: boolean | undefined, ...args: unknown[]) {
+  if (enabled) {
+    console.log("[sitemap-discovery]", ...args)
+  }
+}
+
+function promiseMap<T, R>(
+  items: T[],
+  concurrency: number,
+  iterator: (item: T, index: number) => Promise<R>
+) {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  return Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex++
+        results[currentIndex] = await iterator(items[currentIndex], currentIndex)
+      }
+    })
+  ).then(() => results)
+}
+
 export async function discoverSupplierSitemaps(
   suppliers: SupplierSeedRow[],
-  options: { timeoutMs?: number } = {}
+  options: {
+    timeoutMs?: number
+    debug?: boolean
+    concurrency?: number
+    sitemapConcurrency?: number
+  } = {}
 ) {
-  const summary: SupplierSitemapSummary[] = []
-
-  for (const supplier of suppliers) {
+  const summary = await promiseMap(suppliers, options.concurrency ?? 3, async (supplier) => {
+    debugLog(options.debug, `Discovering sitemaps for ${supplier.distributor} (${supplier.website_url})`)
     const site = normalizeSiteUrl(supplier.website_url)
     const robotsUrl = `${site.origin}/robots.txt`
     const robots = await downloadText(robotsUrl, options.timeoutMs)
@@ -79,13 +107,27 @@ export async function discoverSupplierSitemaps(
     const sitemapUrls = directives.length
       ? directives
       : [`${site.origin}/sitemap.xml`]
-    const sitemaps: DownloadResult[] = []
 
-    for (const sitemapUrl of sitemapUrls) {
-      sitemaps.push(await downloadText(sitemapUrl, options.timeoutMs))
-    }
+    debugLog(
+      options.debug,
+      `Robots.txt fetched for ${supplier.distributor}: ok=${robots.ok} status=${robots.status} bytes=${robots.bytes} directives=${directives.length}`
+    )
 
-    summary.push({
+    const sitemaps = await promiseMap(
+      sitemapUrls,
+      options.sitemapConcurrency ?? 2,
+      async (sitemapUrl) => {
+        debugLog(options.debug, `Fetching sitemap ${sitemapUrl}`)
+        const sitemap = await downloadText(sitemapUrl, options.timeoutMs)
+        debugLog(
+          options.debug,
+          `Sitemap result for ${sitemapUrl}: ok=${sitemap.ok} status=${sitemap.status} bytes=${sitemap.bytes}`
+        )
+        return sitemap
+      }
+    )
+
+    return {
       distributor: supplier.distributor,
       website_url: supplier.website_url,
       origin: site.origin,
@@ -94,8 +136,10 @@ export async function discoverSupplierSitemaps(
       sitemap_directives: directives,
       used_fallback_sitemap: directives.length === 0,
       sitemaps,
-    })
-  }
+    }
+  })
+
+  debugLog(options.debug, `Completed sitemap discovery for ${suppliers.length} supplier(s)`)
 
   return summary
 }

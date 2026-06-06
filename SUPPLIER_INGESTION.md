@@ -29,6 +29,8 @@ discover -> index -> extract
 - `discover`: fetches `robots.txt`, reads `Sitemap:` directives, and falls back
   to `/sitemap.xml`.
 - `index`: classifies sitemap URLs as product, category, sitemap index, or other.
+  It can also fetch configured source/category/search URLs and classify links
+  found on those pages.
 - `extract`: fetches product candidates and extracts quality-gated product rows.
 
 The code lives in:
@@ -71,6 +73,36 @@ npm run supplier:ingest:db -- --supplier-id=msup_pearsondental_com --limit=25 --
 
 `--commit` replaces cached supplier products and canonical matches for the same
 supplier/source catalog. Price snapshots are appended as historical evidence.
+
+Commits with zero extracted products are rejected by default. To intentionally
+clear a supplier/source catalog, pass `--allow-empty-commit`.
+
+## Suppliers Without Sitemaps
+
+Some suppliers block `/sitemap.xml`, omit `Sitemap:` directives, or protect
+sitemaps behind Cloudflare. Those suppliers can still be ingested from known
+category/search/source URLs.
+
+One-off dry run:
+
+```bash
+npm run supplier:ingest:db -- \
+  --supplier-id=msup_net32_com \
+  --source-url=https://www.net32.com/supplies/gloves \
+  --limit=100 \
+  --debug
+```
+
+Persistent source URL:
+
+1. Add a `medmkp_supplier_catalog_source` row for the supplier.
+2. Set `source_type = website`.
+3. Set `source_url` to the category/search/catalog URL.
+4. Run the normal DB-backed ingestion command.
+
+The pipeline will fetch those source URLs during the index stage, extract
+same-origin links, classify product candidates, and then run the normal product
+extraction adapters.
 
 ## Production Safety
 
@@ -207,4 +239,3 @@ It extracts SKU-level rows from Pearson item tables, including:
 
 Pearson `product_thumb_multi.asp` pages are treated as family/category pages, not
 SKU-level product pages.
-

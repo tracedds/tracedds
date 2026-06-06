@@ -5,7 +5,8 @@ import type {
   SupplierCatalogRow,
 } from "../ingestion/supplier-catalog"
 import { runSupplierIngestionPipeline } from "../ingestion/supplier-pipeline/pipeline"
-import type { SupplierSeedRow } from "../ingestion/supplier-pipeline/types"
+import { normalizeSiteUrl } from "../ingestion/supplier-pipeline/suppliers"
+import type { SupplierSeedRow, SupplierSourceUrl } from "../ingestion/supplier-pipeline/types"
 import { MEDMKP_MODULE } from "../modules/medmkp"
 import type MedMKPModuleService from "../modules/medmkp/service"
 
@@ -14,8 +15,14 @@ type CliOptions = {
   supplierName?: string
   limit?: number
   timeoutMs?: number
+  sitemapConcurrency?: number
+  productConcurrency?: number
+  sourceUrls: string[]
+  sourceConcurrency?: number
+  maxLinksPerSource?: number
   debug: boolean
   commit: boolean
+  allowEmptyCommit: boolean
 }
 
 function optionValue(arg: string) {
@@ -33,8 +40,24 @@ function parseOptions(): CliOptions {
     timeoutMs: process.env.PRODUCT_PAGE_TIMEOUT_MS
       ? Number(process.env.PRODUCT_PAGE_TIMEOUT_MS)
       : undefined,
+    sitemapConcurrency: process.env.SUPPLIER_INGESTION_SITEMAP_CONCURRENCY
+      ? Number(process.env.SUPPLIER_INGESTION_SITEMAP_CONCURRENCY)
+      : undefined,
+    productConcurrency: process.env.SUPPLIER_INGESTION_PRODUCT_CONCURRENCY
+      ? Number(process.env.SUPPLIER_INGESTION_PRODUCT_CONCURRENCY)
+      : undefined,
+    sourceUrls: process.env.SUPPLIER_INGESTION_SOURCE_URLS
+      ? process.env.SUPPLIER_INGESTION_SOURCE_URLS.split(",").map((url) => url.trim()).filter(Boolean)
+      : [],
+    sourceConcurrency: process.env.SUPPLIER_INGESTION_SOURCE_CONCURRENCY
+      ? Number(process.env.SUPPLIER_INGESTION_SOURCE_CONCURRENCY)
+      : undefined,
+    maxLinksPerSource: process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE
+      ? Number(process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE)
+      : undefined,
     debug: process.env.SUPPLIER_INGESTION_DEBUG === "1",
     commit: process.env.SUPPLIER_INGESTION_COMMIT === "1",
+    allowEmptyCommit: process.env.SUPPLIER_INGESTION_ALLOW_EMPTY_COMMIT === "1",
   }
 
   for (const arg of process.argv.slice(2)) {
@@ -43,6 +66,9 @@ function parseOptions(): CliOptions {
     }
     if (arg === "--commit") {
       options.commit = true
+    }
+    if (arg === "--allow-empty-commit") {
+      options.allowEmptyCommit = true
     }
     if (arg.startsWith("--supplier-id=")) {
       options.supplierId = optionValue(arg)
@@ -56,6 +82,21 @@ function parseOptions(): CliOptions {
     if (arg.startsWith("--timeout-ms=")) {
       options.timeoutMs = Number(optionValue(arg))
     }
+    if (arg.startsWith("--sitemap-concurrency=")) {
+      options.sitemapConcurrency = Number(optionValue(arg))
+    }
+    if (arg.startsWith("--product-concurrency=")) {
+      options.productConcurrency = Number(optionValue(arg))
+    }
+    if (arg.startsWith("--source-url=")) {
+      options.sourceUrls.push(optionValue(arg))
+    }
+    if (arg.startsWith("--source-concurrency=")) {
+      options.sourceConcurrency = Number(optionValue(arg))
+    }
+    if (arg.startsWith("--max-links-per-source=")) {
+      options.maxLinksPerSource = Number(optionValue(arg))
+    }
   }
 
   return options
@@ -65,14 +106,14 @@ function sourceCatalogForSupplier(supplier: { slug?: string; website_url: string
   const slug = supplier.slug?.trim()
 
   if (slug) {
-    return `${slug}-sitemap-public`
+    return `${slug}-website-public`
   }
 
   return new URL(supplier.website_url).hostname
     .replace(/^www\./, "")
     .replace(/[^a-z0-9]+/gi, "-")
     .replace(/^-|-$/g, "")
-    .toLowerCase() + "-sitemap-public"
+    .toLowerCase() + "-website-public"
 }
 
 function cents(value: string | undefined) {
@@ -90,6 +131,38 @@ function catalogRows(rows: Awaited<ReturnType<typeof runSupplierIngestionPipelin
     ...row,
     price_cents: row.price_cents ?? cents(row.price),
   }))
+}
+
+function validUrl(value: string | undefined) {
+  if (!value?.trim()) {
+    return false
+  }
+
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function sourceUrlRecord(input: {
+  supplierName: string
+  supplierWebsiteUrl: string
+  prices?: string
+  sourceCatalog: string
+  sourceUrl: string
+}): SupplierSourceUrl {
+  const site = normalizeSiteUrl(input.supplierWebsiteUrl)
+
+  return {
+    distributor: input.supplierName,
+    website_url: input.supplierWebsiteUrl,
+    origin: site.origin,
+    prices: input.prices ?? "Y",
+    source_catalog: input.sourceCatalog,
+    source_url: input.sourceUrl,
+  }
 }
 
 async function replaceSupplierCatalog(
@@ -175,7 +248,10 @@ export default async function ingestSupplierCatalogs({
 }) {
   const options = parseOptions()
   const medmkp = container.resolve<MedMKPModuleService>(MEDMKP_MODULE)
-  const dbSuppliers = await medmkp.listSuppliers()
+  const [dbSuppliers, catalogSources] = await Promise.all([
+    medmkp.listSuppliers(),
+    medmkp.listSupplierCatalogSources(),
+  ])
   const suppliers = dbSuppliers
     .filter((supplier) => !options.supplierId || supplier.id === options.supplierId)
     .map((supplier): SupplierSeedRow => ({
@@ -183,19 +259,45 @@ export default async function ingestSupplierCatalogs({
       website_url: supplier.website_url,
       prices: "Y",
     }))
+  const matchedSupplier = dbSuppliers.find((supplier) =>
+    options.supplierId
+      ? supplier.id === options.supplierId
+      : supplier.name === (options.supplierName ?? suppliers[0]?.distributor)
+  )
+  const dbSourceUrls = matchedSupplier
+    ? catalogSources
+        .filter((source) => source.supplier_id === matchedSupplier.id)
+        .filter((source) => source.status === "active")
+        .filter((source) => source.source_type === "website" || source.source_type === "agent")
+        .filter((source) => validUrl(source.source_url))
+        .map((source) => sourceUrlRecord({
+          supplierName: matchedSupplier.name,
+          supplierWebsiteUrl: matchedSupplier.website_url,
+          sourceCatalog: source.source_catalog,
+          sourceUrl: source.source_url,
+        }))
+    : []
+  const cliSourceUrls = matchedSupplier
+    ? options.sourceUrls.map((sourceUrl) => sourceUrlRecord({
+      supplierName: matchedSupplier.name,
+      supplierWebsiteUrl: matchedSupplier.website_url,
+      sourceCatalog: sourceCatalogForSupplier(matchedSupplier),
+      sourceUrl,
+    }))
+    : []
 
   const result = await runSupplierIngestionPipeline({
     suppliers,
     supplierName: options.supplierName,
     productLimit: options.limit,
     timeoutMs: options.timeoutMs,
+    sitemapConcurrency: options.sitemapConcurrency,
+    productConcurrency: options.productConcurrency,
+    sourceUrls: [...dbSourceUrls, ...cliSourceUrls],
+    sourceConcurrency: options.sourceConcurrency,
+    maxLinksPerSource: options.maxLinksPerSource,
     debug: options.debug,
   })
-  const matchedSupplier = dbSuppliers.find((supplier) =>
-    options.supplierId
-      ? supplier.id === options.supplierId
-      : supplier.name === (options.supplierName ?? suppliers[0]?.distributor)
-  )
   let importResult:
     | Awaited<ReturnType<typeof replaceSupplierCatalog>>
     | undefined
@@ -203,6 +305,11 @@ export default async function ingestSupplierCatalogs({
   if (options.commit) {
     if (!matchedSupplier) {
       throw new Error("Commit requires exactly one matched DB supplier")
+    }
+    if (!result.products.length && !options.allowEmptyCommit) {
+      throw new Error(
+        "Commit aborted: ingestion extracted 0 products. Re-run without --commit to inspect debug output, or pass --allow-empty-commit if you intentionally want to clear this supplier/source catalog."
+      )
     }
 
     importResult = await replaceSupplierCatalog(medmkp, {
@@ -219,7 +326,9 @@ export default async function ingestSupplierCatalogs({
       {
         source: "medmkp_supplier",
         commit: options.commit,
+        allow_empty_commit: options.allowEmptyCommit,
         supplier_id: matchedSupplier?.id,
+        source_urls: dbSourceUrls.length + cliSourceUrls.length,
         ...result.summary,
         import: importResult,
       },

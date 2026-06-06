@@ -28,6 +28,20 @@ export type SupplierSitemapSummary = {
   sitemaps: DownloadResult[]
 }
 
+export type SupplierSourceUrl = {
+  distributor: string
+  website_url: string
+  origin: string
+  prices: string
+  source_catalog: string
+  source_url: string
+}
+
+export type SupplierSourceUrlSummary = SupplierSourceUrl & {
+  page: DownloadResult
+  discovered_urls: number
+}
+
 export type IndexedUrlType = "product" | "category" | "sitemap_index" | "other"
 
 export type IndexedSupplierUrl = {

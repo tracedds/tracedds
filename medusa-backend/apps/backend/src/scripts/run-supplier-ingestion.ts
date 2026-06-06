@@ -1,5 +1,7 @@
 import { runSupplierIngestionPipeline } from "../ingestion/supplier-pipeline/pipeline"
 import type { SupplierIngestionStage } from "../ingestion/supplier-pipeline/pipeline"
+import { normalizeSiteUrl } from "../ingestion/supplier-pipeline/suppliers"
+import type { SupplierSourceUrl } from "../ingestion/supplier-pipeline/types"
 
 type CliOptions = {
   suppliersCsvPath: string
@@ -7,6 +9,11 @@ type CliOptions = {
   stages?: SupplierIngestionStage[]
   productLimit?: number
   timeoutMs?: number
+  sitemapConcurrency?: number
+  productConcurrency?: number
+  sourceUrls: string[]
+  sourceConcurrency?: number
+  maxLinksPerSource?: number
   debug: boolean
   debugOutputDir?: string
 }
@@ -50,6 +57,21 @@ function parseOptions(): CliOptions {
     timeoutMs: process.env.PRODUCT_PAGE_TIMEOUT_MS
       ? Number(process.env.PRODUCT_PAGE_TIMEOUT_MS)
       : undefined,
+    sitemapConcurrency: process.env.SUPPLIER_INGESTION_SITEMAP_CONCURRENCY
+      ? Number(process.env.SUPPLIER_INGESTION_SITEMAP_CONCURRENCY)
+      : undefined,
+    productConcurrency: process.env.SUPPLIER_INGESTION_PRODUCT_CONCURRENCY
+      ? Number(process.env.SUPPLIER_INGESTION_PRODUCT_CONCURRENCY)
+      : undefined,
+    sourceUrls: process.env.SUPPLIER_INGESTION_SOURCE_URLS
+      ? process.env.SUPPLIER_INGESTION_SOURCE_URLS.split(",").map((url) => url.trim()).filter(Boolean)
+      : [],
+    sourceConcurrency: process.env.SUPPLIER_INGESTION_SOURCE_CONCURRENCY
+      ? Number(process.env.SUPPLIER_INGESTION_SOURCE_CONCURRENCY)
+      : undefined,
+    maxLinksPerSource: process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE
+      ? Number(process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE)
+      : undefined,
     debug: process.env.SUPPLIER_INGESTION_DEBUG === "1",
     debugOutputDir: process.env.SUPPLIER_INGESTION_DEBUG_DIR,
   }
@@ -80,6 +102,26 @@ function parseOptions(): CliOptions {
       options.timeoutMs = Number(optionValue(arg))
     }
 
+    if (arg.startsWith("--sitemap-concurrency=")) {
+      options.sitemapConcurrency = Number(optionValue(arg))
+    }
+
+    if (arg.startsWith("--product-concurrency=")) {
+      options.productConcurrency = Number(optionValue(arg))
+    }
+
+    if (arg.startsWith("--source-url=")) {
+      options.sourceUrls.push(optionValue(arg))
+    }
+
+    if (arg.startsWith("--source-concurrency=")) {
+      options.sourceConcurrency = Number(optionValue(arg))
+    }
+
+    if (arg.startsWith("--max-links-per-source=")) {
+      options.maxLinksPerSource = Number(optionValue(arg))
+    }
+
     if (arg.startsWith("--debug-output-dir=")) {
       options.debugOutputDir = optionValue(arg)
     }
@@ -89,7 +131,25 @@ function parseOptions(): CliOptions {
 }
 
 async function run() {
-  const result = await runSupplierIngestionPipeline(parseOptions())
+  const options = parseOptions()
+  const sourceUrls: SupplierSourceUrl[] = options.sourceUrls.map((sourceUrl) => {
+    const site = normalizeSiteUrl(sourceUrl)
+
+    return {
+      distributor: options.supplierName ?? site.domain,
+      website_url: site.origin,
+      origin: site.origin,
+      prices: "Y",
+      source_catalog: `${site.domain.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-source-url`,
+      source_url: sourceUrl,
+    }
+  })
+  const result = await runSupplierIngestionPipeline({
+    ...options,
+    sourceUrls,
+    sourceConcurrency: options.sourceConcurrency,
+    maxLinksPerSource: options.maxLinksPerSource,
+  })
 
   console.log(JSON.stringify(result.summary, null, 2))
 }

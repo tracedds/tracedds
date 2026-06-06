@@ -91,47 +91,118 @@ function invalidProductReason(product: ProductExtractionResult["products"][numbe
   return ""
 }
 
+function debugLog(enabled: boolean | undefined, ...args: unknown[]) {
+  if (enabled) {
+    console.log("[product-extraction]", ...args)
+  }
+}
+
+async function promiseMap<T, R>(
+  items: T[],
+  concurrency: number,
+  iterator: (item: T, index: number) => Promise<R>
+) {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex++
+        results[currentIndex] = await iterator(items[currentIndex], currentIndex)
+      }
+    })
+  )
+
+  return results
+}
+
 export async function extractProductPages(
   candidates: ProductPageCandidate[],
-  options: { limit?: number; timeoutMs?: number } = {}
+  options: { limit?: number; timeoutMs?: number; concurrency?: number; debug?: boolean } = {}
 ): Promise<ProductExtractionResult> {
   const selected = candidates.slice(0, options.limit ?? candidates.length)
   const products: ProductExtractionResult["products"] = []
   const failures: ProductExtractionResult["failures"] = []
 
-  for (const candidate of selected) {
-    try {
-      const result = await fetchProductHtml(candidate.url, options.timeoutMs)
+  debugLog(
+    options.debug,
+    `Extracting ${selected.length} candidate(s) with timeout ${options.timeoutMs ?? "default"}`
+  )
 
-      if (!result.ok) {
-        failures.push(failedExtraction(candidate, result.status, result.error))
-        continue
-      }
+  const results = await promiseMap(
+    selected,
+    options.concurrency ?? 6,
+    async (candidate, index) => {
+      const position = `${index + 1}/${selected.length}`
+      debugLog(options.debug, `Processing candidate ${position}: ${candidate.url}`)
 
-      const adapter = adapterForCandidate(candidate)
-      const extractedProducts = adapter.extractProducts
-        ? adapter.extractProducts(candidate, result.html)
-        : [adapter.extractProduct(candidate, result.html)]
+      try {
+        const result = await fetchProductHtml(candidate.url, options.timeoutMs)
+        debugLog(
+          options.debug,
+          `Fetched ${candidate.url}: ok=${result.ok} status=${result.status} htmlLength=${result.html.length}`
+        )
 
-      if (!extractedProducts.length) {
-        failures.push(failedExtraction(candidate, result.status, "No valid product rows extracted"))
-        continue
-      }
-
-      for (const product of extractedProducts) {
-        const reason = invalidProductReason(product)
-
-        if (reason) {
-          failures.push(failedExtraction(candidate, result.status, reason))
-          continue
+        if (!result.ok) {
+          const failure = failedExtraction(candidate, result.status, result.error)
+          debugLog(options.debug, `Candidate ${position} failed: ${result.error}`)
+          return { products: [], failures: [failure] }
         }
 
-        products.push(product)
+        const adapter = adapterForCandidate(candidate)
+        const extractedProducts = adapter.extractProducts
+          ? adapter.extractProducts(candidate, result.html)
+          : [adapter.extractProduct(candidate, result.html)]
+
+        if (!extractedProducts.length) {
+          const failure = failedExtraction(candidate, result.status, "No valid product rows extracted")
+          debugLog(options.debug, `Candidate ${position} failed: no products extracted`)
+          return { products: [], failures: [failure] }
+        }
+
+        const itemResults = {
+          products: [] as ProductExtractionResult["products"],
+          failures: [] as ProductExtractionResult["failures"],
+        }
+
+        for (const product of extractedProducts) {
+          const reason = invalidProductReason(product)
+
+          if (reason) {
+            itemResults.failures.push(failedExtraction(candidate, result.status, reason))
+            debugLog(options.debug, `Candidate ${position} rejected: ${reason}`)
+            continue
+          }
+
+          itemResults.products.push(product)
+          debugLog(
+            options.debug,
+            `Candidate ${position} succeeded: extracted product sku=${product.sku ?? product.manufacturer_sku} name=${product.name}`
+          )
+        }
+
+        return itemResults
+      } catch (error) {
+        const failureReason = errorMessage(error)
+        debugLog(options.debug, `Candidate ${position} exception: ${failureReason}`)
+        return {
+          products: [],
+          failures: [failedExtraction(candidate, "fetch failed", failureReason)],
+        }
       }
-    } catch (error) {
-      failures.push(failedExtraction(candidate, "fetch failed", errorMessage(error)))
     }
+  )
+
+  for (const result of results) {
+    products.push(...result.products)
+    failures.push(...result.failures)
   }
+
+  debugLog(
+    options.debug,
+    `Finished extract stage: ${products.length} products, ${failures.length} failures`
+  )
 
   return {
     products,
