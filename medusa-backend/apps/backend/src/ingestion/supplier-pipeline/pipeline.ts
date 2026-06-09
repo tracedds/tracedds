@@ -1,6 +1,7 @@
 import { resolve } from "path"
 import { discoverSupplierSitemaps } from "./sitemap-discovery"
 import { discoverSupplierSourceUrls } from "./source-url-discovery"
+import { discoverPearsonCatalogUrls } from "./pearson-catalog-discovery"
 import { extractProductPages } from "./product-extraction"
 import { filterSuppliers, supplierRowsFromCsv } from "./suppliers"
 import { indexSupplierSitemapUrls, summarizeIndexedUrls } from "./url-index"
@@ -28,8 +29,30 @@ export type SupplierIngestionPipelineOptions = {
   sourceUrls?: SupplierSourceUrl[]
   sourceConcurrency?: number
   maxLinksPerSource?: number
+  maxSitemapsPerSupplier?: number
+  maxPearsonCatalogPages?: number
   debug?: boolean
   debugOutputDir?: string
+}
+
+function productCandidateKey(row: IndexedSupplierUrl) {
+  try {
+    const url = new URL(row.url)
+    if (/pearsondental\.com$/i.test(url.hostname) && /\/catalog\/product2?\.asp$/i.test(url.pathname)) {
+      const pid = url.searchParams.get("pid")
+      const bin = url.searchParams.get("bin2")
+      if (pid) {
+        return `pearson:pid:${pid}`
+      }
+      if (bin) {
+        return `pearson:bin2:${bin}`
+      }
+    }
+  } catch {
+    // Fall back to exact URL matching below.
+  }
+
+  return row.url
 }
 
 function productCandidates(indexedUrls: IndexedSupplierUrl[]) {
@@ -37,15 +60,22 @@ function productCandidates(indexedUrls: IndexedSupplierUrl[]) {
 
   return indexedUrls
     .filter((row): row is ProductPageCandidate => row.url_type === "product")
+    .sort((a, b) => b.confidence_score - a.confidence_score)
     .filter((row) => {
-      if (seen.has(row.url)) {
+      const key = productCandidateKey(row)
+      if (seen.has(key)) {
         return false
       }
 
-      seen.add(row.url)
+      seen.add(key)
       return true
     })
-    .sort((a, b) => b.confidence_score - a.confidence_score)
+}
+
+function pearsonFullCatalogProductCount(indexedUrls: IndexedSupplierUrl[]) {
+  return indexedUrls.filter((row) =>
+    row.reasons.some((reason) => /Pearson full-catalog crawl/i.test(reason))
+  ).length
 }
 
 function log(debug: boolean | undefined, ...args: unknown[]) {
@@ -92,6 +122,7 @@ export async function runSupplierIngestionPipeline(
       debug: options.debug,
       concurrency: options.sitemapConcurrency,
       sitemapConcurrency: options.sitemapConcurrency,
+      maxSitemapsPerSupplier: options.maxSitemapsPerSupplier,
     })
     log(
       options.debug,
@@ -118,6 +149,20 @@ export async function runSupplierIngestionPipeline(
       })
       sourceUrlSummaries = sourceResults.summaries
       indexedUrls.push(...sourceResults.indexedUrls)
+    }
+
+    const pearsonCatalogUrls = await discoverPearsonCatalogUrls(suppliers, {
+      timeoutMs: options.timeoutMs,
+      debug: options.debug,
+      concurrency: options.sourceConcurrency,
+      maxPages: options.maxPearsonCatalogPages,
+    })
+    if (pearsonCatalogUrls.length) {
+      log(
+        options.debug,
+        `Index stage Pearson full-catalog discovery: ${pearsonCatalogUrls.length} product URL(s)`
+      )
+      indexedUrls.push(...pearsonCatalogUrls)
     }
     const indexedSummary = summarizeIndexedUrls(indexedUrls)
     log(
@@ -165,6 +210,7 @@ export async function runSupplierIngestionPipeline(
       0
     ),
     ...indexedSummary,
+    pearson_full_catalog_product_urls: pearsonFullCatalogProductCount(indexedUrls),
     extracted_products: extracted.products.length,
     extraction_failures: extracted.failures.length,
   }

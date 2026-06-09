@@ -20,6 +20,8 @@ type CliOptions = {
   sourceUrls: string[]
   sourceConcurrency?: number
   maxLinksPerSource?: number
+  maxSitemapsPerSupplier?: number
+  maxPearsonCatalogPages?: number
   debug: boolean
   commit: boolean
   allowEmptyCommit: boolean
@@ -54,6 +56,12 @@ function parseOptions(): CliOptions {
       : undefined,
     maxLinksPerSource: process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE
       ? Number(process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE)
+      : undefined,
+    maxSitemapsPerSupplier: process.env.SUPPLIER_INGESTION_MAX_SITEMAPS_PER_SUPPLIER
+      ? Number(process.env.SUPPLIER_INGESTION_MAX_SITEMAPS_PER_SUPPLIER)
+      : undefined,
+    maxPearsonCatalogPages: process.env.SUPPLIER_INGESTION_MAX_PEARSON_CATALOG_PAGES
+      ? Number(process.env.SUPPLIER_INGESTION_MAX_PEARSON_CATALOG_PAGES)
       : undefined,
     debug: process.env.SUPPLIER_INGESTION_DEBUG === "1",
     commit: process.env.SUPPLIER_INGESTION_COMMIT === "1",
@@ -96,6 +104,12 @@ function parseOptions(): CliOptions {
     }
     if (arg.startsWith("--max-links-per-source=")) {
       options.maxLinksPerSource = Number(optionValue(arg))
+    }
+    if (arg.startsWith("--max-sitemaps-per-supplier=")) {
+      options.maxSitemapsPerSupplier = Number(optionValue(arg))
+    }
+    if (arg.startsWith("--max-pearson-catalog-pages=")) {
+      options.maxPearsonCatalogPages = Number(optionValue(arg))
     }
   }
 
@@ -313,6 +327,8 @@ export default async function ingestSupplierCatalogs({
     sourceUrls: [...dbSourceUrls, ...cliSourceUrls],
     sourceConcurrency: options.sourceConcurrency,
     maxLinksPerSource: options.maxLinksPerSource,
+    maxSitemapsPerSupplier: options.maxSitemapsPerSupplier,
+    maxPearsonCatalogPages: options.maxPearsonCatalogPages,
     debug: options.debug,
   })
   let importResult:

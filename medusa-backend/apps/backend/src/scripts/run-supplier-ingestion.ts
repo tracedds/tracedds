@@ -14,6 +14,8 @@ type CliOptions = {
   sourceUrls: string[]
   sourceConcurrency?: number
   maxLinksPerSource?: number
+  maxSitemapsPerSupplier?: number
+  maxPearsonCatalogPages?: number
   debug: boolean
   debugOutputDir?: string
 }
@@ -72,6 +74,12 @@ function parseOptions(): CliOptions {
     maxLinksPerSource: process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE
       ? Number(process.env.SUPPLIER_INGESTION_MAX_LINKS_PER_SOURCE)
       : undefined,
+    maxSitemapsPerSupplier: process.env.SUPPLIER_INGESTION_MAX_SITEMAPS_PER_SUPPLIER
+      ? Number(process.env.SUPPLIER_INGESTION_MAX_SITEMAPS_PER_SUPPLIER)
+      : undefined,
+    maxPearsonCatalogPages: process.env.SUPPLIER_INGESTION_MAX_PEARSON_CATALOG_PAGES
+      ? Number(process.env.SUPPLIER_INGESTION_MAX_PEARSON_CATALOG_PAGES)
+      : undefined,
     debug: process.env.SUPPLIER_INGESTION_DEBUG === "1",
     debugOutputDir: process.env.SUPPLIER_INGESTION_DEBUG_DIR,
   }
@@ -121,6 +129,12 @@ function parseOptions(): CliOptions {
     if (arg.startsWith("--max-links-per-source=")) {
       options.maxLinksPerSource = Number(optionValue(arg))
     }
+    if (arg.startsWith("--max-sitemaps-per-supplier=")) {
+      options.maxSitemapsPerSupplier = Number(optionValue(arg))
+    }
+    if (arg.startsWith("--max-pearson-catalog-pages=")) {
+      options.maxPearsonCatalogPages = Number(optionValue(arg))
+    }
 
     if (arg.startsWith("--debug-output-dir=")) {
       options.debugOutputDir = optionValue(arg)
@@ -149,6 +163,8 @@ async function run() {
     sourceUrls,
     sourceConcurrency: options.sourceConcurrency,
     maxLinksPerSource: options.maxLinksPerSource,
+    maxSitemapsPerSupplier: options.maxSitemapsPerSupplier,
+    maxPearsonCatalogPages: options.maxPearsonCatalogPages,
   })
 
   console.log(JSON.stringify(result.summary, null, 2))

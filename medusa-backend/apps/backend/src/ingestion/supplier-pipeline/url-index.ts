@@ -100,6 +100,10 @@ export function indexSupplierSitemapUrls(
       }
 
       for (const url of xmlUrls(sitemap.body)) {
+        if (/\.xml($|\?)/i.test(url)) {
+          continue
+        }
+
         indexed.push({
           distributor: supplier.distributor,
           website_url: supplier.website_url,

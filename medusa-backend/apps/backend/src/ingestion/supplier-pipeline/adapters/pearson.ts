@@ -50,6 +50,13 @@ function skuProductUrl(candidate: ProductPageCandidate, binSku: string) {
   return url.href
 }
 
+function candidateCategory(candidate: ProductPageCandidate) {
+  return {
+    category: candidate.category?.trim() || "Dental supplies",
+    subcategory: candidate.subcategory?.trim() || "",
+  }
+}
+
 function pearsonItemRows(candidate: ProductPageCandidate, html: string) {
   if (/page (?:has been )?removed|product not found|error code/i.test(stripTags(html))) {
     return []
@@ -59,6 +66,7 @@ function pearsonItemRows(candidate: ProductPageCandidate, html: string) {
     ...html.matchAll(/<tr\b[^>]*valign\s*=\s*["']?\s*top\s*["']?[^>]*>([\s\S]*?)<\/tr>/gi),
   ]
   const productLine = titleProductLine(html)
+  const { category, subcategory } = candidateCategory(candidate)
 
   return rows.flatMap((match): ExtractedProductRow[] => {
     const rowHtml = match[1]
@@ -95,8 +103,8 @@ function pearsonItemRows(candidate: ProductPageCandidate, html: string) {
       brand: titleBrand(html),
       name,
       description: name,
-      category: "Dental supplies",
-      subcategory: "",
+      category,
+      subcategory,
       product_line: productLine,
       product_url: binSku ? skuProductUrl(candidate, binSku) : candidate.url,
       pack_size: extractPackSize(name),
@@ -111,6 +119,8 @@ function pearsonItemRows(candidate: ProductPageCandidate, html: string) {
         sitemap_url: candidate.sitemap_url,
         confidence_score: candidate.confidence_score,
         reasons: candidate.reasons,
+        category,
+        subcategory,
       },
     }]
   })
@@ -124,10 +134,13 @@ export const pearsonAdapter: SupplierProductAdapter = {
   extractProduct: (candidate, html) => {
     const product = genericProductExtract(candidate, html)
 
+    const { category, subcategory } = candidateCategory(candidate)
+
     return {
       ...product,
       name: cleanPearsonName(product.name),
-      category: "Dental supplies",
+      category,
+      subcategory,
       raw: {
         ...(typeof product.raw === "object" && product.raw ? product.raw : {}),
         extracted_by: "pearson",

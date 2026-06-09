@@ -63,6 +63,10 @@ export async function downloadText(
   }
 }
 
+function isSitemapIndex(xml: string) {
+  return /<sitemapindex\b/i.test(xml)
+}
+
 function debugLog(enabled: boolean | undefined, ...args: unknown[]) {
   if (enabled) {
     console.log("[sitemap-discovery]", ...args)
@@ -94,6 +98,7 @@ export async function discoverSupplierSitemaps(
     debug?: boolean
     concurrency?: number
     sitemapConcurrency?: number
+    maxSitemapsPerSupplier?: number
   } = {}
 ) {
   const summary = await promiseMap(suppliers, options.concurrency ?? 3, async (supplier) => {
@@ -113,7 +118,7 @@ export async function discoverSupplierSitemaps(
       `Robots.txt fetched for ${supplier.distributor}: ok=${robots.ok} status=${robots.status} bytes=${robots.bytes} directives=${directives.length}`
     )
 
-    const sitemaps = await promiseMap(
+    const initialSitemaps = await promiseMap(
       sitemapUrls,
       options.sitemapConcurrency ?? 2,
       async (sitemapUrl) => {
@@ -126,6 +131,41 @@ export async function discoverSupplierSitemaps(
         return sitemap
       }
     )
+    const childSitemapUrls = initialSitemaps
+      .filter((sitemap) => sitemap.ok && sitemap.body && isSitemapIndex(sitemap.body))
+      .flatMap((sitemap) => xmlUrls(sitemap.body ?? ""))
+      .filter((url) => /\.xml($|\?)/i.test(url))
+      .filter((url, index, urls) => urls.indexOf(url) === index)
+      .slice(0, options.maxSitemapsPerSupplier ?? 5000)
+
+    if (childSitemapUrls.length) {
+      debugLog(
+        options.debug,
+        `Expanding ${childSitemapUrls.length} child sitemap(s) for ${supplier.distributor}`
+      )
+    }
+
+    const childSitemaps = await promiseMap(
+      childSitemapUrls,
+      options.sitemapConcurrency ?? 2,
+      async (sitemapUrl) => {
+        debugLog(options.debug, `Fetching child sitemap ${sitemapUrl}`)
+        const sitemap = await downloadText(sitemapUrl, options.timeoutMs)
+        debugLog(
+          options.debug,
+          `Child sitemap result for ${sitemapUrl}: ok=${sitemap.ok} status=${sitemap.status} bytes=${sitemap.bytes}`
+        )
+        return sitemap
+      }
+    )
+    const sitemaps = [
+      ...initialSitemaps.map((sitemap) =>
+        sitemap.body && isSitemapIndex(sitemap.body)
+          ? { ...sitemap, body: undefined }
+          : sitemap
+      ),
+      ...childSitemaps,
+    ]
 
     return {
       distributor: supplier.distributor,

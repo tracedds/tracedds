@@ -54,6 +54,8 @@ export type IndexedSupplierUrl = {
   url_type: IndexedUrlType
   confidence_score: number
   reasons: string[]
+  category?: string
+  subcategory?: string
 }
 
 export type ProductPageCandidate = IndexedSupplierUrl & {
@@ -72,6 +74,8 @@ export type FailedProductExtraction = {
   sitemap_url: string
   confidence_score: number
   reasons: string[]
+  category?: string
+  subcategory?: string
 }
 
 export type ProductExtractionResult = {

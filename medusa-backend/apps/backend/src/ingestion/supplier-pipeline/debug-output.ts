@@ -19,6 +19,8 @@ const indexedHeaders = [
   "url_type",
   "confidence_score",
   "reasons",
+  "category",
+  "subcategory",
 ] as const
 
 const productHeaders = [
