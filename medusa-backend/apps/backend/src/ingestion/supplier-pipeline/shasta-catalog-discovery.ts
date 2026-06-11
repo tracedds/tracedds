@@ -43,6 +43,10 @@ function debugLog(enabled: boolean | undefined, ...args: unknown[]) {
   }
 }
 
+function infoLog(...args: unknown[]) {
+  console.log("[shasta-catalog-discovery]", ...args)
+}
+
 function decodeHtml(value: string) {
   return value
     .replace(/&amp;/gi, "&")
@@ -158,8 +162,9 @@ export async function discoverShastaCatalogUrls(
   const crawled = new Set<string>()
   const products = new Map<string, IndexedSupplierUrl>()
   let pagesFetched = 0
+  let lastProgressLog = 0
 
-  debugLog(options.debug, "Starting Shasta full-catalog discovery")
+  infoLog(`Starting Shasta full-catalog discovery (max ${maxPages} pages)`)
 
   while (queue.length && pagesFetched < maxPages) {
     const remainingPageBudget = maxPages - pagesFetched
@@ -211,16 +216,15 @@ export async function discoverShastaCatalogUrls(
       }
     }
 
-    if (pagesFetched % 50 === 0) {
-      debugLog(
-        options.debug,
-        `Shasta catalog discovery progress: ${pagesFetched} page(s), ${products.size} product URL(s), ${queue.length} queued`
+    if (pagesFetched - lastProgressLog >= 50) {
+      lastProgressLog = pagesFetched
+      infoLog(
+        `progress ${pagesFetched}/${maxPages} page(s), ${products.size} product URL(s), ${queue.length} queued`
       )
     }
   }
 
-  debugLog(
-    options.debug,
+  infoLog(
     `Shasta full-catalog discovery complete: ${pagesFetched} page(s), ${products.size} product URL(s), ${queue.length} queued`
   )
 

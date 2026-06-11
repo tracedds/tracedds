@@ -280,6 +280,20 @@ function debugLog(enabled: boolean | undefined, ...args: unknown[]) {
   }
 }
 
+function infoLog(...args: unknown[]) {
+  console.log("[product-extraction]", ...args)
+}
+
+function formatEta(seconds: number) {
+  if (seconds >= 90) {
+    return `${Math.round(seconds / 60)}m`
+  }
+
+  return `${seconds}s`
+}
+
+const PROGRESS_LOG_INTERVAL = 100
+
 async function promiseMap<T, R>(
   items: T[],
   concurrency: number,
@@ -308,10 +322,34 @@ export async function extractProductPages(
   const products: ProductExtractionResult["products"] = []
   const failures: ProductExtractionResult["failures"] = []
 
-  debugLog(
-    options.debug,
-    `Extracting ${selected.length} candidate(s) with timeout ${options.timeoutMs ?? "default"}`
+  infoLog(
+    `Extracting ${selected.length} candidate(s) with timeout ${options.timeoutMs ?? "default"} and concurrency ${options.concurrency ?? 6}`
   )
+
+  const startedAt = Date.now()
+  let completed = 0
+  let extractedCount = 0
+  let failureCount = 0
+
+  const trackProgress = (outcome: {
+    products: ProductExtractionResult["products"]
+    failures: ProductExtractionResult["failures"]
+  }) => {
+    completed += 1
+    extractedCount += outcome.products.length
+    failureCount += outcome.failures.length
+
+    if (completed % PROGRESS_LOG_INTERVAL === 0 || completed === selected.length) {
+      const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 1)
+      const rate = completed / elapsedSeconds
+      const etaSeconds = Math.round((selected.length - completed) / Math.max(rate, 0.01))
+      infoLog(
+        `progress ${completed}/${selected.length} products=${extractedCount} failures=${failureCount} rate=${rate.toFixed(2)}/s eta=${formatEta(etaSeconds)}`
+      )
+    }
+
+    return outcome
+  }
 
   const results = await promiseMap(
     selected,
@@ -330,7 +368,7 @@ export async function extractProductPages(
         if (!result.ok) {
           const failure = failedExtraction(candidate, result.status, result.error)
           debugLog(options.debug, `Candidate ${position} failed: ${result.error}`)
-          return { products: [], failures: [failure] }
+          return trackProgress({ products: [], failures: [failure] })
         }
 
         const adapter = adapterForCandidate(candidate)
@@ -341,7 +379,7 @@ export async function extractProductPages(
         if (!extractedProducts.length) {
           const failure = failedExtraction(candidate, result.status, "No valid product rows extracted")
           debugLog(options.debug, `Candidate ${position} failed: no products extracted`)
-          return { products: [], failures: [failure] }
+          return trackProgress({ products: [], failures: [failure] })
         }
 
         const itemResults = {
@@ -365,14 +403,14 @@ export async function extractProductPages(
           )
         }
 
-        return itemResults
+        return trackProgress(itemResults)
       } catch (error) {
         const failureReason = errorMessage(error)
         debugLog(options.debug, `Candidate ${position} exception: ${failureReason}`)
-        return {
+        return trackProgress({
           products: [],
           failures: [failedExtraction(candidate, "fetch failed", failureReason)],
-        }
+        })
       }
     }
   )
@@ -382,8 +420,7 @@ export async function extractProductPages(
     failures.push(...result.failures)
   }
 
-  debugLog(
-    options.debug,
+  infoLog(
     `Finished extract stage: ${products.length} products, ${failures.length} failures`
   )
 

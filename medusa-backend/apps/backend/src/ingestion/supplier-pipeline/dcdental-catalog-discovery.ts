@@ -45,6 +45,10 @@ function debugLog(enabled: boolean | undefined, ...args: unknown[]) {
   }
 }
 
+function infoLog(...args: unknown[]) {
+  console.log("[dcdental-catalog-discovery]", ...args)
+}
+
 function dcDentalSupplier(supplier: SupplierSeedRow) {
   try {
     const site = normalizeSiteUrl(supplier.website_url)
@@ -210,8 +214,7 @@ export async function discoverDcDentalCatalogUrls(
     return [] as IndexedSupplierUrl[]
   }
 
-  debugLog(
-    options.debug,
+  infoLog(
     `Discovering DC Dental products from ${categories.length} category URL(s)`
   )
 
@@ -229,6 +232,9 @@ export async function discoverDcDentalCatalogUrls(
     })
     products.push(...result.products)
     remainingPages -= result.pagesFetched
+    infoLog(
+      `Category ${category.category_url}: ${result.pagesFetched} page(s), ${result.products.length} product URL(s), ${remainingPages} page budget left`
+    )
   }
 
   const seenProducts = new Set<string>()

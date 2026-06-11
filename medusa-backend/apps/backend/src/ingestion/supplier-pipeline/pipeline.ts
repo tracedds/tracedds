@@ -84,10 +84,8 @@ function pearsonFullCatalogProductCount(indexedUrls: IndexedSupplierUrl[]) {
   ).length
 }
 
-function log(debug: boolean | undefined, ...args: unknown[]) {
-  if (debug) {
-    console.log("[supplier-ingestion]", ...args)
-  }
+function log(...args: unknown[]) {
+  console.log("[supplier-ingestion]", ...args)
 }
 
 export async function runSupplierIngestionPipeline(
@@ -101,9 +99,9 @@ export async function runSupplierIngestionPipeline(
     options.supplierName
   )
 
-  log(options.debug, "Starting supplier ingestion pipeline")
-  log(options.debug, "Stages:", stages.join(", "))
-  log(options.debug, "Suppliers:", suppliers.map((supplier) => supplier.distributor).join(", "))
+  log("Starting supplier ingestion pipeline")
+  log("Stages:", stages.join(", "))
+  log("Suppliers:", suppliers.map((supplier) => supplier.distributor).join(", "))
 
   if (!suppliers.length) {
     throw new Error(
@@ -122,7 +120,7 @@ export async function runSupplierIngestionPipeline(
   } as Awaited<ReturnType<typeof extractProductPages>>
 
   if (stages.includes("discover")) {
-    log(options.debug, "Beginning discovery stage")
+    log("Beginning discovery stage")
     sitemaps = await discoverSupplierSitemaps(suppliers, {
       timeoutMs: options.timeoutMs,
       debug: options.debug,
@@ -131,7 +129,6 @@ export async function runSupplierIngestionPipeline(
       maxSitemapsPerSupplier: options.maxSitemapsPerSupplier,
     })
     log(
-      options.debug,
       `Discovery stage complete: ${sitemaps.length} suppliers processed, ${sitemaps.reduce(
         (total, supplier) => total + supplier.sitemaps.length,
         0
@@ -140,11 +137,10 @@ export async function runSupplierIngestionPipeline(
   }
 
   if (stages.includes("index")) {
-    log(options.debug, "Beginning index stage")
+    log("Beginning index stage")
     indexedUrls = indexSupplierSitemapUrls(sitemaps)
     if (options.sourceUrls?.length) {
       log(
-        options.debug,
         `Index stage source URL discovery: ${options.sourceUrls.length} source URL(s)`
       )
       const sourceResults = await discoverSupplierSourceUrls(options.sourceUrls, {
@@ -165,7 +161,6 @@ export async function runSupplierIngestionPipeline(
     })
     if (pearsonCatalogUrls.length) {
       log(
-        options.debug,
         `Index stage Pearson full-catalog discovery: ${pearsonCatalogUrls.length} product URL(s)`
       )
       indexedUrls.push(...pearsonCatalogUrls)
@@ -178,7 +173,6 @@ export async function runSupplierIngestionPipeline(
     })
     if (shastaCatalogUrls.length) {
       log(
-        options.debug,
         `Index stage Shasta full-catalog discovery: ${shastaCatalogUrls.length} product URL(s)`
       )
       indexedUrls.push(...shastaCatalogUrls)
@@ -191,14 +185,12 @@ export async function runSupplierIngestionPipeline(
     })
     if (dcDentalCatalogUrls.length) {
       log(
-        options.debug,
         `Index stage DC Dental catalog discovery: ${dcDentalCatalogUrls.length} product URL(s)`
       )
       indexedUrls.push(...dcDentalCatalogUrls)
     }
     const indexedSummary = summarizeIndexedUrls(indexedUrls)
     log(
-      options.debug,
       `Index stage complete: ${indexedSummary.indexed_urls} urls parsed, ${indexedSummary.product_candidates} product candidates, ${indexedSummary.category_candidates} category candidates`
     )
   }
@@ -206,7 +198,6 @@ export async function runSupplierIngestionPipeline(
   if (stages.includes("extract")) {
     const candidates = productCandidates(indexedUrls)
     log(
-      options.debug,
       `Beginning extract stage: ${candidates.length} product candidate(s) to process`,
       options.productLimit ? `(limit ${options.productLimit})` : ""
     )
@@ -217,7 +208,6 @@ export async function runSupplierIngestionPipeline(
       debug: options.debug,
     })
     log(
-      options.debug,
       `Extract stage complete: ${extracted.products.length} products extracted, ${extracted.failures.length} failures`
     )
   }
@@ -260,7 +250,7 @@ export async function runSupplierIngestionPipeline(
       )
     : undefined
 
-  log(options.debug, "Pipeline finished", summary)
+  log("Pipeline finished", summary)
 
   return {
     summary: {
