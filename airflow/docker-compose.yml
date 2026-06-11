@@ -74,6 +74,9 @@ services:
       AIRFLOW__CORE__DEFAULT_TIMEZONE: America/Los_Angeles
       AIRFLOW_VAR_MEDMKP_BACKEND_DIR: /opt/medmkp/medusa-backend/apps/backend
       AIRFLOW_VAR_MEDMKP_SUPPLIER_INGEST_COMMIT: "false"
+      # The DAG defaults NODE_OPTIONS to an 8GB heap cap; keep ingestion tasks
+      # within reach of a small host (the DAG runs up to 3 suppliers at once).
+      NODE_OPTIONS: --max-old-space-size=2048
     volumes:
       - ..:/opt/medmkp
       - medmkp-airflow-logs:/opt/airflow/logs
