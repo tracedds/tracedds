@@ -103,7 +103,9 @@ with DAG(
     schedule="0 3 * * 0",
     catchup=False,
     max_active_runs=1,
-    max_active_tasks=3,
+    # One supplier at a time: each task is a Node process doing thousands of
+    # fetches, and the deployment host is a small single-box NUC.
+    max_active_tasks=1,
     tags=["medmkp", "supplier-ingestion"],
 ) as dag:
     for supplier in SUPPLIERS:

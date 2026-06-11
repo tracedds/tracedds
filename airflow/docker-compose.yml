@@ -56,6 +56,10 @@ services:
     build: .
     container_name: medmkp-airflow
     restart: unless-stopped
+    # Leave CPU and memory headroom for the host: standalone runs the
+    # scheduler, webserver, and ingestion tasks in this one container.
+    cpus: 3.0
+    mem_limit: 4g
     # Same UID as the host checkout owner; GID 0 keeps the Airflow image's
     # group-writable dirs (AIRFLOW_HOME, logs) usable for a non-50000 user.
     user: "${AIRFLOW_UID:-1000}:0"
@@ -72,6 +76,10 @@ services:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/medmkp/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__CORE__DEFAULT_TIMEZONE: America/Los_Angeles
+      # Small-host trims: the webserver defaults to 4 gunicorn workers and the
+      # scheduler to 2 DAG parsing processes — halve both.
+      AIRFLOW__WEBSERVER__WORKERS: "2"
+      AIRFLOW__SCHEDULER__PARSING_PROCESSES: "1"
       AIRFLOW_VAR_MEDMKP_BACKEND_DIR: /opt/medmkp/medusa-backend/apps/backend
       AIRFLOW_VAR_MEDMKP_SUPPLIER_INGEST_COMMIT: "false"
       # The DAG defaults NODE_OPTIONS to an 8GB heap cap; keep ingestion tasks
