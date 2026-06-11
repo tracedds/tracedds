@@ -3,7 +3,9 @@
 Generates one DAG per supplier so each catalog import can be scheduled,
 paused, retried, and backfilled independently. Schedules are staggered
 across Sunday morning; assign a small Airflow pool via
-medmkp_supplier_ingest_pool to cap how many ingests run concurrently.
+medmkp_supplier_ingest_pool to cap how many ingests run concurrently
+(size it to 1 on the single-box NUC host: each ingest is a Node process
+doing thousands of fetches).
 
 Each DAG runs the ingestion as separate stage tasks
 (discover >> index >> extract >> commit >> cleanup_state) so the UI shows
