@@ -7,3 +7,4 @@ logo/
 research/
 wireframes/
 .env*
+__pycache__/
