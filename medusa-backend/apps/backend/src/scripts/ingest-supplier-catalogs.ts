@@ -322,6 +322,35 @@ function saveStageState(stateDir: string, name: string, value: unknown) {
   writeFileSync(join(stateDir, name), JSON.stringify(value))
 }
 
+function assertNonEmptyCandidateState(options: {
+  stages: CliStage[]
+  allowEmptyCommit: boolean
+  productCandidates: number
+  extractedProducts: number
+}) {
+  if (options.allowEmptyCommit) {
+    return
+  }
+
+  if (options.stages.includes("index") && options.productCandidates === 0) {
+    throw new Error(
+      "Ingestion index stage produced 0 product candidates. Refusing to save empty state for a commit-capable run. Re-run with --debug to inspect discovery, or pass --allow-empty-commit only if this supplier is intentionally empty."
+    )
+  }
+
+  if (options.stages.includes("extract") && options.productCandidates === 0) {
+    throw new Error(
+      "Ingestion extract stage received 0 product candidates. Refusing to continue with empty state. Re-run the index stage with --debug, or pass --allow-empty-commit only if this supplier is intentionally empty."
+    )
+  }
+
+  if (options.stages.includes("extract") && options.extractedProducts === 0) {
+    throw new Error(
+      "Ingestion extract stage produced 0 products. Refusing to save empty products for a commit-capable run. Re-run with --debug to inspect extraction failures, or pass --allow-empty-commit only if this supplier is intentionally empty."
+    )
+  }
+}
+
 async function replaceSupplierCatalog(
   medmkp: MedMKPModuleService,
   input: SupplierCatalogIngestionInput
@@ -486,6 +515,14 @@ export default async function ingestSupplierCatalogs({
     maxShastaCatalogPages: options.maxShastaCatalogPages,
     debug: options.debug,
   })
+
+  assertNonEmptyCandidateState({
+    stages,
+    allowEmptyCommit: options.allowEmptyCommit,
+    productCandidates: result.summary.product_candidates,
+    extractedProducts: result.summary.extracted_products,
+  })
+
   if (stateDir) {
     if (pipelineStages.includes("discover")) {
       saveStageState(stateDir, "sitemaps.json", result.sitemaps)
