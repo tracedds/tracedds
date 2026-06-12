@@ -104,6 +104,164 @@ SUPPLIERS = [
             "--timeout-ms=45000",
         ],
     },
+    {
+        "name": "dental_city",
+        "supplier_id": "msup_dentalcity_com",
+        "schedule": "0 8 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "dental_depot",
+        "supplier_id": "msup_dentaldepotinc_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "dental_planet",
+        "supplier_id": "msup_dentalplanet_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "dental_savings_club",
+        "supplier_id": "msup_dentalsavingsclub_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        # Known Cloudflare bot-management block; keep a manual DAG for
+        # visibility/backfills after a catalog feed or CSV path is available.
+        "name": "frontier_dental",
+        "supplier_id": "msup_frontierdental_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=2",
+            "--product-concurrency=3",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "ids_dental",
+        "supplier_id": "msup_idsdental_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "net32",
+        "supplier_id": "msup_net32_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "parkell",
+        "supplier_id": "msup_parkell_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "pearson_dental",
+        "supplier_id": "msup_pearsondental_com",
+        "schedule": "0 15 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--max-pearson-catalog-pages=5000",
+            "--source-concurrency=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=45000",
+        ],
+    },
+    {
+        "name": "practicon",
+        "supplier_id": "msup_practicon_com",
+        "schedule": None,
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "safco_dental",
+        "supplier_id": "msup_safcodental_com",
+        "schedule": "0 17 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "unimedusa",
+        "supplier_id": "msup_unimedusa_com",
+        "schedule": "0 18 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "young_specialties",
+        "supplier_id": "msup_youngspecialties_com",
+        "schedule": "0 19 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        "name": "zirc_dental_products",
+        "supplier_id": "msup_zirc_com",
+        "schedule": "0 20 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
+            "--sitemap-concurrency=4",
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
 ]
 
 

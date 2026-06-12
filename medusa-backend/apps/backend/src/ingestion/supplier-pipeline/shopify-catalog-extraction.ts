@@ -85,7 +85,7 @@ async function fetchCatalogPage(origin: string, page: number, timeoutMs: number)
 async function fetchShopifyCatalog(
   origin: string,
   timeoutMs: number
-): Promise<ShopifyCatalogProduct[] | undefined> {
+): Promise<{ products: ShopifyCatalogProduct[]; complete: boolean } | undefined> {
   const products: ShopifyCatalogProduct[] = []
   let backoffMs = INITIAL_BACKOFF_MS
 
@@ -112,22 +112,21 @@ async function fetchShopifyCatalog(
 
     if (!result || result.status !== 200 || !Array.isArray(result.products)) {
       // Endpoint unavailable on page 1 means the store disabled products.json;
-      // mid-pagination errors keep the partial catalog and let the rest fall
-      // back to per-page extraction.
-      return page === 1 ? undefined : products
+      // mid-pagination errors are not safe to commit as a replacement catalog.
+      return page === 1 ? undefined : { products, complete: false }
     }
 
     backoffMs = INITIAL_BACKOFF_MS
     products.push(...result.products)
 
     if (result.products.length < CATALOG_PAGE_SIZE) {
-      return products
+      return { products, complete: true }
     }
 
     await sleep(CATALOG_PAGE_INTERVAL_MS)
   }
 
-  return products
+  return { products, complete: false }
 }
 
 function priceString(value: string | number | undefined) {
@@ -186,6 +185,27 @@ function catalogRows(
   })
 }
 
+function catalogCandidate(
+  origin: string,
+  product: ShopifyCatalogProduct,
+  fallback: ProductPageCandidate
+): ProductPageCandidate {
+  const productUrl = product.handle
+    ? new URL("/products/" + product.handle, origin).href
+    : fallback.url
+
+  return {
+    ...fallback,
+    url: productUrl,
+    category: product.product_type || fallback.category,
+    subcategory: fallback.subcategory || "",
+    reasons: [
+      ...fallback.reasons,
+      "Shopify products.json full-catalog extraction",
+    ],
+  }
+}
+
 export async function extractShopifyCatalogProducts(
   candidates: ProductPageCandidate[],
   options: { timeoutMs?: number } = {}
@@ -214,7 +234,7 @@ export async function extractShopifyCatalogProducts(
     )
     const catalog = await fetchShopifyCatalog(origin, options.timeoutMs ?? 30_000)
 
-    if (!catalog?.length) {
+    if (!catalog?.products.length) {
       log(
         `Catalog endpoint unavailable for ${origin}, falling back to per-page extraction`
       )
@@ -222,21 +242,30 @@ export async function extractShopifyCatalogProducts(
       continue
     }
 
-    log(`Fetched ${catalog.length} product(s) from ${origin}/products.json`)
-    const byHandle = new Map(
-      catalog.map((product) => [String(product.handle ?? "").toLowerCase(), product])
+    if (!catalog.complete) {
+      log(
+        `Catalog endpoint returned ${catalog.products.length} partial product(s) for ${origin}, falling back to per-page extraction`
+      )
+      remaining.push(...originCandidates)
+      continue
+    }
+
+    log(`Fetched ${catalog.products.length} product(s) from ${origin}/products.json`)
+    const candidateByHandle = new Map(
+      originCandidates.map((candidate) => [productHandle(candidate.url), candidate])
     )
+    const fallbackCandidate = originCandidates[0]
 
     let matched = 0
-    for (const candidate of originCandidates) {
-      const product = byHandle.get(productHandle(candidate.url))
+    for (const product of catalog.products) {
+      const handle = String(product.handle ?? "").toLowerCase()
+      const matchedCandidate = candidateByHandle.get(handle)
+      const candidate = matchedCandidate ?? catalogCandidate(origin, product, fallbackCandidate)
 
-      if (!product) {
-        remaining.push(candidate)
-        continue
+      if (matchedCandidate) {
+        matched += 1
       }
 
-      matched += 1
       for (const row of catalogRows(candidate, product, origin)) {
         const reason = invalidProductReason(row)
 
@@ -250,7 +279,7 @@ export async function extractShopifyCatalogProducts(
     }
 
     log(
-      `Matched ${matched}/${originCandidates.length} candidate(s) against ${origin} catalog`
+      `Matched ${matched}/${originCandidates.length} candidate(s) and extracted full ${origin} catalog`
     )
   }
 
