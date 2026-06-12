@@ -8,3 +8,4 @@ research/
 wireframes/
 .env*
 __pycache__/
+.claude
