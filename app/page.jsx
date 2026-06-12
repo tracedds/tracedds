@@ -861,7 +861,7 @@ export default function Home() {
                       <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop your file here" : hasUploadedInvoice ? "Add another invoice" : "Drag and drop your file here"}</h3>
                       <p>{uploading ? selectedInvoiceName : selectedInvoiceName || "or select a file"}</p>
                       <span className="select-file-button"><Icon name="icon-cloud-upload" className="button-icon" />Select file</span>
-                      <small>Accepted files: PDF, CSV, XLSX · Max file size: 20MB</small>
+                      <small>Accepted files: PDF · Max file size: 20MB</small>
                       {uploading && (
                         <div className="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}>
                           <div className="processing-track">
@@ -887,7 +887,7 @@ export default function Home() {
                     </div>
 
                     <div className="upload-fields">
-                      <label><span className="field-label">Supplier name <b>*</b></span>
+                      <label><span className="field-label">Supplier name <em>(optional)</em></span>
                         <select name="supplierName" defaultValue="">
                           <option value="" disabled>Search or select supplier</option>
                           <option>Henry Schein</option>
