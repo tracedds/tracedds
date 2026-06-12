@@ -21,6 +21,10 @@ Expected Airflow Variables:
 - medmkp_supplier_ingest_commit: set to "false" for dry-run tasks, defaults to true
 - medmkp_supplier_ingest_state_root: directory for inter-stage state files,
   defaults to <backend dir>/.medmkp/ingestion/airflow
+- medmkp_product_matching_pool: optional Airflow pool for the global matcher,
+  defaults to medmkp_supplier_ingest_pool
+- medmkp_product_matching_commit: set to "false" for dry-run matching,
+  defaults to true
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ BACKEND_DIR = Variable.get("medmkp_backend_dir", default_var="/opt/medmkp/medusa
 ENV_FILE = Variable.get("medmkp_env_file", default_var=".env")
 POOL = Variable.get("medmkp_supplier_ingest_pool", default_var="default_pool")
 COMMIT_ENABLED = Variable.get("medmkp_supplier_ingest_commit", default_var="true").lower() == "true"
+MATCHING_POOL = Variable.get("medmkp_product_matching_pool", default_var=POOL)
+MATCHING_COMMIT_ENABLED = Variable.get("medmkp_product_matching_commit", default_var="true").lower() == "true"
 STATE_ROOT = Variable.get(
     "medmkp_supplier_ingest_state_root",
     default_var=f"{BACKEND_DIR}/.medmkp/ingestion/airflow",
@@ -290,6 +296,21 @@ npm run supplier:ingest:db -- {arg_string}
 """.strip()
 
 
+def backend_command(command: str) -> str:
+    return f"""
+set -euo pipefail
+cd "{BACKEND_DIR}"
+if [ -f "{ENV_FILE}" ]; then
+  set -a
+  . "{ENV_FILE}"
+  set +a
+fi
+export DB_SSL="${{DB_SSL:-true}}"
+export NODE_OPTIONS="${{NODE_OPTIONS:---max-old-space-size=8192}}"
+{command}
+""".strip()
+
+
 def build_supplier_dag(supplier: dict[str, object]) -> DAG:
     with DAG(
         dag_id=f"medmkp_ingest_{supplier['name']}",
@@ -320,5 +341,29 @@ def build_supplier_dag(supplier: dict[str, object]) -> DAG:
     return dag
 
 
+def build_product_matching_dag() -> DAG:
+    match_args = " -- --commit" if MATCHING_COMMIT_ENABLED else ""
+
+    with DAG(
+        dag_id="medmkp_match_products",
+        description="Rebuild auto canonical products and cross-supplier product matches after catalog ingestion.",
+        start_date=datetime(2026, 1, 1),
+        schedule="0 23 * * 0",
+        catchup=False,
+        max_active_runs=1,
+        tags=["medmkp", "product-matching"],
+    ) as dag:
+        BashOperator(
+            task_id="match_products",
+            bash_command=backend_command(f"npm run products:match{match_args}"),
+            pool=MATCHING_POOL,
+            retries=1,
+        )
+
+    return dag
+
+
 for supplier in SUPPLIERS:
     globals()[f"medmkp_ingest_{supplier['name']}"] = build_supplier_dag(supplier)
+
+medmkp_match_products = build_product_matching_dag()
