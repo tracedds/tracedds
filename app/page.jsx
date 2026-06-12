@@ -7,8 +7,8 @@ const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD
 const PROCESSING_DURATION_MS = 3000;
 const UPLOAD_WIZARD_STEPS = [
   { key: "upload", label: "Upload" },
-  { key: "recommendation", label: "Recommendation" },
   { key: "review", label: "Review" },
+  { key: "recommendation", label: "Recommendations" },
   { key: "submit", label: "Submit" },
 ];
 
@@ -30,6 +30,13 @@ const orderSteps = [
   { label: "Reorder reminder", detail: "Scheduled for 30 days" },
 ];
 
+const uploadStepRoutes = {
+  upload: "/uploads",
+  review: "/uploads/review",
+  recommendation: "/uploads/recommendations",
+  submit: "/uploads/submit",
+};
+
 const routeByView = {
   landing: "/dashboard",
   upload: "/uploads",
@@ -49,7 +56,10 @@ function viewFromPath(pathname = "/") {
 
   if (path === "/") return { view: "landing", isLoggedIn: false };
   if (path === "/dashboard") return { view: "landing", isLoggedIn: true };
-  if (path === "/uploads") return { view: "upload", isLoggedIn: true };
+  if (path === "/uploads") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
+  if (path === "/uploads/review") return { view: "upload", isLoggedIn: true, uploadStep: "review" };
+  if (path === "/uploads/recommendations") return { view: "upload", isLoggedIn: true, uploadStep: "recommendation" };
+  if (path === "/uploads/submit") return { view: "upload", isLoggedIn: true, uploadStep: "submit" };
   if (path === "/catalog") return { view: "catalog", isLoggedIn: true };
   if (path === "/admin") return { view: "admin", isLoggedIn: true };
   if (path === "/quotes") return { view: "quote", isLoggedIn: true };
@@ -365,6 +375,11 @@ export default function Home() {
       const nextRoute = viewFromPath(window.location.pathname);
       setIsLoggedIn(nextRoute.isLoggedIn);
       setViewState(nextRoute.view);
+      if (nextRoute.view === "upload") {
+        const step = nextRoute.uploadStep || "upload";
+        setUploadStep(step);
+        if (step !== "submit") setOrderSubmitted(false);
+      }
       setMenuOpen(false);
     }
 
@@ -449,6 +464,12 @@ export default function Home() {
     };
   }, [uploading]);
 
+  useEffect(() => {
+    if (view !== "upload" || uploadStep === "upload" || uploadedDocs.length) return;
+    setUploadStep("upload");
+    window.history.replaceState({}, "", uploadStepRoutes.upload);
+  }, [view, uploadStep, uploadedDocs]);
+
   const selectedRequest = useMemo(() => {
     return requests.find((request) => request.id === selectedRequestId) || requests[0];
   }, [requests, selectedRequestId]);
@@ -512,10 +533,21 @@ export default function Home() {
   function setView(nextView, options = {}) {
     setViewState(nextView);
     setMenuOpen(false);
-    const nextPath = pathForView(nextView);
+    const nextPath = nextView === "upload"
+      ? uploadStepRoutes[uploadStep] || uploadStepRoutes.upload
+      : pathForView(nextView);
     if (window.location.pathname !== nextPath) {
       const historyMethod = options.replace ? "replaceState" : "pushState";
       window.history[historyMethod]({}, "", nextPath);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goToUploadStep(step) {
+    setUploadStep(step);
+    const nextPath = uploadStepRoutes[step] || uploadStepRoutes.upload;
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -580,7 +612,7 @@ export default function Home() {
     setSelectedRequestId(request.id);
     setHasUploadedInvoice(true);
     setOrderSubmitted(false);
-    setUploadStep("upload");
+    goToUploadStep("review");
     setUploadedDocs((docs) => [
       ...docs,
       {
@@ -626,7 +658,7 @@ export default function Home() {
     setUploading(false);
     setSelectedInvoiceName("");
     form.reset();
-    showToast("Invoice matched. Review extracted items, then submit for quote.");
+    showToast("Invoice matched. Review extracted line items.");
   }
 
   function submitForQuote() {
@@ -635,14 +667,20 @@ export default function Home() {
       return;
     }
 
-    setUploadStep("recommendation");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    goToUploadStep("review");
   }
 
   function updateDraftQty(product, nextQty) {
     setDraftItems((items) => items.map((item) => {
       if (item.product !== product) return item;
       return { ...item, draftQty: Math.max(1, Number(nextQty) || 1) };
+    }));
+  }
+
+  function updateDraftItem(product, patch) {
+    setDraftItems((items) => items.map((item) => {
+      if (item.product !== product) return item;
+      return { ...item, ...patch };
     }));
   }
 
@@ -676,11 +714,11 @@ export default function Home() {
 
     if (!remainingDocs.length) {
       setHasUploadedInvoice(false);
-      setUploadStep("upload");
+      goToUploadStep("upload");
       setSelectedInvoiceName("");
       setShowInvoiceSources(false);
     } else if (uploadStep === "submit") {
-      setUploadStep("review");
+      goToUploadStep("review");
     }
   }
 
@@ -688,7 +726,7 @@ export default function Home() {
     setUploadedDocs([]);
     setDraftItems([]);
     setHasUploadedInvoice(false);
-    setUploadStep("upload");
+    goToUploadStep("upload");
     setSelectedInvoiceName("");
     setNeededByDate("");
     setShowInvoiceSources(false);
@@ -808,7 +846,7 @@ export default function Home() {
           )}
 
           {view === "upload" && (
-            <section className="view active" data-testid="upload-view" aria-labelledby="uploadHeading">
+            <section className="view active upload-view" data-testid="upload-view" aria-labelledby="uploadHeading">
               <div className="upload-page-heading">
                 <div>
                   <h2 id="uploadHeading">Upload invoice or reorder list</h2>
@@ -841,7 +879,7 @@ export default function Home() {
               </div>
 
               {!orderSubmitted && uploadStep === "upload" && (
-                <div className={`upload-workspace ${uploadRailCollapsed ? "rail-collapsed" : ""}`}>
+                <div className={`upload-workspace ${hasUploadedInvoice ? "has-uploaded-invoice" : "empty-workspace"} ${uploadRailCollapsed ? "rail-collapsed" : ""}`}>
                   <form ref={uploadFormRef} onSubmit={handleUpload} className={`upload-layout ${hasUploadedInvoice ? "compact-upload" : ""}`}>
                     <div
                       className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""}`}
@@ -895,35 +933,6 @@ export default function Home() {
                           <option>Dental City</option>
                         </select>
                       </label>
-                      <label>Order frequency
-                        <select name="frequency" defaultValue="">
-                          <option value="" disabled>Select frequency</option>
-                          <option>One-time order</option>
-                          <option>Monthly</option>
-                          <option>Every 60 days</option>
-                          <option>Quarterly</option>
-                        </select>
-                      </label>
-                      <label>Needed by date
-                        <span className={`date-field ${neededByDate ? "has-value" : ""}`}>
-                          <input
-                            name="neededBy"
-                            type="date"
-                            aria-label="Needed by date"
-                            value={neededByDate}
-                            onChange={(event) => setNeededByDate(event.target.value)}
-                          />
-                          <span>Select date</span>
-                        </span>
-                      </label>
-                      <label className="toggle-field">Track this as recurring spend
-                        <span><i></i></span>
-                        <small>Yes, include this in reorder monitoring</small>
-                      </label>
-                      <label className="upload-notes"><span className="field-label">Notes <em>(optional)</em></span>
-                        <textarea name="notes" maxLength="500" placeholder="Add any special instructions or details for this request..." />
-                        <small>0/500</small>
-                      </label>
                     </div>
                   </form>
 
@@ -950,7 +959,7 @@ export default function Home() {
                       </div>
                       <div className="extracted-preview-actions">
                         {visibleDraftItems.length > 6 && (
-                          <button className="secondary-action compact" type="button" onClick={() => setUploadStep("review")}>
+                          <button className="secondary-action compact" type="button" onClick={() => goToUploadStep("review")}>
                             View all {visibleDraftItems.length} items
                           </button>
                         )}
@@ -979,7 +988,7 @@ export default function Home() {
                   <div className="upload-submit-bar">
                     <button className="secondary-action compact" type="button" onClick={() => showToast("Draft saved")}>Save draft</button>
                     <button className="primary-action compact" type="button" onClick={submitForQuote} disabled={uploading || !hasUploadedInvoice}>
-                      {uploading ? "Processing..." : "Analyze savings"}
+                      {uploading ? "Processing..." : "Review extracted items"}
                       {!uploading && <Icon name="icon-arrow-right" className="button-icon" />}
                     </button>
                   </div>
@@ -989,22 +998,26 @@ export default function Home() {
               {!orderSubmitted && uploadStep === "recommendation" && (
                 <RecommendationSummary
                   stats={recommendationStats}
+                  items={activeDraftItems}
                   total={draftTotal}
+                  previousTotal={draftPreviousTotal}
                   savings={draftSavings}
-                  sourceCount={uploadedDocs.length}
-                  onReview={() => setUploadStep("review")}
+                  neededByDate={neededByDate}
+                  onNeededByDateChange={setNeededByDate}
+                  onBack={() => goToUploadStep("review")}
+                  onContinue={() => goToUploadStep("submit")}
                 />
               )}
 
               {!orderSubmitted && uploadStep === "review" && (
                 <DraftOrderReview
                   items={visibleDraftItems}
-                  activeItems={activeDraftItems}
-                  total={draftTotal}
-                  onBack={() => setUploadStep("recommendation")}
-                  onApprove={() => setUploadStep("submit")}
+                  total={draftPreviousTotal}
+                  onBack={() => goToUploadStep("upload")}
+                  onApprove={() => goToUploadStep("recommendation")}
                   onRemove={removeDraftItem}
                   onQtyChange={updateDraftQty}
+                  onItemChange={updateDraftItem}
                 />
               )}
 
@@ -1013,7 +1026,7 @@ export default function Home() {
                   activeItems={activeDraftItems}
                   total={draftTotal}
                   sourceCount={uploadedDocs.length}
-                  onBack={() => setUploadStep("review")}
+                  onBack={() => goToUploadStep("recommendation")}
                   onSubmit={submitDraftOrder}
                   submitting={submittingOrder}
                 />
@@ -2137,59 +2150,146 @@ function OrderDetailPage({ lineItems, onDownload, onReorder }) {
   );
 }
 
-function RecommendationSummary({ stats, total, savings, sourceCount, onReview }) {
+function offerUnitPrice(offer) {
+  return (offer?.comparable_price_cents ?? offer?.unit_price_cents ?? 0) / 100;
+}
+
+function RecommendationSummary({
+  stats,
+  items,
+  total,
+  previousTotal,
+  savings,
+  neededByDate,
+  onNeededByDateChange,
+  onBack,
+  onContinue,
+}) {
   const hasSavings = savings > 0;
+  const sortedItems = [...items].sort((a, b) => {
+    const aNeedsReview = ["needs_review", "unmatched"].includes(a.recommendation?.matchType);
+    const bNeedsReview = ["needs_review", "unmatched"].includes(b.recommendation?.matchType);
+    if (aNeedsReview !== bNeedsReview) return aNeedsReview ? -1 : 1;
+    return ((b.oldUnitPrice - b.selected.unitPrice) * b.draftQty) - ((a.oldUnitPrice - a.selected.unitPrice) * a.draftQty);
+  });
   const summaryCards = [
-    { label: "items matched", value: stats.matchedItems },
-    { label: "estimated savings", value: hasSavings ? money.format(savings) : "Best price" },
-    { label: "recommendation confidence", value: `${stats.averageConfidence}%` },
-    { label: "supplier offers compared", value: stats.offersCompared },
+    { label: "recommended total", value: money.format(total) },
+    { label: "estimated savings", value: hasSavings ? money.format(savings) : "None yet" },
+    { label: "matched lines", value: `${stats.matchedItems}/${items.length}` },
   ];
 
   return (
-    <section className="recommendation-panel" aria-labelledby="recommendationHeading">
-      <div className="recommendation-hero">
-        <div>
-          <p className="eyebrow">Recommendation Built</p>
-          <h3 id="recommendationHeading">We found the best reorder path from {sourceCount} invoice source{sourceCount === 1 ? "" : "s"}.</h3>
-          <p>
-            MedMKP matched your prior purchases, found better-value options where appropriate,
-            and kept the items needing attention separate.
-          </p>
-        </div>
-        <div className="recommendation-total">
-          <span>Recommended total</span>
-          <strong>{money.format(total)}</strong>
-        </div>
-      </div>
-
-      <div className="recommendation-stats">
-        {summaryCards.map((card) => (
-          <div key={card.label}>
-            <strong>{card.value}</strong>
-            <span>{card.label}</span>
+    <section className="recommendation-workspace" aria-labelledby="recommendationHeading">
+      <div className="recommendation-main">
+        <div className="recommendation-header">
+          <div>
+            <p className="eyebrow">Recommendations</p>
+            <h3 id="recommendationHeading">Confirm recommended winners</h3>
           </div>
-        ))}
+          <div className="recommendation-score">
+            <strong>{hasSavings ? Math.round((savings / Math.max(previousTotal, 1)) * 100) : 0}%</strong>
+            <span>estimated savings</span>
+          </div>
+        </div>
+
+        <div className="recommendation-stats compact">
+          {summaryCards.map((card) => (
+            <div key={card.label}>
+              <strong>{card.value}</strong>
+              <span>{card.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="recommendation-list">
+          {sortedItems.map((item) => {
+            const matchType = item.recommendation?.matchType;
+            const confidence = Math.round((item.recommendation?.confidence || 0) * 100);
+            const itemSavings = Math.max((item.oldUnitPrice - item.selected.unitPrice) * item.draftQty, 0);
+            const offers = item.recommendation?.offers || [];
+            const unit = item.unit || "unit";
+
+            return (
+              <details className="recommendation-row" key={item.product}>
+                <summary>
+                  <span className="recommendation-title">
+                    <strong>{item.product}</strong>
+                    <span className={`status-chip ${recommendationClass(matchType)}`}>
+                      {recommendationLabel(matchType)}
+                    </span>
+                  </span>
+                  <span className="recommendation-meta">
+                    {matchType === "unmatched"
+                      ? `Keeping invoice price ${money.format(item.oldUnitPrice)}/${unit} · ${item.draftQty} ${unit}`
+                      : `${item.selected.supplier} · ${money.format(item.selected.unitPrice)}/${unit} · invoice ${money.format(item.oldUnitPrice)} · ${confidence}% confidence · ${item.draftQty} ${unit}`}
+                  </span>
+                  <em className={`recommendation-delta ${itemSavings > 0 ? "" : "no-savings"}`}>
+                    {itemSavings > 0 ? `Save ${money.format(itemSavings)}` : "—"}
+                  </em>
+                </summary>
+                <div className="comparison-list">
+                  <div className="comparison-offer baseline">
+                    <strong>{item.extractedFrom}</strong>
+                    <em>Current invoice · {item.oldVendor}</em>
+                    <b>{money.format(item.oldUnitPrice)}</b>
+                  </div>
+                  {offers.slice(0, 5).map((offer, index) => {
+                    const isWinner = offer.supplier_name === item.selected.supplier && (offer.sku || "") === (item.selected.sku || "");
+                    return (
+                      <div className={`comparison-offer ${isWinner ? "winner" : ""}`} key={`${offer.supplier_name}-${offer.sku || index}`}>
+                        <strong>{offer.name || item.product}</strong>
+                        <em>{offer.supplier_name || "Supplier"} · {offer.sku || "SKU pending"}</em>
+                        <b>{money.format(offerUnitPrice(offer))}</b>
+                      </div>
+                    );
+                  })}
+                  {!offers.length && <p>No priced alternatives yet.</p>}
+                </div>
+              </details>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="recommendation-path">
-        <div>
-          <strong>{stats.exactMatches}</strong>
-          <span>exact product match{stats.exactMatches === 1 ? "" : "es"}</span>
+      <aside className="recommendation-intent">
+        <p className="eyebrow">Order Intent</p>
+        <label>Needed by date
+          <span className={`date-field ${neededByDate ? "has-value" : ""}`}>
+            <input
+              name="neededBy"
+              type="date"
+              aria-label="Needed by date"
+              value={neededByDate}
+              onChange={(event) => onNeededByDateChange(event.target.value)}
+            />
+          </span>
+        </label>
+        <label>Order frequency
+          <select name="frequency" defaultValue="">
+            <option value="" disabled>Select frequency</option>
+            <option>One-time order</option>
+            <option>Monthly</option>
+            <option>Every 60 days</option>
+            <option>Quarterly</option>
+          </select>
+        </label>
+        <label className="toggle-field">Track as recurring spend
+          <span><i></i></span>
+          <small>Include accepted items in reorder monitoring</small>
+        </label>
+        <label className="intent-notes">Notes <em>(optional)</em>
+          <textarea name="notes" maxLength="500" placeholder="Brand preferences, delivery constraints, or substitutions to avoid..." />
+        </label>
+        <div className="recommendation-breakdown">
+          <span>{stats.exactMatches} exact</span>
+          <span>{stats.substitutions} equivalent/substitute</span>
+          <span>{stats.needsReview} needs review</span>
         </div>
-        <div>
-          <strong>{stats.substitutions}</strong>
-          <span>recommended lower-cost equivalent{stats.substitutions === 1 ? "" : "s"}</span>
+        <div className="wizard-actions">
+          <button className="secondary-action compact" type="button" onClick={onBack}>Back</button>
+          <button className="primary-action compact" type="button" onClick={onContinue}>Continue</button>
         </div>
-        <div>
-          <strong>{stats.needsReview}</strong>
-          <span>item{stats.needsReview === 1 ? "" : "s"} needing buyer decision</span>
-        </div>
-      </div>
-
-      <div className="recommendation-actions">
-        <button className="primary-action compact" type="button" onClick={onReview}>Review recommendation</button>
-      </div>
+      </aside>
     </section>
   );
 }
@@ -2226,64 +2326,73 @@ function InvoiceSourcesModal({ docs, onClose, onRemove }) {
   );
 }
 
-function DraftOrderReview({ items, activeItems, total, onBack, onApprove, onRemove, onQtyChange }) {
+function DraftOrderReview({ items, total, onBack, onApprove, onRemove, onQtyChange, onItemChange }) {
   return (
-    <div className="draft-review">
-      <div className="draft-review-main">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Matched Draft Order</p>
-            <h3>{activeItems.length} items ready to review</h3>
-          </div>
-          <span>{money.format(total)}</span>
-        </div>
-
-        <div className="draft-items">
-          {items.map((item) => (
-            <article className={`draft-item ${item.included ? "" : "removed"}`} key={item.product}>
-              <div>
-                <div className="draft-item-title">
-                  <strong>{item.product}</strong>
-                  <span className={`status-chip ${recommendationClass(item.recommendation?.matchType)}`}>
-                    {recommendationLabel(item.recommendation?.matchType)}
-                  </span>
-                </div>
-                <span>{item.recommendation?.priorProductName || item.extractedFrom} → {item.recommendation?.recommendedProductName || item.product}</span>
-                <small>{item.recommendation?.recommendationReason || item.selected.reason}</small>
-                <em>
-                  {Math.round((item.recommendation?.confidence || 0) * 100)}% match confidence
-                  {" · "}{item.recommendation?.offers?.length || 0} supplier offer{(item.recommendation?.offers?.length || 0) === 1 ? "" : "s"}
-                  {item.recommendation?.savingsPerUnit > 0 && ` · saves ${money.format(item.recommendation.savingsPerUnit)}/${item.unit || "unit"}`}
-                </em>
-              </div>
-              <div className="qty-control">
-                <button type="button" disabled={!item.included} onClick={() => onQtyChange(item.product, item.draftQty - 1)} aria-label={`Decrease ${item.product} quantity`}>-</button>
-                <input
-                  aria-label={`${item.product} quantity`}
-                  disabled={!item.included}
-                  min="1"
-                  type="number"
-                  value={item.draftQty}
-                  onChange={(event) => onQtyChange(item.product, event.target.value)}
-                />
-                <button type="button" disabled={!item.included} onClick={() => onQtyChange(item.product, item.draftQty + 1)} aria-label={`Increase ${item.product} quantity`}>+</button>
-              </div>
-              <strong>{item.included ? money.format(item.draftQty * item.selected.unitPrice) : "Removed"}</strong>
-              <button className="text-action" type="button" disabled={!item.included} onClick={() => onRemove(item.product)}>Remove</button>
-            </article>
-          ))}
+    <div className="draft-review-main">
+      <div className="panel-header">
+        <div>
+          <p className="eyebrow">Review Extraction</p>
+          <h3>Confirm what MedMKP scanned</h3>
+          <p>Fix anything that scanned wrong, then MedMKP builds recommendations.</p>
         </div>
       </div>
 
-      <aside className="draft-review-side">
-        <p className="eyebrow">Buyer Review</p>
-        <h3>Customize only if needed</h3>
-        <p>Quantities can be adjusted before MedMKP places the order. Removed items stay visible so the buyer can see what changed.</p>
-        <div className="wizard-actions">
-          <button className="secondary-action compact" type="button" onClick={onBack}>Back</button>
-          <button className="primary-action compact" type="button" onClick={onApprove}>Continue</button>
+      <div className="extraction-table">
+        <div className="extraction-head">
+          <span>Description</span><span>SKU</span><span>Qty</span><span>Unit</span><span>Unit price</span><span>Total</span><span></span>
         </div>
-      </aside>
+        {items.map((item) => (
+          <div className={`extraction-row ${item.included ? "" : "removed"}`} key={item.product}>
+            <input
+              aria-label={`${item.product} description`}
+              value={item.extractedFrom}
+              disabled={!item.included}
+              onChange={(event) => onItemChange(item.product, { extractedFrom: event.target.value })}
+            />
+            <input
+              aria-label={`${item.product} SKU`}
+              value={item.sku}
+              disabled={!item.included}
+              onChange={(event) => onItemChange(item.product, { sku: event.target.value })}
+            />
+            <input
+              aria-label={`${item.product} quantity`}
+              min="1"
+              type="number"
+              value={item.draftQty}
+              disabled={!item.included}
+              onChange={(event) => onQtyChange(item.product, event.target.value)}
+            />
+            <input
+              aria-label={`${item.product} unit`}
+              value={item.unit}
+              disabled={!item.included}
+              onChange={(event) => onItemChange(item.product, { unit: event.target.value })}
+            />
+            <input
+              aria-label={`${item.product} unit price`}
+              min="0"
+              step="0.01"
+              type="number"
+              value={item.oldUnitPrice}
+              disabled={!item.included}
+              onChange={(event) => onItemChange(item.product, { oldUnitPrice: Number(event.target.value) || 0 })}
+            />
+            <strong>{item.included ? money.format(item.draftQty * item.oldUnitPrice) : "Removed"}</strong>
+            <button className="text-action" type="button" disabled={!item.included} onClick={() => onRemove(item.product)}>Remove</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="extraction-footer">
+        <span>Invoice total</span>
+        <strong>{money.format(total)}</strong>
+      </div>
+
+      <div className="wizard-actions">
+        <button className="secondary-action compact" type="button" onClick={onBack}>Back</button>
+        <button className="primary-action compact" type="button" onClick={onApprove}>Build recommendations</button>
+      </div>
     </div>
   );
 }
@@ -2301,7 +2410,7 @@ function DraftOrderConfirm({ activeItems, total, sourceCount, onBack, onSubmit, 
         <strong>{money.format(total)}</strong>
       </div>
       <div className="wizard-actions">
-        <button className="secondary-action compact" type="button" onClick={onBack}>Back to review</button>
+        <button className="secondary-action compact" type="button" onClick={onBack}>Back to recommendations</button>
         <button className="primary-action compact" type="button" disabled={!activeItems.length || submitting} onClick={onSubmit}>
           {submitting ? "Submitting..." : "Submit order"}
         </button>
