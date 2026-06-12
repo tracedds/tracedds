@@ -69,7 +69,7 @@ function pathForView(view) {
 
 function statusClass(status) {
   if (status === "Parsed") return "success";
-  if (status === "Alternative" || status === "Needs review") return "warning";
+  if (status === "Alternative" || status === "Needs review" || status === "No match") return "warning";
   return "info";
 }
 
@@ -85,11 +85,12 @@ function recommendationLabel(matchType) {
   if (matchType === "exact") return "Exact match";
   if (matchType === "equivalent") return "Equivalent match";
   if (matchType === "substitute") return "Better-value substitute";
+  if (matchType === "unmatched") return "No catalog match";
   return "Needs decision";
 }
 
 function recommendationClass(matchType) {
-  if (matchType === "needs_review") return "warning";
+  if (matchType === "needs_review" || matchType === "unmatched") return "warning";
   if (matchType === "substitute" || matchType === "equivalent") return "info";
   return "success";
 }
@@ -182,7 +183,7 @@ function IconSprite() {
 
 function BrandMark() {
   return (
-    <img className="brand-mark" src="/icon.svg" alt="MedMKP" />
+    <img className="brand-mark" src="/logo.svg" alt="MedMKP" />
   );
 }
 
@@ -356,6 +357,8 @@ export default function Home() {
   const [catalog, setCatalog] = useState([]);
   const [catalogSource, setCatalogSource] = useState("loading");
   const [searchTerm, setSearchTerm] = useState("");
+  const [canonicalResults, setCanonicalResults] = useState([]);
+  const [canonicalSource, setCanonicalSource] = useState("idle");
 
   useEffect(() => {
     function syncViewFromLocation() {
@@ -394,6 +397,37 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const query = searchTerm.trim();
+    if (!query) {
+      setCanonicalResults([]);
+      setCanonicalSource("idle");
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/canonical-products?q=${encodeURIComponent(query)}&limit=5`, {
+        signal: controller.signal,
+      })
+        .then((response) => response.json())
+        .then(({ canonical_products: products, source }) => {
+          setCanonicalResults(products || []);
+          setCanonicalSource(source || "fallback");
+        })
+        .catch((error) => {
+          if (error.name === "AbortError") return;
+          setCanonicalResults([]);
+          setCanonicalSource("fallback");
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
     if (!uploading) {
       setUploadProgress(0);
       return undefined;
@@ -429,14 +463,14 @@ export default function Home() {
   const draftPreviousTotal = activeDraftItems.reduce((total, item) => total + item.draftQty * item.oldUnitPrice, 0);
   const draftSavings = Math.max(draftPreviousTotal - draftTotal, 0);
   const recommendationStats = {
-    matchedItems: visibleDraftItems.length,
+    matchedItems: visibleDraftItems.filter((item) => item.recommendation?.matchType !== "unmatched").length,
     exactMatches: visibleDraftItems.filter((item) => item.recommendation?.matchType === "exact").length,
     substitutions: visibleDraftItems.filter((item) => ["equivalent", "substitute"].includes(item.recommendation?.matchType)).length,
-    needsReview: visibleDraftItems.filter((item) => item.recommendation?.matchType === "needs_review").length,
+    needsReview: visibleDraftItems.filter((item) => ["needs_review", "unmatched"].includes(item.recommendation?.matchType)).length,
     averageConfidence: visibleDraftItems.length
       ? Math.round(visibleDraftItems.reduce((total, item) => total + (item.recommendation?.confidence || 0), 0) / visibleDraftItems.length * 100)
       : 0,
-    deliveryEstimate: visibleDraftItems.some((item) => item.recommendation?.matchType === "needs_review") ? "3-5 days" : "2-4 days",
+    offersCompared: visibleDraftItems.reduce((total, item) => total + (item.recommendation?.offers?.length || 0), 0),
   };
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const catalogMatches = useMemo(() => {
@@ -452,6 +486,28 @@ export default function Home() {
     });
   }, [catalog, normalizedSearch]);
   const catalogViewItems = normalizedSearch ? catalogMatches : catalog;
+  const searchResults = useMemo(() => {
+    if (canonicalSource === "medusa") {
+      return canonicalResults.map((product) => ({
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        supplier_name: product.best_offer?.supplier_name,
+        unit_price_cents: product.best_offer?.price_cents,
+      }));
+    }
+
+    return catalogMatches.map((category) => {
+      const item = category.best_value_item || {};
+      return {
+        id: category.id,
+        name: item.name || category.name,
+        category: category.name,
+        supplier_name: item.supplier_name,
+        unit_price_cents: item.unit_price_cents,
+      };
+    });
+  }, [canonicalResults, canonicalSource, catalogMatches]);
 
   function setView(nextView, options = {}) {
     setViewState(nextView);
@@ -579,7 +635,8 @@ export default function Home() {
       return;
     }
 
-    setView("quoteBuilder");
+    setUploadStep("recommendation");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function updateDraftQty(product, nextQty) {
@@ -711,7 +768,7 @@ export default function Home() {
               <Icon name="icon-search" className="search-icon" />
               <input
                 type="search"
-                placeholder="Search requests, buyers, suppliers, invoices..."
+                placeholder="Search canonical products..."
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
               />
@@ -719,7 +776,7 @@ export default function Home() {
             </label>
             {normalizedSearch && (
               <SearchResults
-                results={catalogMatches}
+                results={searchResults}
                 onViewCatalog={() => setView("quote")}
               />
             )}
@@ -766,7 +823,24 @@ export default function Home() {
                 </button>
               </div>
 
-              {!orderSubmitted && (
+              <div className="wizard-header">
+                <div className="wizard-steps" aria-label="Upload progress">
+                  {UPLOAD_WIZARD_STEPS.map((step, index) => {
+                    const currentIndex = orderSubmitted
+                      ? UPLOAD_WIZARD_STEPS.length
+                      : UPLOAD_WIZARD_STEPS.findIndex((candidate) => candidate.key === uploadStep);
+                    const stateClass = index < currentIndex ? "done" : index === currentIndex ? "active" : "";
+                    return (
+                      <span className={stateClass} key={step.key}>
+                        <i>{index + 1}</i>
+                        <strong>{step.label}</strong>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {!orderSubmitted && uploadStep === "upload" && (
                 <div className={`upload-workspace ${uploadRailCollapsed ? "rail-collapsed" : ""}`}>
                   <form ref={uploadFormRef} onSubmit={handleUpload} className={`upload-layout ${hasUploadedInvoice ? "compact-upload" : ""}`}>
                     <div
@@ -853,30 +927,35 @@ export default function Home() {
                     </div>
                   </form>
 
-                  {hasUploadedInvoice && (
+                  {hasUploadedInvoice && visibleDraftItems.length > 0 && (
                     <section className="extracted-line-preview" aria-labelledby="extractedPreviewHeading">
                       <div className="extracted-preview-header">
                         <h3 id="extractedPreviewHeading">Extracted line items preview</h3>
-                        <span>3 items detected</span>
+                        <span>{visibleDraftItems.length} item{visibleDraftItems.length === 1 ? "" : "s"} detected</span>
                       </div>
                       <div className="extracted-preview-table">
                         <div className="extracted-preview-head">
                           <span>#</span><span>Item description</span><span>SKU / Part #</span><span>Qty</span><span>Unit</span><span>Est. Price</span>
                         </div>
-                        {[
-                          ["1", "Surgical Gown, Sterile, XL", "GWN-XL-STRL", "50", "Each", "-"],
-                          ["2", "Nitrile Exam Gloves, Medium", "GLV-NTR-M", "200", "Box", "-"],
-                          ["3", "Face Mask, Earloop, Blue", "MSK-EL-BLU", "100", "Box", "-"],
-                        ].map(([index, description, sku, qty, unit, price]) => (
-                          <div className="extracted-preview-row" key={sku}>
-                            <span>{index}</span><strong>{description}</strong><span>{sku}</span><span>{qty}</span><span>{unit}</span><span>{price}</span>
+                        {visibleDraftItems.slice(0, 6).map((item, index) => (
+                          <div className="extracted-preview-row" key={item.product}>
+                            <span>{index + 1}</span>
+                            <strong>{item.extractedFrom}</strong>
+                            <span>{item.sku || "—"}</span>
+                            <span>{item.draftQty}</span>
+                            <span>{item.unit}</span>
+                            <span>{item.oldUnitPrice ? money.format(item.oldUnitPrice) : "—"}</span>
                           </div>
                         ))}
                       </div>
                       <div className="extracted-preview-actions">
-                        <button className="secondary-action compact" type="button">View all 3 items</button>
+                        {visibleDraftItems.length > 6 && (
+                          <button className="secondary-action compact" type="button" onClick={() => setUploadStep("review")}>
+                            View all {visibleDraftItems.length} items
+                          </button>
+                        )}
                         <span>Items look wrong?</span>
-                        <button className="secondary-action compact" type="button">Edit items</button>
+                        <button className="secondary-action compact" type="button" onClick={() => setShowInvoiceSources(true)}>Manage sources</button>
                       </div>
                     </section>
                   )}
@@ -899,7 +978,7 @@ export default function Home() {
 
                   <div className="upload-submit-bar">
                     <button className="secondary-action compact" type="button" onClick={() => showToast("Draft saved")}>Save draft</button>
-                    <button className="primary-action compact" type="button" onClick={submitForQuote} disabled={uploading}>
+                    <button className="primary-action compact" type="button" onClick={submitForQuote} disabled={uploading || !hasUploadedInvoice}>
                       {uploading ? "Processing..." : "Analyze savings"}
                       {!uploading && <Icon name="icon-arrow-right" className="button-icon" />}
                     </button>
@@ -907,6 +986,47 @@ export default function Home() {
                 </div>
               )}
 
+              {!orderSubmitted && uploadStep === "recommendation" && (
+                <RecommendationSummary
+                  stats={recommendationStats}
+                  total={draftTotal}
+                  savings={draftSavings}
+                  sourceCount={uploadedDocs.length}
+                  onReview={() => setUploadStep("review")}
+                />
+              )}
+
+              {!orderSubmitted && uploadStep === "review" && (
+                <DraftOrderReview
+                  items={visibleDraftItems}
+                  activeItems={activeDraftItems}
+                  total={draftTotal}
+                  onBack={() => setUploadStep("recommendation")}
+                  onApprove={() => setUploadStep("submit")}
+                  onRemove={removeDraftItem}
+                  onQtyChange={updateDraftQty}
+                />
+              )}
+
+              {!orderSubmitted && uploadStep === "submit" && (
+                <DraftOrderConfirm
+                  activeItems={activeDraftItems}
+                  total={draftTotal}
+                  sourceCount={uploadedDocs.length}
+                  onBack={() => setUploadStep("review")}
+                  onSubmit={submitDraftOrder}
+                  submitting={submittingOrder}
+                />
+              )}
+
+              {orderSubmitted && (
+                <DraftOrderSubmitted
+                  activeItems={activeDraftItems}
+                  total={draftTotal}
+                  sourceCount={uploadedDocs.length}
+                  onStartOver={resetDraftOrder}
+                />
+              )}
             </section>
           )}
 
@@ -1077,7 +1197,7 @@ export default function Home() {
                 <div className="ops-panel">
                   <p className="eyebrow">Buyer Profile</p>
                   <h3>Alex Kim</h3>
-                  <p>Northline Rehab · Operations Director</p>
+                  <p>Northline Dental · Operations Director</p>
                 </div>
                 <div className="ops-panel">
                   <p className="eyebrow">Ordering Defaults</p>
@@ -1128,7 +1248,7 @@ function CatalogExplorer({ catalog, source, hasSearch, titleId = "catalogHeading
       <div className="section-heading">
         <div>
           <p className="eyebrow">Canonical Catalog</p>
-          <h2 id={titleId}>{hasSearch ? "Search results" : "PT/Rehab reorder categories"}</h2>
+          <h2 id={titleId}>{hasSearch ? "Search results" : "Dental reorder categories"}</h2>
           <p>Buyer-facing products are canonical. Supplier-specific SKUs sit underneath as best-value offers.</p>
         </div>
         <span className={`status-chip ${source === "medusa" ? "success" : "warning"}`}>
@@ -1167,7 +1287,7 @@ function CatalogExplorer({ catalog, source, hasSearch, titleId = "catalogHeading
       {!catalog.length && (
         <div className="empty-state">
           <strong>No matching products</strong>
-          <span>Try therapy bands, gloves, tape, electrodes, or foam rollers.</span>
+          <span>Try gloves, burs, bibs, impression material, or anesthetics.</span>
         </div>
       )}
     </section>
@@ -1178,27 +1298,26 @@ function SearchResults({ results, onViewCatalog }) {
   return (
     <div className="search-results" role="region" aria-label="Catalog search results">
       <div className="search-results-header">
-        <strong>{results.length ? "Matching catalog products" : "No catalog matches"}</strong>
+        <strong>{results.length ? "Matching canonical products" : "No catalog matches"}</strong>
         <button type="button" onClick={onViewCatalog}>View catalog</button>
       </div>
-      {results.slice(0, 5).map((category) => {
-        const item = category.best_value_item || {};
-        const price = typeof item.unit_price_cents === "number"
-          ? money.format(item.unit_price_cents / 100)
+      {results.slice(0, 5).map((result) => {
+        const price = typeof result.unit_price_cents === "number"
+          ? money.format(result.unit_price_cents / 100)
           : "Price pending";
 
         return (
-          <button className="search-result" type="button" key={category.id} onClick={onViewCatalog}>
+          <button className="search-result" type="button" key={result.id} onClick={onViewCatalog}>
             <span>
-              <strong>{item.name || category.name}</strong>
-              <small>{category.name} · {item.supplier_name || "Supplier pending"}</small>
+              <strong>{result.name}</strong>
+              <small>{result.category || "Uncategorized"} · {result.supplier_name || "Supplier pending"}</small>
             </span>
             <em>{price}</em>
           </button>
         );
       })}
       {!results.length && (
-        <p>Try therapy bands, gloves, tape, electrodes, or foam rollers.</p>
+        <p>Try gloves, burs, bibs, impression material, or anesthetics.</p>
       )}
     </div>
   );
@@ -1345,7 +1464,7 @@ function DashboardMetric({ icon, label, value, delta, tone, featured = false }) 
 const quoteListItems = [
   {
     id: "Q-2024-0517",
-    clinic: "Northline Rehab",
+    clinic: "Northline Dental",
     source: "INV-2024-0517.pdf",
     status: "Draft",
     statusTone: "draft",
@@ -1385,7 +1504,7 @@ const quoteListItems = [
   {
     id: "Q-2024-0322",
     clinic: "GoodHealth Systems",
-    source: "therapy_reorder.xlsx",
+    source: "hygiene_reorder.xlsx",
     status: "Approved",
     statusTone: "approved",
     total: 329.68,
@@ -1494,11 +1613,11 @@ function QuoteListPage({ quoteTotal, savings, hasUploadedQuote, onNewUpload, onO
 }
 
 const quoteLineItems = [
-  ["Surgical Mask, 3-Ply", "MKP-1001", "Box of 50", 200, "boxes", 4.65, 3.92, "MediCore Medical"],
-  ["Nitrile Exam Gloves, M", "MKP-2002", "Box of 100", 150, "boxes", 6.8, 5.95, "HealthPro Supplies"],
-  ["IV Catheter 20G", "MKP-3003", "Box of 50", 300, "boxes", 12.3, 11.2, "PrimeMed Distributors"],
-  ["Syringe 10ml", "MKP-4004", "Box of 100", 250, "boxes", 9.15, 8.2, "MediCore Medical"],
-  ["Alcohol Prep Pads", "MKP-5005", "Box of 200", 100, "boxes", 3.2, 2.85, "HealthPro Supplies"],
+  ["Nitrile Exam Gloves, M", "MKP-1001", "Box of 100", 200, "boxes", 6.8, 5.95, "MediCore Medical"],
+  ["Patient Bibs, 2-Ply, Blue", "MKP-2002", "Case of 500", 150, "cases", 24.5, 21.4, "HealthPro Supplies"],
+  ["Prophy Paste, Medium Grit", "MKP-3003", "Box of 200", 300, "boxes", 12.3, 11.2, "PrimeMed Distributors"],
+  ["Saliva Ejectors, Clear", "MKP-4004", "Bag of 100", 250, "bags", 4.15, 3.6, "MediCore Medical"],
+  ["Diamond Burs, Coarse, FG", "MKP-5005", "Pack of 10", 100, "packs", 18.2, 15.85, "HealthPro Supplies"],
 ];
 
 const supplierQuoteCards = [
@@ -1682,10 +1801,10 @@ function QuoteBuilderPage({ lineItems, quoteTotal, previousTotal, savings, onUpl
 const reviewQuoteFallbackItems = [
   ["Nitrile Exam Gloves", "Powder-Free, Medium", 10, "box", "MediCore Medical", 7.8, null],
   ["Surgical Mask, Level 3", "Blue, Ear Loop", 50, "box", "HealthPro Supplies", 4.25, null],
-  ["IV Catheter 20G", "1.16 in, Yellow", 50, "box", "PrimeMed Distributors", 12.4, 15.6],
-  ["Alcohol Prep Pads", "Sterile, Medium", 100, "box", "MediCore Medical", 1.65, 1.95],
-  ["Syringe 3mL", "Luer Lock", 200, "box", "HealthPro Supplies", 6.9, null],
-  ["Gauze Pads 4 x 4", "12 Ply, Sterile", 100, "box", "PrimeMed Distributors", 2.95, null],
+  ["Prophy Angles, Soft Cup", "Disposable, Latex-Free", 50, "box", "PrimeMed Distributors", 12.4, 15.6],
+  ["Cotton Rolls, #2 Medium", "Non-Sterile", 100, "box", "MediCore Medical", 1.65, 1.95],
+  ["Fluoride Varnish, 5%", "Unit-Dose, Mint", 200, "box", "HealthPro Supplies", 6.9, null],
+  ["Gauze Pads 2 x 2", "8 Ply, Non-Woven", 100, "box", "PrimeMed Distributors", 2.95, null],
 ];
 
 function ReviewQuotePage({ lineItems, quoteTotal, previousTotal, savings, onBack, onApprove, onRevision }) {
@@ -1800,15 +1919,15 @@ function ReviewQuotePage({ lineItems, quoteTotal, previousTotal, savings, onBack
 
 const orderFallbackItems = [
   ["Nitrile Exam Gloves", "Size: Large · Blue · 100/Box", "NG-L-B100", "MediCore Medical", 20, "boxes", 8.75, "PO sent"],
-  ["Surgical Face Masks", "3-Ply · Ear Loop · 50/Box", "SM-3P-50", "HealthPro Supplies", 10, "boxes", 6.4, "Approved"],
-  ["Disinfectant Wipes", "6 x 7 · 160/Canister", "DW-160", "PrimeMed Distributors", 6, "canisters", 7.95, "Approved"],
+  ["Patient Bibs, 2-Ply", "13 x 18 · Blue · 500/Case", "PB-2P-500", "HealthPro Supplies", 10, "cases", 26.4, "Approved"],
+  ["Surface Disinfectant Wipes", "6 x 7 · 160/Canister", "DW-160", "PrimeMed Distributors", 6, "canisters", 7.95, "Approved"],
 ];
 
 const ordersInboxItems = [
   ["ORD-20481", "Cityview Medical Center", "MediCore Medical", "Approved", "approved", "$329.68", "May 24, 2024", "PO sent"],
   ["ORD-20472", "Downtown Medical Clinic", "HealthPro Supplies", "Supplier confirmed", "confirmed", "$19,845.20", "May 22, 2024", "Tracking soon"],
   ["ORD-20461", "PrimeCare Partners", "PrimeMed Distributors", "Shipped", "shipped", "$14,850.75", "May 19, 2024", "In transit"],
-  ["ORD-20438", "Northline Rehab", "MediCore Medical", "Delivered", "delivered", "$1,284.30", "May 10, 2024", "Completed"],
+  ["ORD-20438", "Northline Dental", "MediCore Medical", "Delivered", "delivered", "$1,284.30", "May 10, 2024", "Completed"],
 ];
 
 function OrdersInboxPage({ onOpenOrder, onNewUpload }) {
@@ -2024,7 +2143,7 @@ function RecommendationSummary({ stats, total, savings, sourceCount, onReview })
     { label: "items matched", value: stats.matchedItems },
     { label: "estimated savings", value: hasSavings ? money.format(savings) : "Best price" },
     { label: "recommendation confidence", value: `${stats.averageConfidence}%` },
-    { label: "delivery estimate", value: stats.deliveryEstimate },
+    { label: "supplier offers compared", value: stats.offersCompared },
   ];
 
   return (
@@ -2131,7 +2250,11 @@ function DraftOrderReview({ items, activeItems, total, onBack, onApprove, onRemo
                 </div>
                 <span>{item.recommendation?.priorProductName || item.extractedFrom} → {item.recommendation?.recommendedProductName || item.product}</span>
                 <small>{item.recommendation?.recommendationReason || item.selected.reason}</small>
-                <em>{item.recommendation?.shippingEstimate || "2-4 days"} · {item.recommendation?.supplierReliability || "95% on-time"} · {item.recommendation?.qualitySignal || "Vetted product"}</em>
+                <em>
+                  {Math.round((item.recommendation?.confidence || 0) * 100)}% match confidence
+                  {" · "}{item.recommendation?.offers?.length || 0} supplier offer{(item.recommendation?.offers?.length || 0) === 1 ? "" : "s"}
+                  {item.recommendation?.savingsPerUnit > 0 && ` · saves ${money.format(item.recommendation.savingsPerUnit)}/${item.unit || "unit"}`}
+                </em>
               </div>
               <div className="qty-control">
                 <button type="button" disabled={!item.included} onClick={() => onQtyChange(item.product, item.draftQty - 1)} aria-label={`Decrease ${item.product} quantity`}>-</button>

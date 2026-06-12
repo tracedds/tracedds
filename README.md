@@ -1,14 +1,13 @@
 # MedMKP MVP
 
-MedMKP is an early B2B medical-supply marketplace prototype for PT, chiro, and rehab offices.
+MedMKP is an early B2B dental-supply spend optimization prototype for dental practices and DSOs.
 
-The MVP currently has three layers:
+The MVP currently has two layers:
 
-- A dependency-free browser demo in `index.html`.
 - A Next.js prototype in `app/` with file-backed upload intake.
 - A Medusa v2 backend scaffold in `medusa-backend/` for the marketplace buildout.
 
-The clickable demo includes:
+The clickable prototype includes:
 
 - Six-screen concierge procurement flow based on Sean's sketch.
 - Landing page for the core promise: upload an invoice and get a better reorder quote.
@@ -60,17 +59,14 @@ From the Medusa workspace:
 ```bash
 cd /Users/patrice/code/medmkp/medusa-backend
 npm run db:migrate
-npm run seed:demo
 ```
 
 `db:migrate` is safe to rerun. Medusa tracks which migrations have already
 been applied.
 
-`seed:demo` is also safe to rerun for our demo data. It resets the MedMKP
-sample suppliers, catalog items, requests, and quotes to a known state.
-
-`seed:medmkp` remains available as a backwards-compatible alias for
-`seed:demo`.
+Catalog data comes from the supplier ingestion pipeline (see
+`SUPPLIER_INGESTION.md`) followed by `npm run products:match -- --commit`
+(see `PRODUCT_MATCHING.md`), or from importing an existing catalog dump.
 
 ### 3. Create the Local Medusa Admin User
 
@@ -159,14 +155,6 @@ If all three respond, infrastructure, backend, and frontend are up.
 
 ## Static Demo
 
-Open `index.html` in a browser, or serve the folder locally:
-
-```bash
-python3 -m http.server 5173
-```
-
-Then visit `http://localhost:5173`.
-
 Build the Medusa backend:
 
 ```bash
@@ -201,27 +189,18 @@ MedMKP Supplier = vendor/distributor record
 MedMKP Catalog Item = supplier-specific SKU, price, stock, lead time, and score
 ```
 
-For example, a buyer should see one canonical therapy band product, with
+For example, a buyer should see one canonical dental product, with
 multiple supplier offers underneath it:
 
 ```text
-Therapy Band Roll, Latex-Free, Medium Resistance, 50 yd
-  -> Integrated Medical / IM-BAND-MED-LF-50YD / $57.99 / 3 days
-  -> Therapy Direct Supply / TD-BAND-MED-50 / $61.25 / 5 days
+Nitrile Exam Gloves, Medium, 100/Box
+  -> Dental City / DC-GLV-NTR-M / $6.49 / 3 days
+  -> Pearson Dental / A19-1006 / $7.10 / 5 days
 ```
 
-The demo seed currently creates canonical Medusa Products for:
-
-- Therapy bands
-- Tape
-- Electrodes
-- Table paper
-- Gloves
-- Disinfectant wipes
-- Hot/cold packs
-- Face cradle covers
-- Towels
-- Foam rollers
+Canonical products are generated from the ingested supplier catalogs by the
+product matching pipeline (`npm run products:match`, see
+`PRODUCT_MATCHING.md`).
 
 ## Deploy
 
@@ -275,15 +254,6 @@ Render runs Medusa migrations before each deploy:
 npm run db:migrate
 ```
 
-It does not automatically run `seed:demo` on every deploy because that seed is
-destructive/resetting by design. Run it manually after the first deploy, or any
-time you want to reset the demo catalog:
-
-```bash
-cd medusa-backend/apps/backend
-npm run seed:demo
-```
-
 If you create the Render web service manually instead of using the Blueprint,
 use this configuration:
 
@@ -331,7 +301,7 @@ account/password before sharing the admin URL.
 1. Push `main` to GitHub.
 2. Create the Render Blueprint.
 3. Wait for Render to deploy `medmkp-medusa`.
-4. Run `seed:demo` and `admin:create` once from Render Shell or a one-off job.
+4. Run `admin:create` once from Render Shell or a one-off job.
 5. Create the Vercel frontend project.
 6. Set `MEDUSA_BACKEND_URL` in Vercel to the Render backend URL.
 7. Redeploy Vercel.

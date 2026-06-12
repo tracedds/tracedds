@@ -2,7 +2,7 @@
 
 ## Wedge
 
-MedMKP is a concierge procurement marketplace for medical offices. The first target is PT, chiro, and rehab clinics because the supplies are lower-regulation, frequently purchased, fragmented across vendors, and painful to compare.
+MedMKP is a concierge procurement marketplace for medical offices. The first target is dental practices and DSOs because the supplies are frequently purchased, fragmented across vendors, and painful to compare.
 
 The buyer promise:
 
@@ -19,12 +19,11 @@ The supplier promise:
 
 ## Starting ICP
 
-1. PT / Chiro / Rehab
-   - Lower-regulation Type I style products.
-   - Frequently purchased consumables and therapy supplies.
-   - Fragmented supplier landscape.
-2. Dental
-   - Later wedge. More category complexity and less obvious drop-shipping fit.
+1. Dental
+   - Frequently purchased consumables and operatory supplies.
+   - Fragmented distributor landscape with large price spreads.
+2. PT / Chiro / Rehab
+   - Later wedge. Lower-regulation Type I style products.
 3. CPAP
    - Later wedge. More regulatory and product-fit complexity.
 
@@ -32,18 +31,18 @@ The supplier promise:
 
 Onboard 10-15 suppliers via Thomasnet and direct outreach.
 
-Start with PT / Chiro / Rehab clinics and aim for renewable, reorder-heavy products where clinics already buy repeatedly:
+Start with dental practices and aim for renewable, reorder-heavy products where practices already buy repeatedly:
 
-- Therapy bands.
-- Tape.
-- Electrodes.
-- Table paper.
-- Gloves.
+- Gloves and masks.
+- Patient bibs and barriers.
+- Prophy paste and angles.
+- Burs.
+- Impression material.
+- Anesthetics and needles.
 - Disinfectant wipes.
-- Hot/cold packs.
-- Face cradle covers.
-- Towels.
-- Foam rollers.
+- Cotton rolls and gauze.
+- Saliva ejectors and HVE tips.
+- Sterilization pouches.
 
 Avoid injectables, Class II/III medical devices, and other higher-regulation products in v1.
 
@@ -169,9 +168,8 @@ Minimum supplier profile:
 
 Potential supplier sourcing:
 
-- Thomasnet.
-- Integrated Medical.
-- Direct outreach to therapy-supply distributors.
+- Public dental distributor catalogs (Dental City, Net32, Safco, Darby, Pearson).
+- Direct outreach to dental-supply distributors.
 
 ## Product Architecture Implication
 
