@@ -1,3 +1,5 @@
+import { createHash } from "crypto"
+
 type MatchStatus = "exact" | "variant" | "substitute" | "needs_review" | "unmatched"
 type SourceType = "website" | "pdf" | "csv" | "manual" | "api" | "email" | "agent"
 type RefreshFrequency = "weekly" | "monthly" | "quarterly" | "manual"
@@ -59,7 +61,19 @@ function compact(parts: unknown[]) {
 
 function boundedId(prefix: string, parts: string[], maxLength = 96) {
   const base = slug(parts.filter(Boolean).join("_")) || "unknown"
-  return `${prefix}_${base}`.slice(0, maxLength)
+  const full = `${prefix}_${base}`
+
+  if (full.length <= maxLength) {
+    return full
+  }
+
+  const hash = createHash("sha1")
+    .update(parts.join("\0"))
+    .digest("hex")
+    .slice(0, 10)
+  const suffix = `_${hash}`
+
+  return `${full.slice(0, maxLength - suffix.length)}${suffix}`
 }
 
 function normalizePriceBasis(value?: PriceBasis): PriceBasis {
