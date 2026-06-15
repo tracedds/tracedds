@@ -25,14 +25,14 @@ const orderSteps = [
 ];
 
 const uploadStepRoutes = {
-  upload: "/uploads",
-  recommendation: "/uploads/recommendations",
-  savings: "/uploads/savings",
+  upload: "/add-items",
+  recommendation: "/add-items/recommendations",
+  savings: "/add-items/savings",
 };
 
 const routeByView = {
   landing: "/dashboard",
-  upload: "/uploads",
+  upload: "/add-items",
   catalog: "/catalog",
   admin: "/admin",
   quote: "/quotes",
@@ -49,10 +49,10 @@ function viewFromPath(pathname = "/") {
 
   if (path === "/") return { view: "landing", isLoggedIn: false };
   if (path === "/dashboard") return { view: "landing", isLoggedIn: true };
-  if (path === "/uploads") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
-  if (path === "/uploads/review") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
-  if (path === "/uploads/recommendations") return { view: "upload", isLoggedIn: true, uploadStep: "recommendation" };
-  if (path === "/uploads/savings") return { view: "upload", isLoggedIn: true, uploadStep: "savings" };
+  if (path === "/add-items") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
+  if (path === "/add-items/review") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
+  if (path === "/add-items/recommendations") return { view: "upload", isLoggedIn: true, uploadStep: "recommendation" };
+  if (path === "/add-items/savings") return { view: "upload", isLoggedIn: true, uploadStep: "savings" };
   if (path === "/catalog") return { view: "catalog", isLoggedIn: true };
   if (path === "/admin") return { view: "admin", isLoggedIn: true };
   if (path === "/quotes") return { view: "quote", isLoggedIn: true };
@@ -279,6 +279,10 @@ function IconSprite() {
         <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
         <path d="M12 8.5v7M8.5 12h7" />
       </symbol>
+      <symbol id="icon-table" viewBox="0 0 24 24">
+        <path d="M4 5.5h16v13H4Z" />
+        <path d="M4 10h16M4 14.5h16M10 5.5v13" />
+      </symbol>
       <symbol id="icon-truck" viewBox="0 0 24 24">
         <path d="M2.5 7.5h11v9H2.5Z" />
         <path d="M13.5 10.5h4l3 3v3H13.5Z" />
@@ -454,6 +458,7 @@ export default function Home() {
   const [uploadItemsEditMode, setUploadItemsEditMode] = useState(false);
   const [neededByDate, setNeededByDate] = useState("");
   const [uploadStep, setUploadStep] = useState("upload");
+  const [addItemsTab, setAddItemsTab] = useState("history");
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [draftItems, setDraftItems] = useState([]);
   const [catalog, setCatalog] = useState([]);
@@ -799,7 +804,7 @@ export default function Home() {
   const navItems = [
     ["landing", "icon-home", "Dashboard"],
     ["upload", "icon-plus-circle", "Add Items"],
-    ["catalog", "icon-list", "Master Reorder List"],
+    ["catalog", "icon-list", "Reorder List"],
     ["quote", "icon-cart", "Reorder Run"],
     ["supplier", "icon-truck", "Supplier Handoff"],
     ["order", "icon-chart", "Reports"],
@@ -894,8 +899,8 @@ export default function Home() {
             <section className="view active upload-view" data-testid="upload-view" aria-labelledby="uploadHeading">
               <div className="upload-page-heading">
                 <div>
-                  <h2 id="uploadHeading">Upload invoice or reorder list</h2>
-                  <p>Upload a dental supplier invoice and we will extract line items for savings analysis.</p>
+                  <h2 id="uploadHeading">Add / Import Items</h2>
+                  <p>Bring items into your master reorder list from files, search, or mobile capture.</p>
                 </div>
                 <button
                   className="secondary-action compact"
@@ -908,6 +913,25 @@ export default function Home() {
 
               {uploadStep === "upload" && (
                 <div className={`upload-workspace ${hasUploadedInvoice ? "has-uploaded-invoice" : "empty-workspace"} ${uploadRailCollapsed ? "rail-collapsed" : ""}`}>
+                  <div className="upload-main-col">
+                  <nav className="add-items-tabs" aria-label="Add items methods">
+                    {[
+                      ["history", "icon-cloud-upload", "Upload Order History"],
+                      ["invoice", "icon-file-text", "Upload Invoice"],
+                      ["barcode", "icon-scan", "Barcode Scan"],
+                      ["csv", "icon-table", "CSV Import"],
+                    ].map(([id, icon, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`add-items-tab ${addItemsTab === id ? "active" : ""}`}
+                        onClick={() => setAddItemsTab(id)}
+                      >
+                        <Icon name={icon} className="button-icon" />
+                        {label}
+                      </button>
+                    ))}
+                  </nav>
                   <form ref={uploadFormRef} onSubmit={handleUpload} className={`upload-layout ${hasUploadedInvoice ? "compact-upload" : ""}`}>
                     <div
                       className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""}`}
@@ -952,6 +976,46 @@ export default function Home() {
                       <input type="hidden" name="preference" value="Exact brand if possible, alternatives allowed" />
                     </div>
 
+                    {!hasUploadedInvoice && (
+                      <div className="supported-sources">
+                        <h4>Supported sources</h4>
+                        <div className="supported-sources-grid">
+                          <div className="source-card">
+                            <span className="source-logo">
+                              <img src="/schein-logo.png" alt="Schein" />
+                            </span>
+                            <div><strong>Schein</strong><small>Order exports</small></div>
+                          </div>
+                          <div className="source-card">
+                            <span className="source-logo">
+                              <svg viewBox="0 0 40 40" aria-hidden="true">
+                                <rect x="6" y="6" width="28" height="28" rx="8" fill="#0a5cb8" />
+                                <text x="20" y="28" textAnchor="middle" fontFamily="Arial, Helvetica, sans-serif" fontSize="22" fontWeight="800" fill="#ffffff">P</text>
+                              </svg>
+                            </span>
+                            <div><strong>Patterson</strong><small>Invoices</small></div>
+                          </div>
+                          <div className="source-card">
+                            <span className="source-logo">
+                              <svg viewBox="0 0 72 32" aria-hidden="true">
+                                <text x="2" y="24" fontFamily="Arial, Helvetica, sans-serif" fontSize="24" fontWeight="800" letterSpacing="-1.5" fill="#3aaa35">darby</text>
+                              </svg>
+                            </span>
+                            <div><strong>Darby</strong><small>Order history</small></div>
+                          </div>
+                          <div className="source-card">
+                            <span className="source-logo">
+                              <svg viewBox="0 0 40 40" aria-hidden="true">
+                                <rect x="8" y="6" width="24" height="28" rx="3" fill="#e6f4ea" stroke="#1e9e5a" strokeWidth="2" />
+                                <path d="M8 16h24M8 24h24M20 6v28" stroke="#1e9e5a" strokeWidth="2" fill="none" />
+                              </svg>
+                            </span>
+                            <div><strong>Generic CSV</strong><small>Any supplier</small></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   </form>
 
                   {hasUploadedInvoice && activeDraftItems.length > 0 && (
@@ -964,6 +1028,15 @@ export default function Home() {
                       onRemove={removeDraftItem}
                     />
                   )}
+
+                  <div className="upload-submit-bar">
+                    <button className="secondary-action compact" type="button" onClick={() => showToast("Draft saved")}>Save draft</button>
+                    <button className="primary-action compact" type="button" onClick={submitForQuote} disabled={uploading || !hasUploadedInvoice}>
+                      {uploading ? "Processing..." : "Submit for quote"}
+                      {!uploading && <Icon name="icon-arrow-right" className="button-icon" />}
+                    </button>
+                  </div>
+                  </div>
 
                   <aside className="upload-help-rail">
                     <div className="next-card">
@@ -981,14 +1054,6 @@ export default function Home() {
                       <div><strong>Need help?</strong><p>Our team can help you upload invoices and review savings opportunities.</p><button type="button"><Icon name="icon-headset" className="button-icon" />Contact support</button></div>
                     </div>
                   </aside>
-
-                  <div className="upload-submit-bar">
-                    <button className="secondary-action compact" type="button" onClick={() => showToast("Draft saved")}>Save draft</button>
-                    <button className="primary-action compact" type="button" onClick={submitForQuote} disabled={uploading || !hasUploadedInvoice}>
-                      {uploading ? "Processing..." : "Submit for quote"}
-                      {!uploading && <Icon name="icon-arrow-right" className="button-icon" />}
-                    </button>
-                  </div>
                 </div>
               )}
 
@@ -1374,7 +1439,7 @@ function DashboardPage({ onNewRequest }) {
           <section className="dash-card">
             <div className="dash-card-head">
               <div className="dash-card-title">
-                <h3>Master Reorder List Health</h3>
+                <h3>Reorder List Health</h3>
                 <Icon name="icon-info" className="button-icon" />
               </div>
               <a className="dash-link" href="#">View full list</a>

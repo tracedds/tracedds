@@ -55,7 +55,7 @@ export default async function CatalogProductPage({ params }) {
             </div>
           </div>
           <div className="product-hero-actions">
-            <Link className="primary-action" href="/uploads/recommendations">Add to draft order</Link>
+            <Link className="primary-action" href="/add-items/recommendations">Add to draft order</Link>
             <Link className="secondary-action" href={`/catalog/search?category=${encodeURIComponent(product.category)}`}>More in category</Link>
           </div>
         </div>

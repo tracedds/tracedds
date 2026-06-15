@@ -46,7 +46,7 @@ export default async function CatalogPage({ searchParams }) {
             <button className="primary-action" type="submit">Search catalog</button>
           </form>
           <div className="catalog-hero-links">
-            <Link href="/uploads/recommendations" className="secondary-action">
+            <Link href="/add-items/recommendations" className="secondary-action">
               Add to draft order
             </Link>
             <Link href="/quotes" className="secondary-action">

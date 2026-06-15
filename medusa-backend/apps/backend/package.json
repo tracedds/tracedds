@@ -25,6 +25,7 @@
     "supplier:import-csv": "medusa exec ./src/scripts/import-supplier-catalog-csv.ts",
     "supplier:ingest": "ts-node ./src/scripts/run-supplier-ingestion.ts",
     "supplier:ingest:db": "medusa exec ./src/scripts/ingest-supplier-catalogs.ts --",
+    "catalog:refresh-read-models": "ts-node ./src/scripts/refresh-catalog-read-models.ts",
     "products:match": "ts-node ./src/scripts/match-canonical-products.ts",
     "admin:create": "medusa user -e admin@medmkp.local -p medmkp-admin",
     "test:integration:http": "TEST_TYPE=integration:http NODE_OPTIONS=--experimental-vm-modules jest --silent=false --runInBand --forceExit",

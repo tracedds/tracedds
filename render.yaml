@@ -9,7 +9,7 @@ services:
     buildCommand: npm install --include=dev --no-audit --no-fund --loglevel=info --foreground-scripts && npm run build
     preDeployCommand: npm run db:migrate
     startCommand: npm start
-    healthCheckPath: /medmkp/categories
+    healthCheckPath: /medmkp/health
     envVars:
       - key: NODE_ENV
         value: production
