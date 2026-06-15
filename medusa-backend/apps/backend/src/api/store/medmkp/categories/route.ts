@@ -1,7 +1,22 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Client } from "pg"
+import { getPostgresPool } from "../../../../utils/postgres"
 
 const CATEGORY_LIMIT = 12
+
+type CategoryRow = {
+  category: string
+  product_count: string
+  supplier_count: string
+}
+
+type BestValueRow = {
+  category: string
+  name: string
+  sku: string
+  supplier_id: string
+  supplier_name: string | null
+  price_cents: number
+}
 
 /**
  * Buyer-facing reorder categories derived from the ingested supplier
@@ -9,20 +24,10 @@ const CATEGORY_LIMIT = 12
  * priced product as the best-value offer.
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  const databaseUrl = process.env.DATABASE_URL
-  if (!databaseUrl) {
-    res.status(500).json({ error: "DATABASE_URL is not set" })
-    return
-  }
-
-  const client = new Client({
-    connectionString: databaseUrl,
-    ssl: /localhost|127\.0\.0\.1/.test(databaseUrl) ? undefined : { rejectUnauthorized: false },
-  })
-  await client.connect()
-
   try {
-    const categories = await client.query(
+    const pool = getPostgresPool()
+
+    const categories = await pool.query<CategoryRow>(
       `SELECT category, count(*) AS product_count, count(DISTINCT supplier_id) AS supplier_count
        FROM medmkp_supplier_product
        WHERE deleted_at IS NULL
@@ -37,7 +42,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       [CATEGORY_LIMIT]
     )
 
-    const bestValue = await client.query(
+    const bestValue = await pool.query<BestValueRow>(
       `SELECT DISTINCT ON (p.category)
               p.category, p.name, p.sku, p.supplier_id, sup.name AS supplier_name,
               price.price_cents
@@ -78,7 +83,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         }
       }),
     })
-  } finally {
-    await client.end()
+  } catch (error) {
+    if (error instanceof Error && error.message === "DATABASE_URL is not set") {
+      res.status(500).json({ error: error.message })
+      return
+    }
+
+    throw error
   }
 }

@@ -180,11 +180,74 @@ function IconSprite() {
         <path d="M7.5 7.5 8.2 19a1.2 1.2 0 0 0 1.2 1.1h5.2a1.2 1.2 0 0 0 1.2-1.1l.7-11.5" />
         <path d="M10 10v5M14 10v5" />
       </symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24">
+        <path d="M14.5 5.5 18.5 9.5 8 20H4v-4Z" />
+        <path d="m13 7 4 4" />
+      </symbol>
       <symbol id="icon-store" viewBox="0 0 24 24">
         <path d="M4 10.5h16l-1.5-6h-13L4 10.5Z" />
         <path d="M5.5 10.5V20h13v-9.5" />
         <path d="M9 20v-5.5h6V20" />
         <path d="M4 10.5c.4 1.4 1.4 2.1 2.8 2.1s2.4-.7 2.8-2.1c.4 1.4 1.4 2.1 2.8 2.1s2.4-.7 2.8-2.1c.4 1.4 1.4 2.1 2.8 2.1s2.4-.7 2.8-2.1" />
+      </symbol>
+      <symbol id="icon-scan" viewBox="0 0 24 24">
+        <path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" />
+        <path d="M7 8.5v7M10 8.5v7M13 8.5v7M16.5 8.5v7" />
+      </symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+      </symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <path d="M6.5 11V8a5.5 5.5 0 0 1 11 0v3" />
+        <path d="M5.5 11h13a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" />
+      </symbol>
+      <symbol id="icon-book" viewBox="0 0 24 24">
+        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v16H5.5A1.5 1.5 0 0 1 4 18.5Z" />
+        <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H12v16h6.5a1.5 1.5 0 0 0 1.5-1.5Z" />
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="icon-bolt" viewBox="0 0 24 24">
+        <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+      </symbol>
+      <symbol id="icon-tag" viewBox="0 0 24 24">
+        <path d="M11.5 3.5h5A1.5 1.5 0 0 1 18 5v5L8.7 19.3a1.5 1.5 0 0 1-2.1 0l-3.9-3.9a1.5 1.5 0 0 1 0-2.1Z" />
+        <path d="M14 8.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+      </symbol>
+      <symbol id="icon-shuffle" viewBox="0 0 24 24">
+        <path d="M3 6h3.5l9 12H19M3 18h3.5l3-4M16 6h3M19 6l-2.5 2.5M19 6l-2.5-2.5M19 18l-2.5 2.5M19 18l-2.5-2.5" />
+      </symbol>
+      <symbol id="icon-check-circle" viewBox="0 0 24 24">
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+        <path d="m8 12.5 2.5 2.5L16 9.5" />
+      </symbol>
+      <symbol id="icon-list" viewBox="0 0 24 24">
+        <path d="M9 6h11M9 12h11M9 18h11" />
+        <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+      </symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24">
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+        <path d="M12 11v5.5M12 7.5h.01" />
+      </symbol>
+      <symbol id="icon-chat" viewBox="0 0 24 24">
+        <path d="M4 5.5h16v10H10l-4 3.5v-3.5H4Z" />
+      </symbol>
+      <symbol id="icon-handshake" viewBox="0 0 24 24">
+        <path d="m2.5 11 4-3.5 3 1.5M21.5 11l-4-3.5-3 1.5" />
+        <path d="m9.5 9-4 4 2 2 1.5-1.5M14.5 9l4 4-2 2-1.5-1.5" />
+        <path d="m11 11.5 2 2" />
+      </symbol>
+      <symbol id="icon-building" viewBox="0 0 24 24">
+        <path d="M5 21V4.5A1.5 1.5 0 0 1 6.5 3h7A1.5 1.5 0 0 1 15 4.5V21" />
+        <path d="M15 10h3.5A1.5 1.5 0 0 1 20 11.5V21" />
+        <path d="M9 7h2M9 11h2M9 15h2" />
+        <path d="M3 21h18" />
+      </symbol>
+      <symbol id="icon-image" viewBox="0 0 24 24">
+        <path d="M4.5 4.5h15v15h-15Z" />
+        <path d="m4.5 16 4-4 3 3 4-5 4.5 4.5" />
+        <path d="M9 9.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
       </symbol>
     </svg>
   );
@@ -212,130 +275,127 @@ function LoggedOutLanding({ onEnter }) {
           <BrandMark />
         </a>
         <nav aria-label="Landing navigation">
-          <a href="#how-it-works">How it Works</a>
-          <a href="#solutions">Solutions</a>
-          <button type="button" onClick={() => onEnter("supplier")}>Suppliers</button>
-          <a href="#pricing">Pricing</a>
-          <a href="#resources">Resources</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#what-you-get">What you get</a>
+          <button type="button" onClick={() => onEnter("supplier")}>For dental offices</button>
         </nav>
-        <button className="primary-action compact" type="button" onClick={() => onEnter("upload")}>Get Started</button>
+        <div className="landing-nav-actions">
+          <button className="secondary-action compact" type="button" onClick={() => onEnter("upload")}>Enter SKU</button>
+          <button className="primary-action compact" type="button" onClick={() => onEnter("upload")}>
+            <Icon name="icon-scan" className="button-icon" />
+            Scan an item
+          </button>
+        </div>
       </header>
 
-      <section className="landing-hero">
-        <div className="landing-copy">
-          <span className="landing-pill">Dental spend optimization SaaS</span>
-          <h1>Upload dental invoices. Find supply savings.</h1>
-          <p>We analyze your current dental supply spend, benchmark prices, and produce savings reports your team can act on directly.</p>
-          <div className="landing-actions">
-            <button className="primary-action" type="button" onClick={() => onEnter("upload")}>
-              <Icon name="icon-cloud-upload" className="button-icon" />
-              Upload Invoice
-            </button>
-            <a className="secondary-action" href="#how-it-works">
-              See How It Works
-            </a>
+      <section className="landing-main">
+        <div className="landing-col-left">
+          <div className="landing-copy">
+            <h1>Scan your dental supplies and spot <span>possible savings</span> in seconds</h1>
+            <p>Point your phone at a barcode or enter a SKU to identify the item, compare typical price ranges, and save it to a free starter reorder list. No login required to try it.</p>
+            <div className="landing-actions">
+              <button className="primary-action" type="button" onClick={() => onEnter("upload")}>
+                <Icon name="icon-scan" className="button-icon" />
+                Scan 1 item free
+              </button>
+              <button className="secondary-action" type="button" onClick={() => onEnter("upload")}>
+                <Icon name="icon-play" className="button-icon" />
+                See sample result
+              </button>
+            </div>
+            <div className="landing-assurances">
+              <span><Icon name="icon-lock" className="button-icon" />No login</span>
+              <span><Icon name="icon-book" className="button-icon" />Dental supply catalog</span>
+              <span><Icon name="icon-bolt" className="button-icon" />Fast barcode match</span>
+            </div>
           </div>
-          <div className="landing-assurances">
-            <span><Icon name="icon-settings" className="button-icon" />Secure workflow</span>
-            <span><Icon name="icon-file-text" className="button-icon" />Your data is never shared</span>
-            <span><Icon name="icon-store" className="button-icon" />No vendor switch required</span>
-          </div>
-        </div>
 
-        <div className="landing-product" aria-label="MedMKP dashboard preview">
-          <div className="preview-sidebar">
-            <div className="preview-brand"><BrandMark /></div>
-            {["Dashboard", "Invoices", "Savings", "Reports", "Suppliers", "Settings"].map((item, index) => (
-              <span className={index === 0 ? "active" : ""} key={item}>{item}</span>
-            ))}
-          </div>
-          <div className="preview-main">
-            <div className="preview-header">
+          <div className="landing-instant" id="what-you-get">
+            <h3>What you&rsquo;ll see instantly</h3>
+            <div className="instant-grid">
               <div>
-                <strong>Welcome back, Alex</strong>
-                <span>Here is what is happening with your dental supply spend.</span>
+                <Icon name="icon-check-circle" className="landing-instant-icon green" />
+                <strong>Product match</strong>
+                <span>High confidence<br />92%</span>
               </div>
-              <button type="button" onClick={() => onEnter("upload")}>Upload Invoice</button>
+              <div>
+                <Icon name="icon-tag" className="landing-instant-icon" />
+                <strong>Typical price range</strong>
+                <span>$11.80 &ndash; $13.50<br />per bag</span>
+              </div>
+              <div>
+                <Icon name="icon-shuffle" className="landing-instant-icon" />
+                <strong>Possible lower-cost alternatives</strong>
+                <span>See 3-6 matches</span>
+              </div>
+              <div>
+                <Icon name="icon-list" className="landing-instant-icon" />
+                <strong>Starter reorder list</strong>
+                <span>Save items and build your list</span>
+              </div>
             </div>
-            <div className="preview-metrics">
-              <div><span>Invoices Uploaded</span><strong>7</strong><small>This month</small></div>
-              <div><span>Savings Reports</span><strong>5</strong><small>This month</small></div>
-              <div><span>Avg. Potential Savings</span><strong className="positive">18%</strong><small>vs. current spend</small></div>
-            </div>
-            <div className="preview-quotes">
-              <div className="preview-section-title"><strong>Recent Savings Report</strong><button type="button" onClick={() => onEnter("order")}>View all</button></div>
+            <p className="landing-instant-note">
+              <Icon name="icon-info" className="button-icon" />
+              Exact savings require your invoice, last paid price, or office order history. Public scan results show benchmark estimates.
+            </p>
+          </div>
+
+          <div className="landing-steps" id="how-it-works">
+            <h2>How it works &mdash; 3 simple steps</h2>
+            <div>
               <article>
-                <Icon name="icon-file-text" className="button-icon" />
-                <span><strong>Invoice #INV-2024-0517</strong><small>May 17, 2024 · 32 items</small></span>
-                <em>$18,392.00</em>
+                <span className="landing-step-number">1</span>
+                <Icon name="icon-scan" className="landing-step-icon" />
+                <strong>Scan a barcode</strong>
+                <p>Use your phone camera to scan any product barcode.</p>
               </article>
+              <Icon name="icon-arrow-right" className="landing-step-arrow" />
               <article>
-                <Icon name="icon-file-text" className="button-icon" />
-                <span><strong>Invoice #INV-2024-0430</strong><small>Apr 30, 2024 · 28 items</small></span>
-                <em>$14,850.75</em>
+                <span className="landing-step-number">2</span>
+                <Icon name="icon-chart" className="landing-step-icon" />
+                <strong>See the item and benchmark</strong>
+                <p>We identify the item and show typical price ranges and matches.</p>
+              </article>
+              <Icon name="icon-arrow-right" className="landing-step-arrow" />
+              <article>
+                <span className="landing-step-number">3</span>
+                <Icon name="icon-list" className="landing-step-icon" />
+                <strong>Save it or continue free</strong>
+                <p>Add it to your starter reorder list or keep scanning.</p>
               </article>
             </div>
           </div>
         </div>
-      </section>
 
-      <section className="trusted-strip" id="solutions">
-        <h2>Built for dental practices and DSOs</h2>
-        <div>
-          <span>General Dentistry</span>
-          <span>Oral Surgery</span>
-          <span>Orthodontics</span>
-          <span>Multi-location Practices</span>
-          <span>DSOs</span>
+        <div className="landing-col-right">
+          <img className="landing-scan-mock" src="/scan-mockup.png" alt="MedMKP scanning a Microbrush product and showing a price benchmark result" />
+
+          <div className="landing-cta">
+            <div>
+              <h2>Want office-specific savings?</h2>
+              <p>Upload one invoice or tell us your last paid price to unlock exact savings comparisons, reorder memory, and supplier-aware recommendations.</p>
+              <div className="landing-actions">
+                <button className="primary-action" type="button" onClick={() => onEnter("upload")}>
+                  <Icon name="icon-cloud-upload" className="button-icon" />
+                  Start free
+                </button>
+                <button className="secondary-action" type="button" onClick={() => onEnter("supplier")}>
+                  <Icon name="icon-chat" className="button-icon" />
+                  Talk to us
+                </button>
+              </div>
+            </div>
+            <Icon name="icon-clipboard" className="landing-cta-icon" />
+          </div>
         </div>
       </section>
 
-      <section className="landing-steps" id="how-it-works">
-        <h2>How it works</h2>
+      <footer className="trusted-strip">
         <div>
-          <article>
-            <Icon name="icon-cloud-upload" className="landing-step-icon" />
-            <strong>Upload Invoice</strong>
-            <p>Upload any supplier invoice or reorder list. We extract and organize the line items.</p>
-          </article>
-          <article>
-            <Icon name="icon-search" className="landing-step-icon" />
-            <strong>We Compare Suppliers</strong>
-            <p>We compare cached supplier catalogs, fresh price evidence, and your historical invoice pricing.</p>
-          </article>
-          <article>
-            <Icon name="icon-clipboard" className="landing-step-icon" />
-            <strong>You Act On Savings</strong>
-            <p>Review the savings report, negotiate with vendors, or switch suppliers directly outside MedMKP.</p>
-          </article>
+          <span><Icon name="icon-handshake" className="button-icon" />Works with Henry Schein, Patterson, Darby, and generic barcodes</span>
+          <span><Icon name="icon-building" className="button-icon" />Built for dental offices<br /><small>Designed around how your office buys.</small></span>
+          <span><Icon name="icon-shield-check" className="button-icon" />HIPAA-aware / secure<br /><small>We protect your data with enterprise-grade security.</small></span>
         </div>
-      </section>
-
-      <section className="landing-outcomes" id="pricing">
-        <div>
-          <h2>Lower dental supply spend.</h2>
-          <p>We help dental teams find savings without forcing them into a new purchasing workflow.</p>
-        </div>
-        <article>
-          <Icon name="icon-chart" className="landing-step-icon" />
-          <strong>Lower Supply Spend</strong>
-          <p>Save 15-30% on average through smarter sourcing and transparent pricing.</p>
-        </article>
-        <article>
-          <Icon name="icon-package" className="landing-step-icon" />
-          <strong>Price Intelligence</strong>
-          <p>Benchmark current invoices against cached catalogs, snapshots, and reviewed supplier evidence.</p>
-        </article>
-        <article id="resources">
-          <Icon name="icon-settings" className="landing-step-icon" />
-          <strong>Subscription Service</strong>
-          <p>Monthly plans align MedMKP with practice savings instead of supplier transactions.</p>
-        </article>
-      </section>
-
-      <footer className="landing-footer">
-        <Icon name="icon-settings" className="button-icon" />
-        Security-first. HIPAA-aware. Built for dental spend optimization.
       </footer>
     </main>
   );
@@ -557,6 +617,16 @@ export default function Home() {
     setView(nextView);
   }
 
+  function goToLanding() {
+    setIsLoggedIn(false);
+    setViewState("landing");
+    setMenuOpen(false);
+    if (window.location.pathname !== "/") {
+      window.history.pushState({}, "", "/");
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function showToast(message) {
     setToast(message);
     window.clearTimeout(showToast.timer);
@@ -714,7 +784,9 @@ export default function Home() {
       <div className={`app-shell ${menuOpen ? "menu-open" : ""}`}>
         <header className="app-header app-accountbar">
           <div className="brand-block">
-            <BrandMark />
+            <button className="brand-home" type="button" onClick={goToLanding} aria-label="MedMKP home">
+              <BrandMark />
+            </button>
             <button
               className="mobile-menu-button"
               type="button"
@@ -857,7 +929,6 @@ export default function Home() {
                   {hasUploadedInvoice && activeDraftItems.length > 0 && (
                     <UploadExtractionPanel
                       items={activeDraftItems}
-                      total={draftPreviousTotal}
                       editMode={uploadItemsEditMode}
                       onToggleEditMode={setUploadItemsEditMode}
                       onQtyChange={updateDraftQty}
@@ -874,8 +945,9 @@ export default function Home() {
                       <div className="next-step"><span><Icon name="icon-dollar-circle" className="button-icon" /></span><div><strong>3. You get a savings report</strong><p>Review opportunities and decide what to act on outside MedMKP.</p></div></div>
                     </div>
                     <div className="support-card">
-                      <Icon name="icon-shield-check" className="button-icon" />
-                      <div><strong>Secure & private</strong><p>Your data is encrypted and never shared with suppliers without approval.</p><span>HIPAA-aware · SOC 2 aligned</span></div>
+                      <div className="support-card-title"><Icon name="icon-shield-check" className="button-icon" /><strong>Secure & private</strong></div>
+                      <p>Your data is encrypted and never shared with suppliers without approval.</p>
+                      <span>HIPAA-aware · SOC 2 aligned</span>
                     </div>
                     <div className="support-card">
                       <div><strong>Need help?</strong><p>Our team can help you upload invoices and review savings opportunities.</p><button type="button"><Icon name="icon-headset" className="button-icon" />Contact support</button></div>
@@ -885,7 +957,7 @@ export default function Home() {
                   <div className="upload-submit-bar">
                     <button className="secondary-action compact" type="button" onClick={() => showToast("Draft saved")}>Save draft</button>
                     <button className="primary-action compact" type="button" onClick={submitForQuote} disabled={uploading || !hasUploadedInvoice}>
-                      {uploading ? "Processing..." : "Continue to recommendations"}
+                      {uploading ? "Processing..." : "Submit for quote"}
                       {!uploading && <Icon name="icon-arrow-right" className="button-icon" />}
                     </button>
                   </div>
@@ -2193,25 +2265,13 @@ function RecommendationSummary({
   );
 }
 
-function UploadExtractionPanel({ items, total, editMode, onToggleEditMode, onRemove, onQtyChange, onItemChange }) {
+function UploadExtractionPanel({ items, editMode, onToggleEditMode, onRemove, onQtyChange, onItemChange }) {
   return (
     <section className={`extracted-line-preview ${editMode ? "editing" : ""}`} aria-labelledby="extractedPreviewHeading">
       <div className="extracted-preview-header">
         <div className="extracted-preview-copy">
           <h3 id="extractedPreviewHeading">Extracted line items preview</h3>
-        </div>
-        <div className="extracted-preview-header-actions">
-          <div className="extracted-preview-actions">
-            {editMode ? (
-              <button className="text-action edit-link" type="button" onClick={() => onToggleEditMode(false)}>
-                Save
-              </button>
-            ) : (
-              <button className="text-action edit-link" type="button" onClick={() => onToggleEditMode(true)}>
-                Edit
-              </button>
-            )}
-          </div>
+          <span className="items-detected-pill">{items.length} item{items.length === 1 ? "" : "s"} detected</span>
         </div>
       </div>
 
@@ -2222,8 +2282,7 @@ function UploadExtractionPanel({ items, total, editMode, onToggleEditMode, onRem
           <span>SKU / Part #</span>
           <span>Qty</span>
           <span>Unit</span>
-          <span>Unit Price</span>
-          <span>Line Total</span>
+          <span>Est. Price</span>
           {editMode && <span> </span>}
         </div>
         {items.map((item, index) => (
@@ -2236,7 +2295,7 @@ function UploadExtractionPanel({ items, total, editMode, onToggleEditMode, onRem
                 onChange={(event) => onItemChange(item.product, { extractedFrom: event.target.value })}
               />
             ) : (
-              <strong>{item.extractedFrom}</strong>
+              <span>{item.extractedFrom}</span>
             )}
             {editMode ? (
               <input
@@ -2278,7 +2337,6 @@ function UploadExtractionPanel({ items, total, editMode, onToggleEditMode, onRem
             ) : (
               <span>{item.oldUnitPrice ? money.format(item.oldUnitPrice) : "—"}</span>
             )}
-            <strong>{money.format(item.draftQty * (item.oldUnitPrice || 0))}</strong>
             {editMode ? (
               <button className="icon-button destructive" type="button" aria-label={`Remove ${item.extractedFrom}`} onClick={() => onRemove(item.product)}>
                 <Icon name="icon-trash" className="button-icon" />
@@ -2291,8 +2349,11 @@ function UploadExtractionPanel({ items, total, editMode, onToggleEditMode, onRem
       </div>
 
       <div className="extracted-preview-footer">
-        <span>{editMode ? "Edits apply immediately." : "Click edit to adjust rows or remove bad lines."}</span>
-        <strong>{money.format(total)}</strong>
+        <span className="items-wrong-note">Items look wrong?</span>
+        <button className="secondary-action compact" type="button" onClick={() => onToggleEditMode(!editMode)}>
+          <Icon name="icon-edit" className="button-icon" />
+          {editMode ? "Save items" : "Edit items"}
+        </button>
       </div>
     </section>
   );
@@ -2322,7 +2383,7 @@ function SavingsSummary({ activeItems, total, sourceCount, onBack, savings }) {
         {savingsByItem.map((item) => (
           <article className="savings-link-row" key={item.product}>
             <div>
-              <strong>{item.extractedFrom}</strong>
+              {item.extractedFrom}
               <p>{item.selected?.supplier || "Supplier"} · {money.format(item.selected?.unitPrice || 0)}/{item.unit || "unit"} · save {money.format(item.itemSavings)}</p>
             </div>
             {item.productLink ? (
