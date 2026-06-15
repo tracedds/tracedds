@@ -33,6 +33,7 @@ const uploadStepRoutes = {
 const routeByView = {
   landing: "/dashboard",
   upload: "/add-items",
+  matchReview: "/match-review",
   catalog: "/catalog",
   admin: "/admin",
   quote: "/quotes",
@@ -49,10 +50,12 @@ function viewFromPath(pathname = "/") {
 
   if (path === "/") return { view: "landing", isLoggedIn: false };
   if (path === "/dashboard") return { view: "landing", isLoggedIn: true };
+  if (path === "/add-item") return { view: "upload", isLoggedIn: true, uploadStep: "upload", mobileAddItemRoute: true };
   if (path === "/add-items") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
   if (path === "/add-items/review") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
   if (path === "/add-items/recommendations") return { view: "upload", isLoggedIn: true, uploadStep: "recommendation" };
   if (path === "/add-items/savings") return { view: "upload", isLoggedIn: true, uploadStep: "savings" };
+  if (path === "/match-review") return { view: "matchReview", isLoggedIn: true };
   if (path === "/catalog") return { view: "catalog", isLoggedIn: true };
   if (path === "/admin") return { view: "admin", isLoggedIn: true };
   if (path === "/quotes") return { view: "quote", isLoggedIn: true };
@@ -275,6 +278,18 @@ function IconSprite() {
       <symbol id="icon-chevron-right" viewBox="0 0 24 24">
         <path d="m9 6 6 6-6 6" />
       </symbol>
+      <symbol id="icon-chevron-left" viewBox="0 0 24 24">
+        <path d="m15 6-6 6 6 6" />
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="m5 12.5 4.5 4.5L19 6.5" />
+      </symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24">
+        <path d="M6 6l12 12M18 6 6 18" />
+      </symbol>
+      <symbol id="icon-filter" viewBox="0 0 24 24">
+        <path d="M3 5.5h18l-7 8v5l-4 2v-7Z" />
+      </symbol>
       <symbol id="icon-plus-circle" viewBox="0 0 24 24">
         <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
         <path d="M12 8.5v7M8.5 12h7" />
@@ -303,6 +318,139 @@ function Icon({ name, className = "nav-icon" }) {
     <svg className={className} aria-hidden="true">
       <use href={`#${name}`} />
     </svg>
+  );
+}
+
+function MobileScanItemView({ onBack, onDashboard }) {
+  const bottomNav = [
+    ["Dashboard", "icon-home", onDashboard, false, ""],
+    ["Scan", "icon-scan", null, true, ""],
+    ["Reorder List", "icon-file-text", null, false, ""],
+    ["Notifications", "icon-settings", null, false, "3"],
+    ["More", "icon-list", null, false, ""],
+  ];
+
+  return (
+    <section className="mobile-scan-screen" aria-labelledby="mobileScanHeading">
+      <div className="mobile-statusbar" aria-hidden="true">
+        <span>9:41</span>
+        <span className="mobile-status-icons">
+          <i></i><i></i><i></i>
+        </span>
+      </div>
+
+      <header className="mobile-scan-header">
+        <button className="mobile-scan-icon-button back" type="button" onClick={onBack} aria-label="Back to add items">
+          <Icon name="icon-chevron-right" className="mobile-scan-icon" />
+        </button>
+        <h1 id="mobileScanHeading">Scan Item</h1>
+        <button className="mobile-scan-icon-button" type="button" aria-label="Help">
+          <span aria-hidden="true">?</span>
+        </button>
+      </header>
+
+      <nav className="mobile-scan-tabs" aria-label="Add item method">
+        <button className="active" type="button">
+          <Icon name="icon-scan" className="mobile-tab-icon" />
+          Scan Barcode
+        </button>
+        <button type="button">
+          <Icon name="icon-image" className="mobile-tab-icon" />
+          Photo
+        </button>
+        <button type="button">
+          <Icon name="icon-plus-circle" className="mobile-tab-icon" />
+          Manual Add
+        </button>
+      </nav>
+
+      <div className="mobile-camera-stage">
+        <div className="scan-instruction">Align barcode inside the frame</div>
+        <div className="scan-frame" aria-hidden="true">
+          <span className="corner top-left"></span>
+          <span className="corner top-right"></span>
+          <span className="corner bottom-left"></span>
+          <span className="corner bottom-right"></span>
+          <span className="scan-line"></span>
+        </div>
+        <div className="product-box-capture" aria-hidden="true">
+          <div className="product-label">
+            <small>Henry Schein®</small>
+            <strong>Microbrush® Regular<br />Superfine Blue</strong>
+            <span className="unit">100/Bag</span>
+            <span className="ref">REF&nbsp; MBRREG-BLU-100</span>
+            <span className="lot">LOT&nbsp; 2301234</span>
+            <span className="exp">2026-12-31</span>
+            <div className="barcode-bars"></div>
+            <div className="barcode-number">0&nbsp;&nbsp;84418&nbsp;12345&nbsp;&nbsp;7</div>
+          </div>
+        </div>
+        <div className="camera-actions" aria-label="Camera controls">
+          <button type="button" aria-label="Toggle flashlight">
+            <Icon name="icon-bolt" className="mobile-control-icon" />
+          </button>
+          <button className="shutter" type="button" aria-label="Scan item"></button>
+          <button type="button" aria-label="Open photo library">
+            <Icon name="icon-image" className="mobile-control-icon" />
+          </button>
+        </div>
+      </div>
+
+      <section className="recognized-sheet" aria-labelledby="recognizedHeading">
+        <div className="recognized-heading">
+          <span className="recognized-check">
+            <Icon name="icon-check-circle" className="mobile-control-icon" />
+          </span>
+          <div>
+            <h2 id="recognizedHeading">Item recognized</h2>
+            <p>We found a match in your catalog.</p>
+          </div>
+          <button className="edit-match" type="button">
+            Edit
+            <Icon name="icon-edit" className="mobile-edit-icon" />
+          </button>
+        </div>
+
+        <article className="recognized-card">
+          <div className="recognized-product">
+            <div className="microbrush-thumb" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <h3>Microbrush Regular Superfine Blue<br /><span>100/Bag</span></h3>
+          </div>
+          <dl className="recognized-meta">
+            <div><dt>Supplier</dt><dd>Henry Schein</dd></div>
+            <div><dt>SKU</dt><dd>MBRREG-BLU-100</dd></div>
+            <div><dt>UOM</dt><dd>Bag</dd></div>
+            <div><dt>Unit Price</dt><dd>$12.45 <span>$0.1245 / ea</span></dd></div>
+          </dl>
+          <button className="mobile-primary-cta" type="button">
+            <Icon name="icon-check-circle" className="mobile-cta-icon" />
+            Add to Reorder List
+          </button>
+          <button className="mobile-secondary-cta" type="button">
+            <Icon name="icon-search" className="mobile-cta-icon" />
+            View item details
+          </button>
+          <button className="mobile-ghost-cta" type="button">
+            <Icon name="icon-plus" className="mobile-cta-icon" />
+            This isn't a match
+          </button>
+        </article>
+      </section>
+
+      <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
+        {bottomNav.map(([label, icon, action, active, badge]) => (
+          <button key={label} className={active ? "active" : ""} type="button" onClick={action || undefined}>
+            <span>
+              <Icon name={icon} className="mobile-bottom-icon" />
+              {badge && <b>{badge}</b>}
+            </span>
+            {label}
+          </button>
+        ))}
+      </nav>
+    </section>
   );
 }
 
@@ -458,6 +606,7 @@ export default function Home() {
   const [uploadItemsEditMode, setUploadItemsEditMode] = useState(false);
   const [neededByDate, setNeededByDate] = useState("");
   const [uploadStep, setUploadStep] = useState("upload");
+  const [mobileAddItemRoute, setMobileAddItemRoute] = useState(false);
   const [addItemsTab, setAddItemsTab] = useState("history");
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [draftItems, setDraftItems] = useState([]);
@@ -472,6 +621,7 @@ export default function Home() {
       const nextRoute = viewFromPath(window.location.pathname);
       setIsLoggedIn(nextRoute.isLoggedIn);
       setViewState(nextRoute.view);
+      setMobileAddItemRoute(Boolean(nextRoute.mobileAddItemRoute));
       if (nextRoute.view === "upload") {
         const step = nextRoute.uploadStep || "upload";
         setUploadStep(step);
@@ -632,6 +782,7 @@ export default function Home() {
 
   function setView(nextView, options = {}) {
     setViewState(nextView);
+    setMobileAddItemRoute(false);
     setMenuOpen(false);
     const nextPath = nextView === "upload"
       ? uploadStepRoutes[uploadStep] || uploadStepRoutes.upload
@@ -804,6 +955,7 @@ export default function Home() {
   const navItems = [
     ["landing", "icon-home", "Dashboard"],
     ["upload", "icon-plus-circle", "Add Items"],
+    ["matchReview", "icon-search", "Match Review"],
     ["catalog", "icon-list", "Reorder List"],
     ["quote", "icon-cart", "Reorder Run"],
     ["supplier", "icon-truck", "Supplier Handoff"],
@@ -822,7 +974,7 @@ export default function Home() {
 
   return (
     <>
-      <div className={`app-shell ${menuOpen ? "menu-open" : ""}`}>
+      <div className={`app-shell ${menuOpen ? "menu-open" : ""} ${mobileAddItemRoute ? "mobile-add-item-shell" : ""}`}>
         <header className="app-header app-accountbar">
           <div className="brand-block">
             <button className="brand-home" type="button" onClick={goToLanding} aria-label="MedMKP home">
@@ -895,8 +1047,25 @@ export default function Home() {
             </section>
           )}
 
+          {view === "matchReview" && (
+            <section className="view active" aria-labelledby="matchReviewHeading">
+              <MatchReviewPage
+                items={visibleDraftItems}
+                sourceName={uploadedDocs[0]?.name}
+                onGoToAddItems={() => setView("upload")}
+              />
+            </section>
+          )}
+
           {view === "upload" && (
-            <section className="view active upload-view" data-testid="upload-view" aria-labelledby="uploadHeading">
+            <section className={`view active upload-view ${mobileAddItemRoute ? "mobile-add-item-route" : ""}`} data-testid="upload-view" aria-labelledby="uploadHeading">
+              {mobileAddItemRoute && (
+                <MobileScanItemView
+                  onBack={() => setView("upload")}
+                  onDashboard={() => setView("landing")}
+                />
+              )}
+              <div className="desktop-upload-content">
               <div className="upload-page-heading">
                 <div>
                   <h2 id="uploadHeading">Add / Import Items</h2>
@@ -948,10 +1117,11 @@ export default function Home() {
                       onDrop={handleInvoiceDrop}
                     >
                       <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
-                      <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop your file here" : hasUploadedInvoice ? "Add another invoice" : "Drag and drop your file here"}</h3>
-                      <p>{uploading ? selectedInvoiceName : selectedInvoiceName || "or select a file"}</p>
-                      <span className="select-file-button"><Icon name="icon-cloud-upload" className="button-icon" />Select file</span>
-                      <small>Accepted files: PDF · Max file size: 20MB</small>
+                      <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop your file here" : hasUploadedInvoice ? "Add another invoice" : "Drag and drop files here"}</h3>
+                      <p>{uploading ? selectedInvoiceName : selectedInvoiceName || "or"}</p>
+                      <span className="select-file-button"><Icon name="icon-cloud-upload" className="button-icon" />Choose files</span>
+                      <small>Accepted formats: PDF, CSV, XLSX</small>
+                      <small>Max file size: 20MB</small>
                       {uploading && (
                         <div className="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}>
                           <div className="processing-track">
@@ -1080,6 +1250,7 @@ export default function Home() {
                   savings={draftSavings}
                 />
               )}
+              </div>
             </section>
           )}
 
@@ -1387,6 +1558,364 @@ const dashboardPriorities = [
   ["icon-link", "amber", "Update supplier links for 4 items", "Links expired or missing", "Due May 14"],
   ["icon-tag", "red", "Check price increase on gloves", "2 items with upcoming increases", "Due May 15"],
 ];
+
+const matchReviewSample = [
+  {
+    id: 1, importedName: "BIBS, 2PLY, BLUE, 500/BX", importedSub: "SKU: 112-4521",
+    supplier: "Henry Schein", matchName: "Patient Bibs 2-Ply Blue", matchSub: "112-4521 · 500/Box",
+    confidence: 95, price: 35.20, perEa: 0.070, status: "Matched", qty: 500, uom: "Box", lineTotal: 35.20,
+    others: [
+      { name: "Patient Bibs 2-Ply Blue", sub: "112-4520 · 250/Box", supplier: "Henry Schein", price: 18.90, perEa: 0.076, confidence: 85 },
+      { name: "Patient Bibs 3-Ply Blue", sub: "113-1070 · 500/Box", supplier: "Henry Schein", price: 41.50, perEa: 0.083, confidence: 62 },
+    ],
+  },
+  {
+    id: 2, importedName: "Microbrush Superfine", importedSub: "REGULAR, BLUE, 100/BAG",
+    supplier: "Henry Schein", matchName: "Microbrush Regular Superfine Blue (100/bag)", matchSub: "100-2604",
+    confidence: 88, price: 12.45, perEa: 0.125, status: "Matched", qty: 100, uom: "Bag", lineTotal: 12.45,
+    others: [{ name: "Microbrush Superfine Blue", sub: "100-2601 · 100/Bag", supplier: "Henry Schein", price: 11.90, perEa: 0.119, confidence: 71 }],
+  },
+  {
+    id: 3, importedName: "3M Clinpro White", importedSub: "VARNISH 5% SOD FLUORIDE",
+    supplier: "3M", matchName: "Clinpro White Varnish", matchSub: "5% Sodium Fluoride, 50/Pack · 12125",
+    confidence: 92, price: 64.99, perEa: 1.30, status: "Matched", qty: 50, uom: "Pack", lineTotal: 64.99,
+    others: [{ name: "Clinpro 5% Sodium Fluoride Varnish", sub: "12126 · 100/Pack", supplier: "3M", price: 119.00, perEa: 1.19, confidence: 64 }],
+  },
+  {
+    id: 4, importedName: "Kerr OptiBond", importedSub: "ALL-IN-ONE ADHESIVE 5ML",
+    supplier: "Henry Schein", matchName: "OptiBond All-In-One Adhesive 5ml", matchSub: "36581",
+    confidence: 74, price: 123.10, perEa: 123.10, status: "Review", qty: 1, uom: "Each", lineTotal: 123.10,
+    others: [{ name: "OptiBond Universal Adhesive 5ml", sub: "37210", supplier: "Henry Schein", price: 118.50, perEa: 118.50, confidence: 58 }],
+  },
+  {
+    id: 5, importedName: "CaviWipes", importedSub: "DISINFECTING WIPES 160CT",
+    supplier: "Metrex", matchName: "CaviWipes Disinfecting Wipes 160 Count", matchSub: "13-1100",
+    confidence: 45, price: 11.75, perEa: 0.073, status: "Review", qty: 160, uom: "Count", lineTotal: 11.75,
+    others: [{ name: "CaviWipes XL Disinfecting Wipes", sub: "13-1090 · 65 Count", supplier: "Metrex", price: 9.40, perEa: 0.145, confidence: 39 }],
+  },
+  {
+    id: 6, importedName: "XYZ Disposable", importedSub: "NEEDLE 27G SHORT 100/BX",
+    supplier: "—", matchName: null, matchSub: null, confidence: null, price: null, perEa: null, status: "Not found", qty: 100, uom: "Box", lineTotal: null, others: [],
+  },
+  {
+    id: 7, importedName: "Gauze Sponges 2x2", importedSub: "NON STERILE 4 PLY 200/BAG",
+    supplier: "—", matchName: null, matchSub: null, confidence: null, price: null, perEa: null, status: "Not found", qty: 200, uom: "Bag", lineTotal: null, others: [],
+  },
+];
+
+const matchReviewSampleStats = { total: 124, matched: 82, review: 28, notFound: 14, high: 64, med: 40, low: 20, matchedPct: 66, reviewPct: 23, notFoundPct: 11 };
+
+const MR_STATUS = {
+  Matched: { cls: "matched", label: "Matched" },
+  Review: { cls: "review", label: "Review" },
+  "Not found": { cls: "notfound", label: "Not found" },
+};
+
+function mrMoney(n) { return `$${Number(n).toFixed(2)}`; }
+function mrEa(n) { return Number(n) >= 1 ? Number(n).toFixed(2) : Number(n).toFixed(3); }
+function mrConfTone(n) { return n >= 80 ? "high" : n >= 50 ? "med" : "low"; }
+
+function MatchSupplier({ name }) {
+  if (!name || name === "—") return <span className="mr-supplier-none">—</span>;
+  const key = name.toLowerCase();
+  if (key.includes("schein")) return (<span className="mr-supplier"><img className="mr-supplier-img" src="/schein-logo.png" alt="" /><span>Henry Schein</span></span>);
+  if (key.includes("3m")) return <span className="mr-supplier mr-logo-3m">3M</span>;
+  if (key.includes("metrex")) return <span className="mr-supplier mr-logo-metrex">Metrex</span>;
+  return <span className="mr-supplier">{name}</span>;
+}
+
+function deriveMatchRows(items) {
+  return (items || []).map((item, index) => {
+    const conf = Math.round((item.recommendation?.confidence || 0) * 100);
+    const status = item.status === "Parsed" ? "Matched" : item.status === "No match" ? "Not found" : "Review";
+    const notFound = status === "Not found";
+    const supplier = notFound ? "—" : (item.selected?.supplier || item.oldVendor || "—");
+    const price = item.selected?.unitPrice ?? item.oldUnitPrice ?? 0;
+    const qty = item.draftQty ?? item.qty ?? 1;
+    const others = (item.recommendation?.offers || []).slice(0, 2).map((offer) => ({
+      name: offer.name || item.product,
+      sub: offer.sku || "",
+      supplier: offer.supplier_name || supplier,
+      price: (offer.comparable_price_cents ?? 0) / 100,
+      perEa: (offer.comparable_price_cents ?? 0) / 100,
+      confidence: Math.max(conf - 12, 40),
+    }));
+    return {
+      id: index + 1,
+      importedName: item.extractedFrom,
+      importedSub: item.sku ? `SKU: ${item.sku}` : (item.unit || ""),
+      supplier,
+      matchName: notFound ? null : item.product,
+      matchSub: notFound ? null : (item.selected?.sku || ""),
+      confidence: notFound ? null : conf,
+      price: notFound ? null : price,
+      perEa: notFound ? null : price,
+      status,
+      qty,
+      uom: item.unit || "ea",
+      lineTotal: notFound ? null : (item.selected?.total ?? price * qty),
+      others,
+    };
+  });
+}
+
+function mrComputeStats(rows) {
+  const total = rows.length;
+  const matched = rows.filter((r) => r.status === "Matched").length;
+  const review = rows.filter((r) => r.status === "Review").length;
+  const notFound = rows.filter((r) => r.status === "Not found").length;
+  const conf = rows.filter((r) => r.confidence != null);
+  const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
+  return {
+    total, matched, review, notFound,
+    high: conf.filter((r) => r.confidence >= 80).length,
+    med: conf.filter((r) => r.confidence >= 50 && r.confidence < 80).length,
+    low: conf.filter((r) => r.confidence < 50).length,
+    matchedPct: pct(matched), reviewPct: pct(review), notFoundPct: pct(notFound),
+  };
+}
+
+function MatchReviewDetail({ row }) {
+  if (row.status === "Not found") {
+    return (
+      <div className="mr-detail-inner">
+        <div className="mr-detail-head">
+          <strong>Item #{row.id}</strong>
+          <span className={`mr-status ${MR_STATUS[row.status].cls}`}>{MR_STATUS[row.status].label}</span>
+          <button className="mr-detail-close" type="button" aria-label="Close"><Icon name="icon-x" className="button-icon" /></button>
+        </div>
+        <div className="mr-detail-section">
+          <span className="mr-detail-label">Imported item</span>
+          <strong>{row.importedName}</strong>
+          <small>{row.importedSub}</small>
+        </div>
+        <div className="mr-detail-empty">
+          <p>No catalog match found for this item yet. Search the catalog to link it manually.</p>
+          <button className="primary-action" type="button">Find a match</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="mr-detail-inner">
+      <div className="mr-detail-head">
+        <strong>Item #{row.id}</strong>
+        <span className={`mr-status ${MR_STATUS[row.status].cls}`}>{MR_STATUS[row.status].label}</span>
+        <button className="mr-detail-close" type="button" aria-label="Close"><Icon name="icon-x" className="button-icon" /></button>
+      </div>
+      <div className="mr-detail-section">
+        <span className="mr-detail-label">Imported item</span>
+        <strong>{row.importedName}</strong>
+        <small>{row.importedSub}</small>
+      </div>
+      <div className="mr-detail-section">
+        <span className="mr-detail-label">Supplier</span>
+        <strong>{row.supplier === "—" ? "Unknown" : row.supplier}</strong>
+      </div>
+      <div className="mr-detail-section">
+        <div className="mr-detail-label-row"><span className="mr-detail-label">Best match</span><em className={`mr-conf-pill ${mrConfTone(row.confidence)}`}>{row.confidence}%</em></div>
+        <div className="mr-best">
+          <Icon name="icon-check-circle" className="mr-best-check" />
+          <div className="mr-best-body">
+            <strong>{row.matchName}</strong>
+            <small>{row.matchSub}</small>
+            <small>{row.supplier}</small>
+          </div>
+          <div className="mr-best-price"><strong>{mrMoney(row.price)}</strong><small>${mrEa(row.perEa)} / ea</small></div>
+        </div>
+      </div>
+      {row.others?.length > 0 && (
+        <div className="mr-detail-section">
+          <span className="mr-detail-label">Other possible matches</span>
+          {row.others.map((offer, index) => (
+            <label className="mr-other" key={index}>
+              <input type="radio" name={`match-${row.id}`} />
+              <div className="mr-other-body"><strong>{offer.name}</strong><small>{offer.sub}</small><small>{offer.supplier}</small></div>
+              <div className="mr-other-right"><em className={`mr-conf-pill ${mrConfTone(offer.confidence)}`}>{offer.confidence}%</em><strong>{mrMoney(offer.price)}</strong><small>${mrEa(offer.perEa)} / ea</small></div>
+            </label>
+          ))}
+        </div>
+      )}
+      <div className="mr-detail-section">
+        <span className="mr-detail-label">Item details</span>
+        <div className="mr-item-details">
+          <div><small>Quantity</small><strong>{row.qty}</strong></div>
+          <div><small>UOM</small><strong>{row.uom}</strong></div>
+          <div><small>Line total</small><strong>{row.lineTotal != null ? mrMoney(row.lineTotal) : "—"}</strong></div>
+        </div>
+      </div>
+      <div className="mr-detail-section">
+        <span className="mr-detail-label">Notes (optional)</span>
+        <textarea className="mr-notes" placeholder="Add a note..." maxLength={200} />
+        <small className="mr-notes-count">0 / 200</small>
+      </div>
+      <button className="primary-action mr-confirm" type="button">Confirm match</button>
+      <button className="secondary-action mr-change" type="button">Change match <Icon name="icon-chevron-down" className="button-icon" /></button>
+    </div>
+  );
+}
+
+function MatchReviewPage({ items, sourceName, onGoToAddItems }) {
+  const realRows = deriveMatchRows(items);
+  const usingReal = realRows.length > 0;
+  const rows = usingReal ? realRows : matchReviewSample;
+  const source = usingReal ? (sourceName || "your uploaded file") : "INV-2024-0521.pdf";
+  const stats = usingReal ? mrComputeStats(rows) : matchReviewSampleStats;
+
+  const [activeTab, setActiveTab] = useState("all");
+  const [selectedId, setSelectedId] = useState(rows[0]?.id ?? null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set(usingReal ? [] : [1]));
+
+  const tabFilter = {
+    all: () => true,
+    matched: (r) => r.status === "Matched",
+    review: (r) => r.status === "Review",
+    notfound: (r) => r.status === "Not found",
+  };
+  const filtered = rows.filter(tabFilter[activeTab]);
+  const selected = rows.find((r) => r.id === selectedId) || filtered[0] || rows[0];
+
+  function toggleChecked(id) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  const allChecked = filtered.length > 0 && filtered.every((r) => checkedIds.has(r.id));
+  function toggleAll() {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (allChecked) filtered.forEach((r) => next.delete(r.id));
+      else filtered.forEach((r) => next.add(r.id));
+      return next;
+    });
+  }
+
+  const confMax = Math.max(stats.high, stats.med, stats.low, 1);
+  const steps = [["Add / Import", "done"], ["Match Review", "active"], ["Reorder List", "todo"], ["Complete", "todo"]];
+
+  return (
+    <div className="match-review">
+      <div className="mr-heading">
+        <div>
+          <h2 id="matchReviewHeading">Match Review</h2>
+          <p>Review and match imported items to your supplier catalog.</p>
+        </div>
+        <div className="mr-heading-actions">
+          <button className="secondary-action compact" type="button">Import summary</button>
+          <button className="secondary-action compact" type="button">Actions <Icon name="icon-chevron-down" className="button-icon" /></button>
+        </div>
+      </div>
+
+      <div className="mr-stepper">
+        {steps.map(([label, state], index) => (
+          <button
+            key={label}
+            type="button"
+            className={`mr-step ${state}`}
+            onClick={() => { if (label === "Add / Import") onGoToAddItems(); }}
+          >
+            <span className="mr-step-dot">{state === "done" ? <Icon name="icon-check" className="button-icon" /> : index + 1}</span>
+            <span className="mr-step-label">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mr-stats">
+        <div className="mr-stat-card">
+          <span className="mr-stat-label">Total items</span>
+          <strong className="mr-stat-value">{stats.total}</strong>
+          <span className="mr-stat-sub">From {source}</span>
+        </div>
+        <div className="mr-stat-card">
+          <span className="mr-stat-label">Matched</span>
+          <strong className="mr-stat-value green">{stats.matched}</strong>
+          <span className="mr-stat-sub">{stats.matchedPct}%</span>
+        </div>
+        <div className="mr-stat-card">
+          <span className="mr-stat-label">Needs review</span>
+          <strong className="mr-stat-value amber">{stats.review}</strong>
+          <span className="mr-stat-sub">{stats.reviewPct}%</span>
+        </div>
+        <div className="mr-stat-card">
+          <span className="mr-stat-label">Not found</span>
+          <strong className="mr-stat-value red">{stats.notFound}</strong>
+          <span className="mr-stat-sub">{stats.notFoundPct}%</span>
+        </div>
+        <div className="mr-confidence-card">
+          <div className="mr-confidence-head"><span>Match confidence</span><Icon name="icon-info" className="button-icon" /></div>
+          {[["High (80-100%)", "high", stats.high], ["Medium (50-79%)", "med", stats.med], ["Low (0-49%)", "low", stats.low]].map(([label, tone, value]) => (
+            <div className="mr-conf-row" key={tone}>
+              <span>{label}</span>
+              <i className="mr-conf-bar"><b className={tone} style={{ width: `${(value / confMax) * 100}%` }} /></i>
+              <em>{value}</em>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mr-layout">
+        <div className="mr-table-card">
+          <div className="mr-tabs-row">
+            <nav className="mr-tabs">
+              {[["all", `All items (${rows.length})`], ["matched", `Matched (${stats.matched})`], ["review", `Needs review (${stats.review})`], ["notfound", `Not found (${stats.notFound})`]].map(([id, label]) => (
+                <button key={id} type="button" className={activeTab === id ? "active" : ""} onClick={() => setActiveTab(id)}>{label}</button>
+              ))}
+            </nav>
+            <div className="mr-tabs-actions">
+              <button className="secondary-action compact" type="button"><Icon name="icon-filter" className="button-icon" />Filters</button>
+              <button className="secondary-action compact" type="button">Bulk actions <Icon name="icon-chevron-down" className="button-icon" /></button>
+            </div>
+          </div>
+
+          <div className="mr-table">
+            <div className="mr-table-head">
+              <span><input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" /></span>
+              <span>#</span><span>Imported item</span><span>Supplier</span><span>Possible match</span><span>Confidence</span><span>Price</span><span>Status</span><span>Action</span>
+            </div>
+            {filtered.map((row) => (
+              <div className={`mr-row ${selected?.id === row.id ? "selected" : ""}`} key={row.id} onClick={() => setSelectedId(row.id)}>
+                <span><input type="checkbox" checked={checkedIds.has(row.id)} onChange={() => toggleChecked(row.id)} onClick={(event) => event.stopPropagation()} aria-label={`Select item ${row.id}`} /></span>
+                <span className="mr-num">{row.id}</span>
+                <span className="mr-imported"><strong>{row.importedName}</strong><small>{row.importedSub}</small></span>
+                <span><MatchSupplier name={row.supplier} /></span>
+                <span className="mr-match">{row.matchName ? (<><strong>{row.matchName}</strong><small>{row.matchSub}</small></>) : <span className="mr-dash">—</span>}</span>
+                <span>{row.confidence != null ? <em className={`mr-conf-pill ${mrConfTone(row.confidence)}`}>{row.confidence}%</em> : <span className="mr-dash">—</span>}</span>
+                <span className="mr-price">{row.price != null ? (<><strong>{mrMoney(row.price)}</strong><small>${mrEa(row.perEa)} / ea</small></>) : <span className="mr-dash">—</span>}</span>
+                <span className={`mr-status ${MR_STATUS[row.status].cls}`}>{MR_STATUS[row.status].label}</span>
+                <span className="mr-action">
+                  {row.status === "Not found"
+                    ? <button className="mr-find" type="button" onClick={(event) => { event.stopPropagation(); setSelectedId(row.id); }}>Find match</button>
+                    : <button className="mr-caret" type="button" onClick={(event) => event.stopPropagation()} aria-label="Row actions"><Icon name="icon-chevron-down" className="button-icon" /></button>}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mr-pagination">
+            <span className="mr-pag-count">Showing 1 to {Math.min(25, filtered.length)} of {usingReal ? filtered.length : stats.total} items</span>
+            <div className="mr-pages">
+              <button className="mr-page-arrow" type="button" aria-label="Previous page"><Icon name="icon-chevron-left" className="button-icon" /></button>
+              <button className="active" type="button">1</button>
+              <button type="button">2</button>
+              <button type="button">3</button>
+              <button type="button">4</button>
+              <button type="button">5</button>
+              <span className="mr-page-ellipsis">…</span>
+              <button className="mr-page-arrow" type="button" aria-label="Next page"><Icon name="icon-chevron-right" className="button-icon" /></button>
+            </div>
+            <div className="mr-rows-per"><span>Rows per page</span><span className="mr-rows-select">25 <Icon name="icon-chevron-down" className="button-icon" /></span></div>
+          </div>
+        </div>
+
+        <aside className="mr-detail">
+          {selected && <MatchReviewDetail row={selected} />}
+        </aside>
+      </div>
+    </div>
+  );
+}
 
 function DashboardPage({ onNewRequest }) {
   return (
