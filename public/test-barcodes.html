@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MedMKP · Dental Supply Test Barcodes</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 32px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f3f5f9; color: #0f1b33; }
+  header { max-width: 920px; margin: 0 auto 24px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  header p { margin: 0; color: #5a6b86; font-size: 14px; line-height: 1.5; }
+  .grid { max-width: 920px; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .card { background: #fff; border: 1px solid #e2e7f0; border-radius: 12px; padding: 18px 18px 12px; box-shadow: 0 1px 2px rgba(15,27,51,.06); text-align: center; }
+  .card .name { font-size: 14px; font-weight: 700; margin: 0 0 2px; }
+  .card .meta { font-size: 12px; color: #5a6b86; margin: 0 0 12px; }
+  .card svg { width: 100%; height: auto; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #0f62ff; background: #eaf1ff; border-radius: 999px; padding: 3px 8px; margin-bottom: 8px; }
+  footer { max-width: 920px; margin: 24px auto 0; color: #8693a8; font-size: 12px; }
+  @media print { body { background: #fff; padding: 0; } .card { box-shadow: none; break-inside: avoid; } }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+</style>
+
+<header>
+  <h1>Dental supply test barcodes</h1>
+  <p>Open this on one screen (or print it) and point the MedMKP scanner at a code. Code&nbsp;128 encodes internal SKUs; UPC‑A mimics manufacturer retail barcodes. All are real, scannable symbologies the <code>BarcodeDetector</code> API recognizes.</p>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<footer>Generated for QA — not a committed app asset. Served at <code>/test-barcodes.html</code>.</footer>
+
+<script src="/jsbarcode.min.js"></script>
+<script>
+  const items = [
+    { name: "Microbrush Regular Superfine Blue · 100/Bag", meta: "Henry Schein", value: "MBRREG-BLU-100", fmt: "CODE128", tag: "SKU" },
+    { name: "Gauze Sponges 2x2 8-ply · 200/Pk", meta: "Henry Schein", value: "HS-GAUZE-2X2-200", fmt: "CODE128", tag: "SKU" },
+    { name: "Filtek Universal Composite · Shade A2", meta: "3M ESPE", value: "051131884021", fmt: "UPC", tag: "UPC-A" },
+    { name: "Lidocaine HCl 2% Epi 1:100k · 50/Bx", meta: "Septodont", value: "SEP-LIDO2-EPI-50", fmt: "CODE128", tag: "SKU" },
+    { name: "Disposable Prophy Angles Soft · 100/Bx", meta: "Premier", value: "PRM-PROPHY-SOFT-100", fmt: "CODE128", tag: "SKU" },
+    { name: "Earloop Procedure Masks Level 3 · 50/Bx", meta: "Crosstex", value: "012345678905", fmt: "UPC", tag: "UPC-A" },
+    { name: "Cavitron Insert FSI-1000 30K", meta: "Dentsply Sirona", value: "DEN-CAV-FSI1000-30K", fmt: "CODE128", tag: "SKU" },
+    { name: "Nitrile Exam Gloves PF · Medium · 200/Bx", meta: "Patterson", value: "PAT-GLOVE-NIT-M-200", fmt: "CODE128", tag: "SKU" },
+  ];
+
+  const grid = document.getElementById("grid");
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const svgId = "bc-" + item.value.replace(/[^a-z0-9]/gi, "");
+    card.innerHTML =
+      '<span class="tag">' + item.tag + '</span>' +
+      '<p class="name">' + item.name + '</p>' +
+      '<p class="meta">' + item.meta + '</p>' +
+      '<svg id="' + svgId + '"></svg>';
+    grid.appendChild(card);
+    JsBarcode("#" + svgId, item.value, {
+      format: item.fmt,
+      displayValue: true,
+      fontSize: 14,
+      height: 70,
+      margin: 8,
+    });
+  }
+</script>
