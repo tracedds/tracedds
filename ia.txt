@@ -1,0 +1,40 @@
+Home
+├── Current Reorder List
+│   ├── Add Items
+│   │   ├── Upload
+│   │   ├── Scan Barcode
+│   │   └── Search Products
+│   ├── Item List
+│   │   ├── All
+│   │   ├── Confirmed
+│   │   ├── Possible Match
+│   │   └── No Match
+│   ├── Buying Preferences
+│   └── Plan Preview
+│       └── Open Procurement Plan
+│
+└── Procurement Plan
+    ├── Editable Buying Preferences
+    ├── Supplier Grouping
+    ├── Included Items
+    ├── Unresolved Items
+    └── Prepare Supplier Handoff
+        └── Supplier Handoff
+            ├── Frozen snapshot
+            ├── Supplier-by-supplier instructions
+            ├── Export CSV / PDF
+            ├── Copy order details
+            ├── Open supplier websites
+            └── Archive list / start new list
+
+History
+├── Archived Reorder Lists
+│   └── Reopen / Duplicate / View related handoff
+└── Supplier Handoffs
+    └── Reopen frozen handoff
+
+Settings
+├── Default Buying Preferences
+├── Suppliers
+├── Team / Office
+└── Account

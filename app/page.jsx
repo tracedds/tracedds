@@ -1356,11 +1356,6 @@ const CRL_STATUS = {
 const CRL_SAMPLE_SOURCES = { 1: "pdf", 2: "csv", 3: "scan", 4: "pdf", 5: "csv", 6: "scan", 7: "pdf" };
 const CRL_SOURCE_ICON = { pdf: "icon-file-text", csv: "icon-table", scan: "icon-scan" };
 
-const CRL_ADD_CARDS = [
-  ["upload", "icon-cloud-upload", "Upload", "Invoice, reorder sheet, or photo", "PDF, PNG, JPG, Excel, CSV"],
-  ["scan", "icon-scan", "Scan Barcode", "Camera or scanner", ""],
-  ["search", "icon-search", "Search Products", "Search catalog", ""],
-];
 
 // The Home surface: the active reorder list. Add Items (upload / scan / search)
 // feeds the Item List below; the right rail summarizes status and next steps.
@@ -1378,6 +1373,124 @@ function ProductThumb({ image, alt }) {
     );
   }
   return <span className="crl-thumb crl-thumb-empty"><Icon name="icon-image" className="button-icon" /></span>;
+}
+
+function candidateSub(supplier, sub) {
+  return [supplier, sub].filter(Boolean).join(" · ");
+}
+
+// Right-docked detail panel for a reorder-list row. Adapts by mode:
+//  - view: an already-matched item (Verified) — confirm or change the match
+//  - review: a low-confidence match (Verify Match) — pick the best match
+//  - resolve: no catalog match — search to link a product
+function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
+  const isResolve = mode === "resolve";
+  const isView = mode === "view";
+  const candidates = isResolve ? [] : [
+    { name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, image: row.image, recommended: true },
+    ...(row.others || []).map((offer) => ({ name: offer.name, supplier: offer.supplier, sub: offer.sub, price: offer.price, image: "", recommended: false })),
+  ];
+  const [selected, setSelected] = useState(0);
+  const [qty, setQty] = useState(row.qty || 1);
+  const [notes, setNotes] = useState("");
+  const status = CRL_STATUS[row.status];
+  const sourceLabel = row.source === "scan" ? "From Barcode Scan" : row.source === "csv" ? "From Reorder Sheet" : "From Invoice";
+  const title = isResolve ? "Resolve item" : isView ? "Product match" : "Verify product match";
+  const subtitle = isResolve
+    ? "We couldn’t match this item. Find the right product to link."
+    : isView
+      ? "Confirm or change the product matched to this item."
+      : "Please confirm the best match for this imported item.";
+
+  function confirm() {
+    onClose();
+    onToast(isResolve ? "Product linked to item" : "Match confirmed");
+  }
+
+  return (
+    <aside className="crl-detail" role="region" aria-label={title}>
+      <header className="crl-drawer-head">
+        <div className="crl-drawer-title">
+          <span className="crl-drawer-shield"><Icon name="icon-shield-check" className="button-icon" /></span>
+          <div>
+            <h3>{title}</h3>
+            <p>{subtitle}</p>
+          </div>
+        </div>
+        <div className="crl-drawer-head-actions">
+          <button type="button" aria-label={wide ? "Collapse panel" : "Expand panel"} onClick={onToggleWide}><span aria-hidden="true">⤢</span></button>
+          <button type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </div>
+      </header>
+
+      <div className="crl-drawer-body">
+        <section className="crl-drawer-section">
+          <div className="crl-drawer-section-head">
+            <span className="crl-drawer-label">Imported item</span>
+            <span className="crl-drawer-badge">{sourceLabel}</span>
+          </div>
+          <div className="crl-imported">
+            <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
+            <div className="crl-imported-info">
+              <strong>{row.matchName || row.importedName}</strong>
+              <small>Imported on Jun 2, 2025</small>
+              <div className="crl-qty-step">
+                <span>Qty:</span>
+                <button type="button" aria-label="Decrease quantity" onClick={() => setQty((value) => Math.max(1, value - 1))}>−</button>
+                <em>{qty} {row.uom}</em>
+                <button type="button" aria-label="Increase quantity" onClick={() => setQty((value) => value + 1)}>+</button>
+              </div>
+              <div className="crl-imported-status">Status: <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span></div>
+            </div>
+          </div>
+        </section>
+
+        {isResolve ? (
+          <section className="crl-drawer-section">
+            <span className="crl-drawer-label">Find a match</span>
+            <label className="crl-search crl-drawer-search">
+              <Icon name="icon-search" className="button-icon" />
+              <input type="search" placeholder="Search products, SKUs, suppliers…" />
+            </label>
+            <p className="crl-drawer-empty">No catalog match found yet. Search above to link this item to a product.</p>
+          </section>
+        ) : (
+          <section className="crl-drawer-section">
+            <strong className="crl-drawer-subhead">Possible matches</strong>
+            <p className="crl-drawer-hint">Select the best match for this item.</p>
+            <div className="crl-cand-list">
+              {candidates.map((candidate, index) => (
+                <label key={index} className={`crl-cand ${selected === index ? "active" : ""}`}>
+                  <input type="radio" name="crl-cand" checked={selected === index} onChange={() => setSelected(index)} />
+                  <ProductThumb image={candidate.image} alt={candidate.name} />
+                  <span className="crl-cand-info">
+                    <strong>{candidate.name}</strong>
+                    <small>{candidateSub(candidate.supplier, candidate.sub)}</small>
+                  </span>
+                  <span className="crl-cand-right">
+                    <strong>{candidate.price != null ? mrMoney(candidate.price) : "—"}</strong>
+                    {candidate.recommended && <span className="crl-cand-rec">Recommended</span>}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <button className="crl-drawer-link" type="button"><Icon name="icon-search" className="button-icon" />Search for another product</button>
+          </section>
+        )}
+
+        <section className="crl-drawer-section">
+          <span className="crl-drawer-label">Notes (optional)</span>
+          <textarea className="crl-drawer-notes" maxLength={500} placeholder="Add a note about this item…" value={notes} onChange={(event) => setNotes(event.target.value)} />
+          <div className="crl-drawer-notes-count">{notes.length} / 500</div>
+        </section>
+      </div>
+
+      <footer className="crl-drawer-foot">
+        <button className="crl-ghost-btn" type="button" onClick={onClose}>{isView ? "Close" : "Cancel"}</button>
+        <button className="primary-action compact" type="button" onClick={confirm}>{isResolve ? "Confirm Match" : isView ? "Update Match" : "Confirm Selected Match"}</button>
+      </footer>
+    </aside>
+  );
 }
 
 function CurrentReorderList({
@@ -1413,6 +1526,10 @@ function CurrentReorderList({
   const totalItems = usingReal ? rows.length : stats.total;
   const [tab, setTab] = useState("all");
   const [editingPrefs, setEditingPrefs] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [detailWide, setDetailWide] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const tabFilter = {
     all: () => true,
@@ -1429,31 +1546,67 @@ function CurrentReorderList({
           <h2 id="homeHeading">Current Reorder List</h2>
           <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Autosaved just now</span>
         </div>
-        <button className="crl-more" type="button">More actions <Icon name="icon-chevron-down" className="button-icon" /></button>
+        <div className="crl-header-actions">
+          <button
+            type="button"
+            className={`crl-add-scan ${addMode === "scan" ? "active" : ""}`}
+            onClick={() => onAddMode(addMode === "scan" ? "" : "scan")}
+          >
+            <Icon name="icon-scan" className="button-icon" />Scan Barcode
+          </button>
+          <div className="crl-add-menu-wrap">
+            <button
+              type="button"
+              className="crl-add-btn"
+              aria-haspopup="menu"
+              aria-expanded={addMenuOpen}
+              onClick={() => setAddMenuOpen((open) => !open)}
+            >
+              <Icon name="icon-plus" className="button-icon" />
+              Add Item
+              <span className="crl-add-caret"><Icon name="icon-chevron-down" className="button-icon" /></span>
+            </button>
+            {addMenuOpen && (
+              <>
+                <div className="crl-add-menu-backdrop" onClick={() => setAddMenuOpen(false)} />
+                <div className="crl-add-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); onAddMode("upload"); }}>
+                    <Icon name="icon-cloud-upload" className="button-icon" />
+                    <span><strong>Upload</strong><small>Invoice or reorder sheet</small></span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); onAddMode("search"); }}>
+                    <Icon name="icon-search" className="button-icon" />
+                    <span><strong>Search items</strong><small>Find products in the catalog</small></span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="crl-more-wrap">
+            <button className="crl-more crl-more-kebab" type="button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More actions" onClick={() => setMoreOpen((open) => !open)}>
+              <svg className="crl-kebab-dots" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+            </button>
+            {moreOpen && (
+              <>
+                <div className="crl-add-menu-backdrop" onClick={() => setMoreOpen(false)} />
+                <div className="crl-add-menu crl-more-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onToast("List archived"); }}>
+                    <Icon name="icon-clipboard" className="button-icon" />
+                    <span><strong>Archive this list</strong><small>Move to list history</small></span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onToast("List cleared"); }}>
+                    <Icon name="icon-trash" className="button-icon crl-menu-danger" />
+                    <span><strong>Clear this list</strong><small>Remove all items</small></span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </header>
 
-      <div className="crl-layout">
-        <div className="crl-main">
-          <section className="crl-add">
-            <h3 className="crl-add-title">Add items to your list</h3>
-            <div className="crl-add-cards">
-              {CRL_ADD_CARDS.map(([id, icon, title, line1, line2]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`crl-add-card ${addMode === id ? "active" : ""}`}
-                  onClick={() => onAddMode(addMode === id ? "" : id)}
-                >
-                  <span className="crl-add-icon"><Icon name={icon} className="button-icon" /></span>
-                  <span className="crl-add-body">
-                    <strong>{title}</strong>
-                    <small>{line1}</small>
-                    {line2 && <small>{line2}</small>}
-                  </span>
-                </button>
-              ))}
-            </div>
-
+      {(addMode === "scan" || addMode === "search") && (
+        <section className="crl-add">
             {addMode === "scan" && (
               <div className="crl-add-panel"><DesktopBarcodeScan onScan={onScan} /></div>
             )}
@@ -1475,7 +1628,10 @@ function CurrentReorderList({
               </div>
             )}
           </section>
+      )}
 
+      <div className={`crl-layout ${detail ? "has-detail" : ""} ${detail && detailWide ? "detail-wide" : ""}`}>
+        <div className="crl-main">
           <section className="crl-list">
             <div className="crl-tabs-row">
               <nav className="crl-tabs" aria-label="Item list filters">
@@ -1508,9 +1664,10 @@ function CurrentReorderList({
               {filtered.map((row) => {
                 const status = CRL_STATUS[row.status];
                 const notFound = row.status === "Not found";
-                const actionLabel = notFound ? "Resolve" : row.status === "Review" ? "Review" : "View";
+                const mode = notFound ? "resolve" : row.status === "Review" ? "review" : "view";
+                const actionLabel = notFound ? "Resolve" : row.status === "Review" ? "Verify" : "View";
                 return (
-                  <div className="crl-row" key={row.id}>
+                  <div className={`crl-row ${detail?.row.id === row.id ? "active" : ""}`} key={row.id}>
                     <span><input type="checkbox" aria-label={`Select ${row.importedName}`} /></span>
                     <span className="crl-item">
                       <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
@@ -1545,7 +1702,7 @@ function CurrentReorderList({
                       )}
                     </span>
                     <span className="crl-actions">
-                      <button className={`crl-action-btn ${notFound ? "danger" : row.status === "Review" ? "warn" : ""}`} type="button">{actionLabel}</button>
+                      <button className={`crl-action-btn ${notFound ? "danger" : row.status === "Review" ? "warn" : ""}`} type="button" onClick={() => setDetail({ row, mode })}>{actionLabel}</button>
                       <button className="crl-kebab" type="button" aria-label="Row actions"><Icon name="icon-list" className="button-icon" /></button>
                     </span>
                   </div>
@@ -1560,17 +1717,17 @@ function CurrentReorderList({
           </section>
         </div>
 
+        {detail ? (
+          <MatchPanel
+            row={detail.row}
+            mode={detail.mode}
+            wide={detailWide}
+            onToggleWide={() => setDetailWide((value) => !value)}
+            onClose={() => { setDetail(null); setDetailWide(false); }}
+            onToast={onToast}
+          />
+        ) : (
         <aside className="crl-rail">
-          <section className="crl-card">
-            <h3>List summary</h3>
-            <div className="crl-sum">
-              <div><span>Total items</span><strong>{totalItems}</strong></div>
-              <div><span>Verified Matches</span><strong className="green">{stats.matched}</strong></div>
-              <div><span>Verify Match</span><strong className="gold">{stats.review}</strong></div>
-              <div><span>No Match</span><strong className="red">{stats.notFound}</strong></div>
-            </div>
-          </section>
-
           <section className="crl-card">
             <div className="crl-card-head">
               <h3>Buying Preferences</h3>
@@ -1634,19 +1791,8 @@ function CurrentReorderList({
             </div>
             <button className="crl-plan-btn" type="button" onClick={() => onToast("Procurement plan coming next")}>Open procurement plan <Icon name="icon-arrow-right" className="button-icon" /></button>
           </section>
-
-          <section className="crl-card">
-            <h3>Quick actions</h3>
-            <button className="crl-quick" type="button" onClick={() => onToast("List archived")}>
-              <Icon name="icon-clipboard" className="button-icon" />
-              <span><strong>Archive this list</strong><small>Move to list history</small></span>
-            </button>
-            <button className="crl-quick" type="button" onClick={() => onToast("List cleared")}>
-              <Icon name="icon-trash" className="button-icon crl-quick-danger" />
-              <span><strong>Clear this list</strong><small>Remove all items</small></span>
-            </button>
-          </section>
         </aside>
+        )}
       </div>
 
       {addMode === "upload" && (
@@ -1666,6 +1812,7 @@ function CurrentReorderList({
           onUploadAnother={onUploadAnother}
         />
       )}
+
     </div>
   );
 }
