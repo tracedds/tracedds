@@ -1540,7 +1540,7 @@ function CurrentReorderList({
   const filtered = rows.filter(tabFilter[tab] || tabFilter.all);
 
   return (
-    <div className="crl">
+    <div className={`crl ${detail ? "detail-open" : ""}`}>
       <header className="crl-header">
         <div className="crl-title">
           <h2 id="homeHeading">Current Reorder List</h2>
