@@ -51,7 +51,7 @@ function viewFromPath(pathname = "/") {
   if (path === "/") return { view: "landing", isLoggedIn: false };
   if (path === "/dashboard") return { view: "landing", isLoggedIn: true };
   if (path === "/add-item") return { view: "upload", isLoggedIn: true, uploadStep: "upload", mobileAddItemRoute: true };
-  if (path === "/add-items") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
+  if (path === "/add-items") return { view: "upload", isLoggedIn: true, uploadStep: "upload", mobileAddItemRoute: true };
   if (path === "/add-items/review") return { view: "upload", isLoggedIn: true, uploadStep: "upload" };
   if (path === "/add-items/recommendations") return { view: "upload", isLoggedIn: true, uploadStep: "recommendation" };
   if (path === "/add-items/savings") return { view: "upload", isLoggedIn: true, uploadStep: "savings" };
@@ -321,24 +321,59 @@ function Icon({ name, className = "nav-icon" }) {
   );
 }
 
-function MobileScanItemView({ onBack, onDashboard }) {
-  const bottomNav = [
-    ["Dashboard", "icon-home", onDashboard, false, ""],
-    ["Scan", "icon-scan", null, true, ""],
-    ["Reorder List", "icon-file-text", null, false, ""],
-    ["Notifications", "icon-settings", null, false, "3"],
-    ["More", "icon-list", null, false, ""],
-  ];
+function MobileScanItemView({ onBack }) {
+  const videoRef = useRef(null);
+  const [cameraStatus, setCameraStatus] = useState("requesting");
+
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 767px)").matches) {
+      return undefined;
+    }
+
+    let stream;
+    let isMounted = true;
+
+    async function openCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraStatus("unsupported");
+        return;
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+
+        if (!isMounted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => undefined);
+        }
+        setCameraStatus("ready");
+      } catch (error) {
+        setCameraStatus("denied");
+      }
+    }
+
+    openCamera();
+
+    return () => {
+      isMounted = false;
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   return (
     <section className="mobile-scan-screen" aria-labelledby="mobileScanHeading">
-      <div className="mobile-statusbar" aria-hidden="true">
-        <span>9:41</span>
-        <span className="mobile-status-icons">
-          <i></i><i></i><i></i>
-        </span>
-      </div>
-
       <header className="mobile-scan-header">
         <button className="mobile-scan-icon-button back" type="button" onClick={onBack} aria-label="Back to add items">
           <Icon name="icon-chevron-right" className="mobile-scan-icon" />
@@ -365,6 +400,18 @@ function MobileScanItemView({ onBack, onDashboard }) {
       </nav>
 
       <div className="mobile-camera-stage">
+        <video ref={videoRef} className="mobile-camera-video" playsInline muted autoPlay aria-label="Live camera preview"></video>
+        {cameraStatus !== "ready" && (
+          <div className="camera-permission-state">
+            <Icon name="icon-scan" className="mobile-control-icon" />
+            <strong>{cameraStatus === "requesting" ? "Camera access needed" : "Camera unavailable"}</strong>
+            <p>
+              {cameraStatus === "requesting"
+                ? "Allow camera access to scan item barcodes."
+                : "Enable camera permissions for this site, or use Photo or Manual Add."}
+            </p>
+          </div>
+        )}
         <div className="scan-instruction">Align barcode inside the frame</div>
         <div className="scan-frame" aria-hidden="true">
           <span className="corner top-left"></span>
@@ -372,18 +419,6 @@ function MobileScanItemView({ onBack, onDashboard }) {
           <span className="corner bottom-left"></span>
           <span className="corner bottom-right"></span>
           <span className="scan-line"></span>
-        </div>
-        <div className="product-box-capture" aria-hidden="true">
-          <div className="product-label">
-            <small>Henry Schein®</small>
-            <strong>Microbrush® Regular<br />Superfine Blue</strong>
-            <span className="unit">100/Bag</span>
-            <span className="ref">REF&nbsp; MBRREG-BLU-100</span>
-            <span className="lot">LOT&nbsp; 2301234</span>
-            <span className="exp">2026-12-31</span>
-            <div className="barcode-bars"></div>
-            <div className="barcode-number">0&nbsp;&nbsp;84418&nbsp;12345&nbsp;&nbsp;7</div>
-          </div>
         </div>
         <div className="camera-actions" aria-label="Camera controls">
           <button type="button" aria-label="Toggle flashlight">
@@ -438,19 +473,36 @@ function MobileScanItemView({ onBack, onDashboard }) {
           </button>
         </article>
       </section>
-
-      <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
-        {bottomNav.map(([label, icon, action, active, badge]) => (
-          <button key={label} className={active ? "active" : ""} type="button" onClick={action || undefined}>
-            <span>
-              <Icon name={icon} className="mobile-bottom-icon" />
-              {badge && <b>{badge}</b>}
-            </span>
-            {label}
-          </button>
-        ))}
-      </nav>
     </section>
+  );
+}
+
+function MobileBottomNav({ view, onNavigate, onScan }) {
+  const items = [
+    ["Dashboard", "icon-home", "landing", view === "landing", ""],
+    ["Scan", "icon-scan", "scan", view === "upload", ""],
+    ["Reorder List", "icon-file-text", "catalog", view === "catalog", ""],
+    ["Notifications", "icon-settings", "settings", false, "3"],
+    ["More", "icon-list", "settings", view === "settings", ""],
+  ];
+
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
+      {items.map(([label, icon, target, active, badge]) => (
+        <button
+          key={label}
+          className={active ? "active" : ""}
+          type="button"
+          onClick={() => target === "scan" ? onScan() : onNavigate(target)}
+        >
+          <span>
+            <Icon name={icon} className="mobile-bottom-icon" />
+            {badge && <b>{badge}</b>}
+          </span>
+          {label}
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -794,6 +846,17 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function openMobileScan() {
+    setViewState("upload");
+    setUploadStep("upload");
+    setMobileAddItemRoute(true);
+    setMenuOpen(false);
+    if (window.location.pathname !== "/add-items") {
+      window.history.pushState({}, "", "/add-items");
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function goToUploadStep(step) {
     setUploadStep(step);
     const nextPath = uploadStepRoutes[step] || uploadStepRoutes.upload;
@@ -1062,7 +1125,6 @@ export default function Home() {
               {mobileAddItemRoute && (
                 <MobileScanItemView
                   onBack={() => setView("upload")}
-                  onDashboard={() => setView("landing")}
                 />
               )}
               <div className="desktop-upload-content">
@@ -1432,6 +1494,7 @@ export default function Home() {
             </section>
           )}
         </main>
+        <MobileBottomNav view={view} onNavigate={setView} onScan={openMobileScan} />
         </div>
       </div>
 
