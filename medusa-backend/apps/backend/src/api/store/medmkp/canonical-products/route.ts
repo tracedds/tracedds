@@ -62,14 +62,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   }
   if (q) {
     const term = `%${q}%`
+    // Restrict to the trigram-indexed columns so Postgres can use the pg_trgm GIN
+    // indexes (name/handle/category, added in Migration20260617190000). Including
+    // description/attributes_text/unit_of_measure — which have no trgm index —
+    // forces a full seq scan (~1.8s vs ~0.8ms).
     where.push({
       $or: [
         { name: { $ilike: term } },
         { handle: { $ilike: term } },
         { category: { $ilike: term } },
-        { description: { $ilike: term } },
-        { attributes_text: { $ilike: term } },
-        { unit_of_measure: { $ilike: term } },
       ],
     })
   }
