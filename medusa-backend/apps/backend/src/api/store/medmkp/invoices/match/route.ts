@@ -8,7 +8,10 @@ import {
   type LineItemInput,
 } from "../../../../../matching/line-items"
 
-const INDEX_TTL_MS = 5 * 60 * 1000
+// The catalog index is expensive to build, so keep it warm for a while — the
+// underlying catalog only changes on re-ingestion. Longer TTL means far fewer
+// users hit the slow cold-build path between uploads.
+const INDEX_TTL_MS = 30 * 60 * 1000
 
 let indexPromise: Promise<CatalogIndex> | null = null
 

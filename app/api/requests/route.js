@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { createRequest, listRequests } from "../../../lib/requestStore";
 import { parseInvoicePdf } from "../../../lib/invoiceParser";
-
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+import { parseInvoiceCsv } from "../../../lib/csvParser";
 
 export async function GET() {
   const requests = await listRequests();
   return NextResponse.json({ requests });
 }
+
+// Bound the match call so a slow/unreachable Medusa (e.g. a cold catalog index
+// that's still building) can't hang the upload request forever — on timeout we
+// fall back to returning the parsed line items unmatched.
+const MATCH_TIMEOUT_MS = 150000;
 
 async function matchLineItems(vendor, lineItems) {
   const medusaUrl = process.env.MEDUSA_BACKEND_URL || "http://127.0.0.1:9000";
@@ -27,6 +31,7 @@ async function matchLineItems(vendor, lineItems) {
         })),
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(MATCH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -39,91 +44,63 @@ async function matchLineItems(vendor, lineItems) {
   }
 }
 
-const STATUS_BY_MATCH = {
-  exact: "Parsed",
-  variant: "Alternative",
-  needs_review: "Needs review",
-  unmatched: "No match",
-};
-
-const MATCH_TYPE_BY_STATUS = {
-  exact: "exact",
-  variant: "equivalent",
-  needs_review: "needs_review",
-  unmatched: "unmatched",
-};
-
-function describeMatch(match, savingsPerUnit) {
-  if (match.match_status === "unmatched") {
-    return "No catalog match yet. Keeping your current item and price until a buyer reviews it.";
-  }
-  const supplier = match.best_offer?.supplier_name;
-  if (savingsPerUnit > 0.005 && supplier) {
-    return `${supplier} carries this for ${money.format(savingsPerUnit)} less per ${match.input.unit || "unit"}.`;
-  }
-  if (supplier) {
-    return `Matched in the ${supplier} catalog at a comparable price.`;
-  }
-  return "Matched to the canonical catalog; no priced offer is available yet.";
+// Normalize a Medusa offer into the flat shape the reorder list consumes.
+// supplier-product name + supplier name feed the "Best matched product"
+// column; price_cents / unit_price_cents feed "Best price".
+function toOffer(offer) {
+  return {
+    name: offer.name,
+    supplier: offer.supplier_name,
+    supplierId: offer.supplier_id,
+    sku: offer.sku,
+    brand: offer.brand || "",
+    price: (offer.price_cents ?? 0) / 100,
+    comparablePrice: (offer.comparable_price_cents ?? offer.price_cents ?? 0) / 100,
+    perUnit: offer.unit_price_cents != null ? offer.unit_price_cents / 100 : null,
+    packQty: offer.pack_quantity ?? null,
+    packSize: offer.pack_size || "",
+    imageUrl: offer.image_url || "",
+  };
 }
 
-function toUiLineItem(match, vendor, neededBy) {
+// Flatten one matched line item. "product"/"canonicalName" is the canonical
+// catalog product (the Item column); "bestOffer"/"offers" are the supplier
+// products we can buy it from. Offers come pre-sorted by comparable price.
+function toUiLineItem(match, vendor, source) {
   const item = match.input;
-  const oldUnitPrice = (item.unit_price_cents ?? 0) / 100;
-  const best = match.best_offer;
-  const imageUrl = match.display_image_url ||
-    best?.image_url ||
-    match.offers?.find((offer) => offer.image_url)?.image_url ||
-    match.matched_supplier_product?.image_url ||
-    "";
-  const selectedUnitPrice = best ? Math.min(best.comparable_price_cents / 100, oldUnitPrice || Infinity) : oldUnitPrice;
-  const unitPrice = best ? best.comparable_price_cents / 100 : oldUnitPrice;
-  const useOffer = Boolean(best) && (oldUnitPrice === 0 || unitPrice <= oldUnitPrice);
-  const finalUnitPrice = useOffer ? unitPrice : oldUnitPrice;
-  const savingsPerUnit = Math.max(oldUnitPrice - finalUnitPrice, 0);
-  const matchType = MATCH_TYPE_BY_STATUS[match.match_status] || "needs_review";
-  const lowest = match.offers?.[0];
+  // Collapse duplicate catalog rows (same supplier + SKU) so alternatives
+  // don't list the same offer twice.
+  const seen = new Set();
+  const offers = (match.offers || []).map(toOffer).filter((offer) => {
+    const key = `${offer.supplier}|${offer.sku}|${offer.price}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const best = offers[0] || null;
+  const matched = match.match_status !== "unmatched";
+  const imageUrl = match.display_image_url || best?.imageUrl || match.matched_supplier_product?.image_url || "";
 
   return {
-    product: match.canonical_product?.name || best?.name || item.description,
+    source,
+    product: matched ? match.canonical_product?.name || best?.name || item.description : null,
+    canonicalName: matched ? match.canonical_product?.name || best?.name || null : null,
     imageUrl,
     extractedFrom: item.description,
     sku: item.sku || "",
     qty: item.qty || 1,
     unit: item.unit || "each",
-    oldVendor: vendor || "Current supplier",
-    oldUnitPrice,
-    neededBy: neededBy || "",
-    status: STATUS_BY_MATCH[match.match_status] || "Needs review",
-    recommendation: {
-      matchType,
-      confidence: (match.confidence || 0) / 100,
-      priorProductName: item.description,
-      recommendedProductName: useOffer ? best.name : item.description,
-      imageUrl,
-      recommendationReason: describeMatch(match, savingsPerUnit),
-      savingsPerUnit,
-      matchReason: match.match_reason,
-      offers: match.offers || [],
-    },
-    selected: {
-      supplier: useOffer ? best.supplier_name : vendor || "Current supplier",
-      sku: useOffer ? best.sku : item.sku || "",
-      image_url: useOffer ? best.image_url || imageUrl : imageUrl,
-      unitPrice: finalUnitPrice,
-      total: Number((finalUnitPrice * (item.qty || 1)).toFixed(2)),
-      reason: useOffer
-        ? savingsPerUnit > 0
-          ? `Best price across ${match.offers.length} supplier offer${match.offers.length === 1 ? "" : "s"}`
-          : "Matched supplier offer at parity"
-        : "Keeping current item until matched",
-    },
-    lowest: lowest ? `${lowest.supplier_name} · ${money.format(lowest.comparable_price_cents / 100)}` : "",
-    bestValue: best ? `${best.supplier_name} · ${money.format(best.comparable_price_cents / 100)}` : "",
+    oldVendor: vendor || "",
+    oldUnitPrice: (item.unit_price_cents ?? 0) / 100,
+    matchStatus: match.match_status,
+    confidence: (match.confidence || 0) / 100,
+    matchReason: match.match_reason || "",
+    bestOffer: best,
+    offers,
   };
 }
 
-function unmatchedUiLineItem(item, vendor, neededBy) {
+function unmatchedUiLineItem(item, vendor, source) {
   return toUiLineItem(
     {
       input: item,
@@ -135,7 +112,7 @@ function unmatchedUiLineItem(item, vendor, neededBy) {
       canonical_product: null,
     },
     vendor,
-    neededBy
+    source
   );
 }
 
@@ -144,33 +121,38 @@ export async function POST(request) {
   const file = formData.get("file");
 
   if (!file || typeof file === "string" || file.size === 0) {
-    return NextResponse.json({ error: "Upload a PDF invoice." }, { status: 400 });
+    return NextResponse.json({ error: "Upload a PDF or CSV invoice." }, { status: 400 });
   }
+
+  const fileName = (file.name || "").toLowerCase();
+  const isCsv = file.type === "text/csv" || file.type === "application/vnd.ms-excel" || fileName.endsWith(".csv");
+  const source = isCsv ? "csv" : "pdf";
 
   let parsed;
   try {
-    parsed = await parseInvoicePdf(await file.arrayBuffer());
+    parsed = isCsv ? parseInvoiceCsv(await file.text()) : await parseInvoicePdf(await file.arrayBuffer());
   } catch (error) {
     return NextResponse.json(
-      { error: "Could not read that PDF. Try a text-based invoice PDF (not a scan)." },
+      isCsv
+        ? { error: "Could not read that CSV. Include a header row with item, qty, and price columns." }
+        : { error: "Could not read that PDF. Try a text-based invoice PDF (not a scan)." },
       { status: 422 }
     );
   }
 
   if (!parsed.lineItems.length) {
     return NextResponse.json(
-      { error: "No line items found in that PDF. Make sure it includes an itemized table with quantities and prices." },
+      { error: `No line items found in that ${isCsv ? "CSV" : "PDF"}. Make sure it lists items with quantities and prices.` },
       { status: 422 }
     );
   }
 
   const vendor = String(formData.get("supplierName") || "") || parsed.vendor;
-  const neededBy = String(formData.get("neededBy") || "");
   const matched = await matchLineItems(vendor, parsed.lineItems);
 
   const lineItems = matched
-    ? matched.line_items.map((match) => toUiLineItem(match, vendor, neededBy))
-    : parsed.lineItems.map((item) => unmatchedUiLineItem(item, vendor, neededBy));
+    ? matched.line_items.map((match) => toUiLineItem(match, vendor, source))
+    : parsed.lineItems.map((item) => unmatchedUiLineItem(item, vendor, source));
 
   const procurementRequest = await createRequest({
     file,
@@ -180,6 +162,7 @@ export async function POST(request) {
     preference: String(formData.get("preference") || "Exact brand if possible, alternatives allowed"),
     vendor,
     invoiceNumber: parsed.invoiceNumber,
+    source,
     lineItems,
     matchSummary: matched?.summary || null,
     matchSource: matched ? "medusa" : "unavailable",

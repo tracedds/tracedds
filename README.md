@@ -65,8 +65,8 @@ npm run db:migrate
 been applied.
 
 Catalog data comes from the supplier ingestion pipeline (see
-`SUPPLIER_INGESTION.md`) followed by `npm run products:match -- --commit`
-(see `PRODUCT_MATCHING.md`), or from importing an existing catalog dump.
+`docs/SUPPLIER_INGESTION.md`) followed by `npm run products:match -- --commit`
+(see `docs/PRODUCT_MATCHING.md`), or from importing an existing catalog dump.
 
 ### 3. Create the Local Medusa Admin User
 
@@ -141,6 +141,14 @@ http://localhost:3000
 
 If port `3000` is busy, Next will print the alternate port, often `3001`.
 
+### 6. Password Reset
+
+The web app has a forgot/reset-password flow (`/forgot-password`, `/reset-password`)
+on top of Medusa's email/password auth. Set `MEDMKP_FRONTEND_URL` on the Medusa
+backend (local `.env` and Render) so reset links point at the web app. Until a
+notification provider is configured, the reset link is written to the Medusa logs
+by the `auth.password_reset` subscriber, so the flow can be completed in development.
+
 ### Quick Health Check
 
 With Docker and Medusa running:
@@ -200,7 +208,7 @@ Nitrile Exam Gloves, Medium, 100/Box
 
 Canonical products are generated from the ingested supplier catalogs by the
 product matching pipeline (`npm run products:match`, see
-`PRODUCT_MATCHING.md`).
+`docs/PRODUCT_MATCHING.md`).
 
 ## Deploy
 
@@ -217,7 +225,7 @@ Render Postgres: database for Medusa
 Create a Vercel project from this repo:
 
 ```text
-Repository: demuizon/medmkp-demo
+Repository: medmkp/medmkp-demo
 Root directory: ./
 Framework: Next.js
 Build command: npm run build
@@ -226,7 +234,7 @@ Build command: npm run build
 Set this Vercel environment variable after the Render backend exists:
 
 ```text
-MEDUSA_BACKEND_URL=https://medmkp-medusa.onrender.com
+MEDUSA_BACKEND_URL=https://medmkp.com
 ```
 
 The frontend does not call Medusa directly from browser code. It calls the local
@@ -239,7 +247,7 @@ The repo includes [render.yaml](./render.yaml) for a Render Blueprint.
 Create a Render Blueprint from this repo:
 
 ```text
-Repository: demuizon/medmkp-demo
+Repository: medmkp/medmkp-demo
 Blueprint file: render.yaml
 ```
 
@@ -308,7 +316,7 @@ account/password before sharing the admin URL.
 
 ## Product Direction
 
-See [PRODUCT_BRIEF.md](./PRODUCT_BRIEF.md) for the current Sean-notes product brief.
+See [PRODUCT_BRIEF.md](./docs/PRODUCT_BRIEF.md) for the current Sean-notes product brief.
 
 The key marketplace rule is to separate canonical products from seller offers:
 

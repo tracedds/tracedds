@@ -36,9 +36,14 @@ export type OfferView = {
   supplier_name: string
   sku: string
   name: string
+  brand: string
   price_cents: number
   /** price_cents normalized to the invoice item's pack quantity when both are known */
   comparable_price_cents: number
+  /** price_cents / pack_quantity — what one item in the pack costs, when parseable */
+  unit_price_cents: number | null
+  /** units per pack when parseable from pack_size / name */
+  pack_quantity: number | null
   pack_size: string
   product_url: string
   image_url: string
@@ -261,8 +266,11 @@ function buildOffers(
       supplier_name: index.supplierNameById.get(product.row.supplier_id) ?? "Unknown supplier",
       sku: product.row.sku,
       name: product.row.name,
+      brand: product.row.brand,
       price_cents: product.row.price_cents,
       comparable_price_cents: comparablePrice(item, product),
+      unit_price_cents: product.packQty && product.packQty > 1 ? product.unitPriceCents : null,
+      pack_quantity: product.packQty,
       pack_size: product.row.pack_size,
       product_url: product.row.product_url,
       image_url: product.row.image_url,
@@ -347,11 +355,22 @@ export function matchLineItem(
 
   // Tier 1: the vendor is an ingested supplier and the SKU is theirs. The
   // supplier's own SKU is authoritative even when the invoice truncates the
-  // description, so no name corroboration is required.
+  // description, so no name corroboration is required. Re-ingested catalogs
+  // can hold duplicate rows for the same SKU, so collapse hits that resolve to
+  // the same product (same canonical link, else same normalized name) and only
+  // bail when the SKU genuinely points at different products.
   if (vendorSupplierId && skuKey.length >= 3) {
     const hits = index.bySupplierSku.get(`${vendorSupplierId}:${skuKey}`) ?? []
-    if (hits.length === 1) {
-      return finalize(index, input, item, hits[0], "exact", 97, "line:supplier-sku")
+    if (hits.length) {
+      const identity = (idx: number) =>
+        index.linkBySupplierProduct.get(index.products[idx].row.id)?.canonical_product_id ||
+        index.products[idx].nameTokens.join(" ")
+      const distinct = new Set(hits.map(identity))
+      if (distinct.size === 1) {
+        // Prefer a duplicate row that actually carries a price so offers build.
+        const priced = hits.find((idx) => (index.products[idx].row.price_cents ?? 0) > 0)
+        return finalize(index, input, item, priced ?? hits[0], "exact", 97, "line:supplier-sku")
+      }
     }
   }
 

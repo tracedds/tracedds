@@ -5,7 +5,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-const PROCESSING_DURATION_MS = 2000;
+// Upload aborts after this long so a slow/unreachable backend can't hang the
+// modal forever. Generous because a cold catalog-match index can take a while
+// to build on the first request; the user can also Cancel sooner.
+const UPLOAD_TIMEOUT_MS = 180000;
+
+const APP_STATE_KEY = "medmkp_app_state_v1";
+
+const DEFAULT_BUYING_PREFS = {
+  strategy: "best-price",
+  preferredSuppliers: [],
+  substitutions: "allowed",
+  needByDate: "",
+};
 
 const routeByView = {
   landing: "/",
@@ -13,13 +25,15 @@ const routeByView = {
   about: "/about",
   login: "/login",
   signup: "/signup",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
   home: "/app",
   history: "/app/history",
   settings: "/app/settings",
 };
 
 function viewFromPath(pathname = "/") {
-  const path = pathname.replace(/\/+$/, "") || "/";
+  const path = pathname.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
 
   // Public site
   if (path === "/") return { view: "landing", isLoggedIn: false };
@@ -27,6 +41,8 @@ function viewFromPath(pathname = "/") {
   if (path === "/about") return { view: "about", isLoggedIn: false };
   if (path === "/login") return { view: "login", isLoggedIn: false };
   if (path === "/signup") return { view: "signup", isLoggedIn: false };
+  if (path === "/forgot-password") return { view: "forgotPassword", isLoggedIn: false };
+  if (path === "/reset-password") return { view: "resetPassword", isLoggedIn: false };
 
   // Authenticated app
   if (path === "/app") return { view: "home", isLoggedIn: true };
@@ -43,9 +59,6 @@ function pathForView(view) {
   return routeByView[view] || "/app";
 }
 
-function wait(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
 
 function IconSprite() {
   return (
@@ -697,51 +710,227 @@ function AboutPage({ onNavigate }) {
   );
 }
 
-function AuthShell({ title, subtitle, children, onNavigate }) {
+function AuthShell({ subtitle, children, onNavigate }) {
   return (
     <main className="auth-page">
       <a className="auth-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="MedMKP home">
         <BrandMark />
       </a>
       <div className="auth-card">
-        <h1>{title}</h1>
-        <p className="auth-sub">{subtitle}</p>
         {children}
       </div>
     </main>
   );
 }
 
-function LoginPage({ onNavigate }) {
+function LoginPage({ onNavigate, onAuthed }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "Could not sign in.");
+        return;
+      }
+      onAuthed();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to your MedMKP workspace." onNavigate={onNavigate}>
-      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); onNavigate("/app"); }}>
-        <label><span>Email</span><input type="email" placeholder="you@practice.com" required /></label>
-        <label><span>Password</span><input type="password" placeholder="••••••••" required /></label>
-        <button className="primary-action" type="submit">Sign in</button>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <label><span>Email</span><input type="email" placeholder="you@practice.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label><span>Password</span><input type="password" placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {error && <p className="auth-error" style={{ color: "#c0392b", fontSize: "0.85rem", margin: 0 }}>{error}</p>}
+        <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
       </form>
+      <p className="auth-alt"><a href="/forgot-password" onClick={(event) => { event.preventDefault(); onNavigate("/forgot-password"); }}>Forgot your password?</a></p>
       <p className="auth-alt">New to MedMKP? <a href="/signup" onClick={(event) => { event.preventDefault(); onNavigate("/signup"); }}>Create an account</a></p>
     </AuthShell>
   );
 }
 
-function SignupPage({ onNavigate }) {
+function SignupPage({ onNavigate, onAuthed }) {
+  const [practiceName, setPracticeName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ practiceName, email, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "Could not create account.");
+        return;
+      }
+      onAuthed();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <AuthShell title="Create your account" subtitle="Start optimizing your dental supply reorders." onNavigate={onNavigate}>
-      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); onNavigate("/app"); }}>
-        <label><span>Practice name</span><input type="text" placeholder="Bright Smiles Dental" required /></label>
-        <label><span>Email</span><input type="email" placeholder="you@practice.com" required /></label>
-        <label><span>Password</span><input type="password" placeholder="Create a password" required /></label>
-        <button className="primary-action" type="submit">Create account</button>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <label><span>Practice name</span><input type="text" placeholder="Bright Smiles Dental" value={practiceName} onChange={(event) => setPracticeName(event.target.value)} required /></label>
+        <label><span>Email</span><input type="email" placeholder="you@practice.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label><span>Password</span><input type="password" placeholder="Create a password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {error && <p className="auth-error" style={{ color: "#c0392b", fontSize: "0.85rem", margin: 0 }}>{error}</p>}
+        <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Creating…" : "Create account"}</button>
       </form>
       <p className="auth-alt">Already have an account? <a href="/login" onClick={(event) => { event.preventDefault(); onNavigate("/login"); }}>Log in</a></p>
     </AuthShell>
   );
 }
 
+function ForgotPasswordPage({ onNavigate }) {
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    try {
+      await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      /* show the same neutral confirmation regardless of outcome */
+    } finally {
+      setSubmitting(false);
+      setSent(true);
+    }
+  }
+
+  return (
+    <AuthShell onNavigate={onNavigate}>
+      {sent ? (
+        <>
+          <h1>Check your email</h1>
+          <p className="auth-sub">
+            If an account exists for {email}, we&apos;ve sent a link to reset your password.
+            For your security, the link expires soon.
+          </p>
+          <button className="primary-action" type="button" style={{ marginTop: 20, width: "100%" }} onClick={() => onNavigate("/login")}>Back to sign in</button>
+        </>
+      ) : (
+        <>
+          <h1>Reset your password</h1>
+          <p className="auth-sub">Enter your email and we&apos;ll send you a secure reset link.</p>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <label><span>Email</span><input type="email" placeholder="you@practice.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+            <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Sending…" : "Send reset link"}</button>
+          </form>
+          <p className="auth-alt"><a href="/login" onClick={(event) => { event.preventDefault(); onNavigate("/login"); }}>Back to sign in</a></p>
+        </>
+      )}
+    </AuthShell>
+  );
+}
+
+function ResetPasswordPage({ onNavigate }) {
+  const [token, setToken] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setToken(params.get("token") || "");
+    setEmail((params.get("email") || "").toLowerCase());
+  }, []);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, email, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "Could not reset your password.");
+        return;
+      }
+      onNavigate("/login");
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <AuthShell onNavigate={onNavigate}>
+      <h1>Set a new password</h1>
+      {!token || !email ? (
+        <>
+          <p className="auth-sub">This reset link is invalid or incomplete. Please request a new one.</p>
+          <button className="primary-action" type="button" style={{ marginTop: 20, width: "100%" }} onClick={() => onNavigate("/forgot-password")}>Request a new link</button>
+        </>
+      ) : (
+        <>
+          <p className="auth-sub">Choose a strong password for your account.</p>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <label><span>New password</span><input type="password" placeholder="Create a password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+            <label><span>Confirm password</span><input type="password" placeholder="Re-enter password" value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></label>
+            {error && <p className="auth-error" style={{ color: "#c0392b", fontSize: "0.85rem", margin: 0 }}>{error}</p>}
+            <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Updating…" : "Update password"}</button>
+          </form>
+        </>
+      )}
+    </AuthShell>
+  );
+}
+
 export default function Home() {
   const uploadFormRef = useRef(null);
+  const searchRef = useRef(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authed, setAuthed] = useState(null);
   const [view, setViewState] = useState("landing");
   const [historyId, setHistoryId] = useState(null);
   const [productHandle, setProductHandle] = useState(null);
@@ -749,6 +938,10 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadElapsed, setUploadElapsed] = useState(0);
+  const [uploadError, setUploadError] = useState("");
+  const uploadAbortRef = useRef(null);
+  const uploadCancelledRef = useRef(false);
   const [isDraggingInvoice, setIsDraggingInvoice] = useState(false);
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
@@ -762,6 +955,58 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [canonicalResults, setCanonicalResults] = useState([]);
   const [canonicalSource, setCanonicalSource] = useState("idle");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [archivedLists, setArchivedLists] = useState([]);
+  const [listTouched, setListTouched] = useState(false);
+  const [buyingPrefs, setBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
+  const [defaultBuyingPrefs, setDefaultBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
+  const [supplierOptions, setSupplierOptions] = useState([]);
+  const [stateLoaded, setStateLoaded] = useState(false);
+
+  // Persist the working reorder list, archive, and preferences locally so the
+  // app keeps its state across reloads (there is no per-user list store yet).
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(APP_STATE_KEY) || "null");
+      if (saved) {
+        const savedDefaults = { ...DEFAULT_BUYING_PREFS, ...(saved.defaultBuyingPrefs || {}) };
+        setDraftItems(saved.draftItems || []);
+        setUploadedDocs(saved.uploadedDocs || []);
+        setArchivedLists(saved.archivedLists || []);
+        setListTouched(Boolean(saved.listTouched));
+        setDefaultBuyingPrefs(savedDefaults);
+        // A list with no items is "new", so it starts from the saved defaults;
+        // an in-progress list keeps its own working preferences.
+        setBuyingPrefs((saved.draftItems || []).length
+          ? { ...DEFAULT_BUYING_PREFS, ...(saved.buyingPrefs || {}) }
+          : savedDefaults);
+        if ((saved.draftItems || []).length) setHasUploadedInvoice(true);
+      }
+    } catch {
+      // ignore corrupt state
+    }
+    setStateLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!stateLoaded) return;
+    try {
+      window.localStorage.setItem(
+        APP_STATE_KEY,
+        JSON.stringify({ draftItems, uploadedDocs, archivedLists, listTouched, buyingPrefs, defaultBuyingPrefs })
+      );
+    } catch {
+      // storage full / unavailable — non-fatal
+    }
+  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, listTouched, buyingPrefs, defaultBuyingPrefs]);
+
+  // Supplier names for the preferred-supplier picker in default preferences.
+  useEffect(() => {
+    fetch("/api/suppliers")
+      .then((response) => response.json())
+      .then(({ suppliers }) => setSupplierOptions((suppliers || []).map((supplier) => supplier.name)))
+      .catch(() => setSupplierOptions([]));
+  }, []);
 
   useEffect(() => {
     function syncViewFromLocation() {
@@ -781,6 +1026,32 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => response.json())
+      .then(({ authenticated }) => setAuthed(Boolean(authenticated)))
+      .catch(() => setAuthed(false));
+  }, []);
+
+  // Keep unauthenticated visitors out of the authenticated app routes.
+  useEffect(() => {
+    if (authed === false && isLoggedIn) {
+      navigate("/login");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, isLoggedIn]);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
     fetch("/api/catalog")
       .then((response) => response.json())
       .then(({ categories }) => {
@@ -796,23 +1067,27 @@ export default function Home() {
     if (!query) {
       setCanonicalResults([]);
       setCanonicalSource("idle");
+      setSearchLoading(false);
       return undefined;
     }
 
+    setSearchLoading(true);
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      fetch(`/api/canonical-products?q=${encodeURIComponent(query)}&limit=5`, {
+      fetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=8`, {
         signal: controller.signal,
       })
         .then((response) => response.json())
         .then(({ canonical_products: products, source }) => {
           setCanonicalResults(products || []);
           setCanonicalSource(source || "fallback");
+          setSearchLoading(false);
         })
         .catch((error) => {
           if (error.name === "AbortError") return;
           setCanonicalResults([]);
           setCanonicalSource("fallback");
+          setSearchLoading(false);
         });
     }, 250);
 
@@ -822,26 +1097,25 @@ export default function Home() {
     };
   }, [searchTerm]);
 
+  // Honest progress: creep toward — but never reach — 100% while the request is
+  // in flight, so the bar only completes when the server actually responds
+  // (no more "100% then frozen"). Also track elapsed time so the modal can
+  // surface a "catalog is warming up" hint on a slow first match.
   useEffect(() => {
     if (!uploading) {
       setUploadProgress(0);
+      setUploadElapsed(0);
       return undefined;
     }
 
-    setUploadProgress(12);
-    const steps = [
-      [600, 34],
-      [1300, 62],
-      [2200, 88],
-      [2950, 100],
-    ];
-    const timers = steps.map(([delay, progress]) => {
-      return window.setTimeout(() => setUploadProgress(progress), delay);
-    });
+    setUploadProgress(8);
+    const startedAt = Date.now();
+    const id = window.setInterval(() => {
+      setUploadElapsed(Date.now() - startedAt);
+      setUploadProgress((value) => (value >= 95 ? 95 : value + Math.max(0.4, (95 - value) * 0.06)));
+    }, 300);
 
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
+    return () => window.clearInterval(id);
   }, [uploading]);
 
   const visibleDraftItems = draftItems.filter((item) => item.documentIds.some((documentId) => uploadedDocs.some((doc) => doc.id === documentId)));
@@ -865,7 +1139,10 @@ export default function Home() {
         name: product.name,
         category: product.category,
         supplier_name: product.best_offer?.supplier_name,
-        unit_price_cents: product.best_offer?.price_cents,
+        price_cents: product.best_offer?.price_cents,
+        per_unit_cents: product.best_offer?.unit_price_cents,
+        pack_size: product.best_offer?.pack_size,
+        base_unit: product.base_unit,
         handle: product.handle,
         price_range_cents: product.price_range_cents,
         offer_count: product.offer_count,
@@ -879,7 +1156,7 @@ export default function Home() {
         name: item.name || category.name,
         category: category.name,
         supplier_name: item.supplier_name,
-        unit_price_cents: item.unit_price_cents,
+        price_cents: item.unit_price_cents,
         handle: "",
       };
     });
@@ -897,6 +1174,17 @@ export default function Home() {
     setMobileAddItemRoute(Boolean(next.mobileAddItemRoute));
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleAuthed() {
+    setAuthed(true);
+    navigate("/app");
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setAuthed(false);
+    navigate("/");
   }
 
   function setView(nextView) {
@@ -920,8 +1208,11 @@ export default function Home() {
   function uploadInvoiceFile(fileInput, file) {
     if (!file || !fileInput || !uploadFormRef.current || uploading) return;
 
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      showToast("Upload a PDF invoice for this demo");
+    const name = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+    const isCsv = file.type === "text/csv" || file.type === "application/vnd.ms-excel" || name.endsWith(".csv");
+    if (!isPdf && !isCsv) {
+      showToast("Upload a PDF or CSV invoice");
       return;
     }
 
@@ -945,97 +1236,187 @@ export default function Home() {
     const form = event.currentTarget;
     const formData = new FormData(form);
 
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    uploadCancelledRef.current = false;
+    const timeout = window.setTimeout(() => controller.abort("timeout"), UPLOAD_TIMEOUT_MS);
+    setUploadError("");
     setUploading(true);
-    const startedAt = Date.now();
-    const response = await fetch("/api/requests", {
-      method: "POST",
-      body: formData,
-    });
-    await wait(Math.max(PROCESSING_DURATION_MS - (Date.now() - startedAt), 0));
 
-    if (!response.ok) {
-      setUploading(false);
-      const body = await response.json().catch(() => ({}));
-      showToast(body.error || "Upload failed");
-      return;
-    }
-
-    const { request } = await response.json();
-    const documentId = request.id;
-    setHasUploadedInvoice(true);
-    setUploadedDocs((docs) => [
-      ...docs,
-      { id: documentId, name: request.sourceFileName, itemCount: request.lineItems.length },
-    ]);
-    setDraftItems((items) => {
-      const byProduct = new Map(items.map((item) => [item.product, item]));
-
-      request.lineItems.forEach((item) => {
-        const existing = byProduct.get(item.product);
-
-        if (existing) {
-          const documentQuantities = {
-            ...(existing.documentQuantities || {}),
-            [documentId]: ((existing.documentQuantities || {})[documentId] || 0) + item.qty,
-          };
-
-          byProduct.set(item.product, {
-            ...existing,
-            draftQty: existing.draftQty + item.qty,
-            included: true,
-            documentQuantities,
-            documentIds: Array.from(new Set([...existing.documentIds, documentId])),
-          });
-          return;
-        }
-
-        byProduct.set(item.product, {
-          ...item,
-          draftQty: item.qty,
-          included: true,
-          documentQuantities: { [documentId]: item.qty },
-          documentIds: [documentId],
-        });
+    try {
+      const response = await fetch("/api/requests", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
       });
 
-      return Array.from(byProduct.values());
-    });
-    setUploading(false);
-    setSelectedInvoiceName("");
-    setLastUpload({ name: request.sourceFileName, items: request.lineItems, matchSource: request.matchSource });
-    form.reset();
-    showToast(`${request.lineItems.length} items added to your list`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setUploadError(body.error || `Upload failed (${response.status}). Please try again.`);
+        return;
+      }
+
+      const { request } = await response.json();
+      const documentId = request.id;
+      setHasUploadedInvoice(true);
+      setListTouched(true);
+      setUploadedDocs((docs) => [
+        ...docs,
+        { id: documentId, name: request.sourceFileName, itemCount: request.lineItems.length },
+      ]);
+      setDraftItems((items) => {
+        // Merge matched lines by canonical product; keep unmatched lines distinct
+        // by their raw description (canonical name is null for those).
+        const keyOf = (item) => item.product || item.extractedFrom || item.sku || "";
+        const byProduct = new Map(items.map((item) => [keyOf(item), item]));
+
+        request.lineItems.forEach((item) => {
+          const key = keyOf(item);
+          const existing = byProduct.get(key);
+
+          if (existing) {
+            const documentQuantities = {
+              ...(existing.documentQuantities || {}),
+              [documentId]: ((existing.documentQuantities || {})[documentId] || 0) + item.qty,
+            };
+
+            byProduct.set(key, {
+              ...existing,
+              draftQty: existing.draftQty + item.qty,
+              included: true,
+              documentQuantities,
+              documentIds: Array.from(new Set([...existing.documentIds, documentId])),
+            });
+            return;
+          }
+
+          byProduct.set(key, {
+            ...item,
+            draftQty: item.qty,
+            included: true,
+            documentQuantities: { [documentId]: item.qty },
+            documentIds: [documentId],
+          });
+        });
+
+        return Array.from(byProduct.values());
+      });
+      setSelectedInvoiceName("");
+      setLastUpload({ name: request.sourceFileName, items: request.lineItems, matchSource: request.matchSource });
+      form.reset();
+      showToast(`${request.lineItems.length} items added to your list`);
+    } catch (error) {
+      if (uploadCancelledRef.current) {
+        // User cancelled — leave the modal on the dropzone, no error.
+      } else if (controller.signal.aborted) {
+        setUploadError("This is taking longer than expected — the product catalog may be warming up. Please try again in a moment.");
+      } else {
+        setUploadError("Couldn't reach the server. Check your connection and try again.");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      // Only clear shared state if this is still the active upload — a
+      // cancel-then-reupload could have superseded it.
+      if (uploadAbortRef.current === controller) {
+        uploadAbortRef.current = null;
+        uploadCancelledRef.current = false;
+        setUploading(false);
+      }
+    }
   }
 
-  function addScannedItem(code) {
+  function handleCancelUpload() {
+    uploadCancelledRef.current = true;
+    uploadAbortRef.current?.abort("cancelled");
+  }
+
+  async function addScannedItem(code) {
+    setListTouched(true);
     setUploadedDocs((docs) => docs.some((doc) => doc.id === "scan")
       ? docs
       : [...docs, { id: "scan", name: "Barcode scans", itemCount: 0 }]);
-    setDraftItems((items) => {
-      const index = code ? items.findIndex((item) => item.barcode === code) : -1;
-      if (index >= 0) {
-        const next = [...items];
-        const existing = next[index];
-        next[index] = {
-          ...existing,
-          draftQty: (existing.draftQty || 1) + 1,
-          qty: (existing.qty || 1) + 1,
-          included: true,
-          documentQuantities: { ...(existing.documentQuantities || {}), scan: ((existing.documentQuantities || {}).scan || 0) + 1 },
-        };
-        return next;
+
+    // Already scanned this code → just bump the quantity.
+    if (code && draftItems.some((item) => item.barcode === code)) {
+      setDraftItems((items) => items.map((item) => item.barcode === code
+        ? {
+            ...item,
+            draftQty: (item.draftQty || 1) + 1,
+            qty: (item.qty || 1) + 1,
+            included: true,
+            documentQuantities: { ...(item.documentQuantities || {}), scan: ((item.documentQuantities || {}).scan || 0) + 1 },
+          }
+        : item));
+      showToast("Quantity updated");
+      return;
+    }
+
+    // Look the scanned code up against the real supplier catalog.
+    let product = null;
+    if (code) {
+      try {
+        const response = await fetch(`/api/products/search?code=${encodeURIComponent(code)}&limit=1`);
+        const data = await response.json();
+        product = data.canonical_products?.[0] || null;
+      } catch {
+        product = null;
       }
-      return [...items, makeScanDraftItem(code)];
+    }
+
+    setDraftItems((items) => {
+      if (code && items.some((item) => item.barcode === code)) return items; // race guard
+      return [...items, makeScanDraftItem(code, product)];
     });
-    const hit = code ? SCAN_CATALOG[code] : null;
-    showToast(hit ? `Added ${hit.product}` : code ? `Scanned ${code} — needs review` : "Item added");
+    showToast(product ? `Added ${product.name}` : code ? `Scanned ${code} — needs review` : "Item added");
   }
 
-  function removeDraftItem(product) {
-    setDraftItems((items) => items.map((item) => {
-      if (item.product !== product) return item;
-      return { ...item, included: false };
-    }));
+  function removeDraftItem(target) {
+    const sameItem = (item) =>
+      item === target ||
+      (item.extractedFrom === target.extractedFrom && item.barcode === target.barcode && item.sku === target.sku);
+    setDraftItems((items) => items.map((item) => (sameItem(item) ? { ...item, included: false } : item)));
+  }
+
+  // Snapshot the current list into History, then clear it. Rows are stored so
+  // the archived list stays readable even though it's no longer editable.
+  function archiveCurrentList() {
+    if (!activeDraftItems.length) {
+      showToast("Nothing to archive yet");
+      return;
+    }
+    const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
+    const suppliers = new Set(rows.map((row) => row.supplier).filter((name) => name && name !== "—"));
+    const total = rows.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+    const now = new Date();
+    const entry = {
+      id: `list_${now.getTime()}`,
+      name: `${now.toLocaleString("en-US", { month: "long" })} Reorder List`,
+      date: now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      items: rows.length,
+      suppliers: suppliers.size,
+      total: money.format(total),
+      rows,
+    };
+    setArchivedLists((lists) => [entry, ...lists]);
+    setDraftItems([]);
+    setUploadedDocs([]);
+    setLastUpload(null);
+    setHasUploadedInvoice(false);
+    setBuyingPrefs(defaultBuyingPrefs);
+    showToast("List archived to History");
+  }
+
+  function clearCurrentList() {
+    if (!activeDraftItems.length) {
+      showToast("List is already empty");
+      return;
+    }
+    setDraftItems([]);
+    setUploadedDocs([]);
+    setLastUpload(null);
+    setHasUploadedInvoice(false);
+    setBuyingPrefs(defaultBuyingPrefs);
+    showToast("List cleared");
   }
 
   const navItems = [
@@ -1049,8 +1430,10 @@ export default function Home() {
       <>
         {view === "pricing" ? <PricingPage onNavigate={navigate} />
           : view === "about" ? <AboutPage onNavigate={navigate} />
-          : view === "login" ? <LoginPage onNavigate={navigate} />
-          : view === "signup" ? <SignupPage onNavigate={navigate} />
+          : view === "login" ? <LoginPage onNavigate={navigate} onAuthed={handleAuthed} />
+          : view === "signup" ? <SignupPage onNavigate={navigate} onAuthed={handleAuthed} />
+          : view === "forgotPassword" ? <ForgotPasswordPage onNavigate={navigate} />
+          : view === "resetPassword" ? <ResetPasswordPage onNavigate={navigate} />
           : <LoggedOutLanding onNavigate={navigate} />}
         <IconSprite />
       </>
@@ -1064,6 +1447,31 @@ export default function Home() {
           <button className="topbar-brand" type="button" onClick={() => setView("home")} aria-label="MedMKP home">
             <BrandMark />
           </button>
+          <div className="topbar-search-wrap">
+            <label className="topbar-search">
+              <Icon name="icon-search" className="button-icon" />
+              <input
+                ref={searchRef}
+                type="search"
+                placeholder="Search products, SKUs, suppliers…"
+                aria-label="Search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Escape") { setSearchTerm(""); event.currentTarget.blur(); } }}
+              />
+              <kbd className="topbar-kbd">⌘K</kbd>
+            </label>
+            {searchTerm.trim() && (
+              <>
+                <div className="topbar-search-backdrop" onClick={() => setSearchTerm("")} />
+                <SearchResults
+                  results={searchResults}
+                  loading={searchLoading}
+                  searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`}
+                />
+              </>
+            )}
+          </div>
           <div className="topbar-right">
             <button className="topbar-alerts" type="button" aria-label="Alerts">
               <Icon name="icon-bell" className="button-icon" />
@@ -1114,12 +1522,16 @@ export default function Home() {
                 addMode={addMode}
                 onAddMode={setAddMode}
                 lastUpload={lastUpload}
-                onCloseUpload={() => { setAddMode(""); setLastUpload(null); }}
-                onUploadAnother={() => setLastUpload(null)}
+                onCloseUpload={() => { setAddMode(""); setLastUpload(null); setUploadError(""); }}
+                onUploadAnother={() => { setLastUpload(null); setUploadError(""); }}
                 uploadFormRef={uploadFormRef}
                 onUpload={handleUpload}
                 uploading={uploading}
                 uploadProgress={uploadProgress}
+                uploadElapsed={uploadElapsed}
+                uploadError={uploadError}
+                onCancelUpload={handleCancelUpload}
+                onClearUploadError={() => setUploadError("")}
                 isDraggingInvoice={isDraggingInvoice}
                 onDragStateChange={setIsDraggingInvoice}
                 onInvoiceDrop={handleInvoiceDrop}
@@ -1127,20 +1539,37 @@ export default function Home() {
                 selectedInvoiceName={selectedInvoiceName}
                 hasUploadedInvoice={hasUploadedInvoice}
                 onScan={handleScanComplete}
+                searchTerm={searchTerm}
+                onSearchTerm={setSearchTerm}
+                searchResults={searchResults}
+                searchLoading={searchLoading}
                 onToast={showToast}
+                listTouched={listTouched}
+                buyingPrefs={buyingPrefs}
+                onBuyingPrefs={setBuyingPrefs}
+                onArchiveList={archiveCurrentList}
+                onClearList={clearCurrentList}
               />
             )
           )}
 
-          {view === "history" && <HistoryView onOpen={(id) => navigate(`/app/history/${id}`)} />}
+          {view === "history" && <HistoryView archivedLists={archivedLists} onOpen={(id) => navigate(`/app/history/${id}`)} />}
 
-          {view === "historyDetail" && <HistoryDetail id={historyId} onBack={() => navigate("/app/history")} />}
+          {view === "historyDetail" && <HistoryDetail id={historyId} archivedLists={archivedLists} onBack={() => navigate("/app/history")} />}
 
           {view === "productDetail" && (
             <ProductDetail handle={productHandle} onNavigate={navigate} onToast={showToast} />
           )}
 
-          {view === "settings" && <SettingsView />}
+          {view === "settings" && (
+            <SettingsView
+              onLogout={handleLogout}
+              defaultBuyingPrefs={defaultBuyingPrefs}
+              onSaveDefaults={setDefaultBuyingPrefs}
+              supplierOptions={supplierOptions}
+              onToast={showToast}
+            />
+          )}
         </main>
         <MobileBottomNav view={view} onNavigate={setView} onAdd={() => setMobileAddOpen(true)} />
         {mobileAddOpen && (
@@ -1168,17 +1597,23 @@ export default function Home() {
   );
 }
 
-function SearchResults({ results, searchHref }) {
+function SearchResults({ results, searchHref, loading }) {
+  const headerLabel = loading && !results.length
+    ? "Searching…"
+    : results.length ? "Matching canonical products" : "No catalog matches";
   return (
     <div className="search-results" role="region" aria-label="Catalog search results">
       <div className="search-results-header">
-        <strong>{results.length ? "Matching canonical products" : "No catalog matches"}</strong>
+        <strong>{headerLabel}</strong>
         <Link className="search-results-link" href={searchHref}>View catalog</Link>
       </div>
       {results.slice(0, 5).map((result) => {
-        const price = typeof result.unit_price_cents === "number"
-          ? money.format(result.unit_price_cents / 100)
+        const price = typeof result.price_cents === "number"
+          ? money.format(result.price_cents / 100)
           : "Price pending";
+        const perUnit = typeof result.per_unit_cents === "number"
+          ? `${money.format(result.per_unit_cents / 100)}/${result.base_unit || "unit"}`
+          : null;
         const href = result.handle ? `/app/product/${result.handle}` : searchHref;
 
         return (
@@ -1187,11 +1622,18 @@ function SearchResults({ results, searchHref }) {
               <strong>{result.name}</strong>
               <small>{result.category || "Uncategorized"} · {result.supplier_name || "Supplier pending"}</small>
             </span>
-            <em>{price}</em>
+            <em style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+              <span>{price}</span>
+              {perUnit && (
+                <small style={{ color: "var(--muted)", fontWeight: 600, fontStyle: "normal" }}>
+                  {perUnit}{result.pack_size ? ` · ${result.pack_size}` : ""}
+                </small>
+              )}
+            </em>
           </Link>
         );
       })}
-      {!results.length && (
+      {!results.length && !loading && (
         <p>Try gloves, burs, bibs, impression material, or anesthetics.</p>
       )}
     </div>
@@ -1728,9 +2170,25 @@ const SCAN_CATALOG = {
   "PAT-GLOVE-NIT-M-200": { product: "Nitrile Exam Gloves PF Medium", supplier: "Patterson", sku: "PAT-GLOVE-NIT-M-200", unit: "Box", price: 11.3, confidence: 0.89 },
 };
 
-function makeScanDraftItem(code) {
-  const hit = code ? SCAN_CATALOG[code] : null;
+function mapSearchOffer(offer) {
+  return {
+    name: offer.name,
+    supplier: offer.supplier_name,
+    supplierId: offer.supplier_id,
+    sku: offer.sku,
+    brand: offer.brand || "",
+    price: (offer.price_cents ?? 0) / 100,
+    comparablePrice: (offer.price_cents ?? 0) / 100,
+    perUnit: offer.unit_price_cents != null ? offer.unit_price_cents / 100 : null,
+    packQty: offer.pack_quantity ?? null,
+    packSize: offer.pack_size || "",
+    imageUrl: offer.image_url || "",
+  };
+}
+
+function makeScanDraftItem(code, product) {
   const base = {
+    source: "scan",
     draftQty: 1,
     qty: 1,
     included: true,
@@ -1739,27 +2197,59 @@ function makeScanDraftItem(code) {
     barcode: code || "",
     extractedFrom: `Scanned · ${code || "no code"}`,
   };
+  // Real catalog match from the lookup endpoint.
+  if (product) {
+    const offers = (product.offers || []).map(mapSearchOffer);
+    const best = offers[0] || (product.best_offer ? mapSearchOffer(product.best_offer) : null);
+    return {
+      ...base,
+      product: product.name,
+      canonicalName: product.name,
+      sku: product.best_offer?.sku || code || "",
+      unit: product.base_unit || product.unit_of_measure || "ea",
+      matchStatus: "exact",
+      confidence: product.match?.score ?? 0.9,
+      imageUrl: product.image_url || product.best_offer?.image_url || "",
+      oldVendor: best?.supplier || "",
+      oldUnitPrice: best?.price ?? 0,
+      bestOffer: best,
+      offers,
+    };
+  }
+  // Demo barcodes (test-barcodes.html) still resolve via the local map.
+  const hit = code ? SCAN_CATALOG[code] : null;
   if (hit) {
+    const offer = {
+      name: hit.product, supplier: hit.supplier, sku: hit.sku, brand: "",
+      price: hit.price, comparablePrice: hit.price, perUnit: null,
+      packQty: null, packSize: "", imageUrl: "",
+    };
     return {
       ...base,
       product: hit.product,
+      canonicalName: hit.product,
       sku: hit.sku,
       unit: hit.unit,
-      status: "Parsed",
-      selected: { supplier: hit.supplier, sku: hit.sku, unitPrice: hit.price, total: hit.price },
+      matchStatus: "exact",
+      confidence: hit.confidence,
       oldVendor: hit.supplier,
       oldUnitPrice: hit.price,
-      recommendation: { confidence: hit.confidence, offers: [] },
+      bestOffer: offer,
+      offers: [offer],
     };
   }
   return {
     ...base,
-    product: "Unrecognized item",
+    product: null,
+    canonicalName: null,
     sku: code || "",
     unit: "ea",
-    status: "No match",
-    selected: null,
-    recommendation: { confidence: 0, offers: [] },
+    matchStatus: "unmatched",
+    confidence: 0,
+    oldVendor: "",
+    oldUnitPrice: 0,
+    bestOffer: null,
+    offers: [],
   };
 }
 
@@ -1808,38 +2298,76 @@ function CaptureTray({ items, onReview, onRemove, compact }) {
   );
 }
 
-function deriveMatchRows(items) {
+function statusFromItem(item) {
+  if (item.matchStatus) {
+    return item.matchStatus === "unmatched" ? "Not found" : item.matchStatus === "needs_review" ? "Review" : "Matched";
+  }
+  // Legacy/scan fallback by status string.
+  return item.status === "Parsed" ? "Matched" : item.status === "No match" ? "Not found" : "Review";
+}
+
+// Choose which supplier offer to surface as "best" given the buyer's
+// preferences. Best price ranks by per-unit cost; preferred suppliers filter
+// the pool when any match; brand match favors the invoice's own vendor/brand.
+function pickBestOffer(offers, prefs, item) {
+  if (!offers || !offers.length) return null;
+  let pool = offers;
+  const preferred = prefs?.preferredSuppliers || [];
+  if (preferred.length) {
+    const inPref = offers.filter((offer) =>
+      preferred.some((name) => (offer.supplier || "").toLowerCase().includes(name.toLowerCase())));
+    if (inPref.length) pool = inPref;
+  }
+  const cost = (offer) => offer.perUnit ?? offer.comparablePrice ?? offer.price ?? Infinity;
+  if (prefs?.strategy === "brand-match") {
+    const want = (item?.oldVendor || "").toLowerCase();
+    const branded = want
+      ? pool.filter((offer) => (offer.supplier || "").toLowerCase().includes(want) || (offer.brand || "").toLowerCase().includes(want))
+      : [];
+    if (branded.length) return [...branded].sort((a, b) => cost(a) - cost(b))[0];
+  }
+  return [...pool].sort((a, b) => cost(a) - cost(b))[0];
+}
+
+function deriveMatchRows(items, prefs) {
   return (items || []).map((item, index) => {
-    const conf = Math.round((item.recommendation?.confidence || 0) * 100);
-    const status = item.status === "Parsed" ? "Matched" : item.status === "No match" ? "Not found" : "Review";
+    const conf = Math.round((item.confidence ?? item.recommendation?.confidence ?? 0) * 100);
+    const status = statusFromItem(item);
     const notFound = status === "Not found";
-    const supplier = notFound ? "—" : (item.selected?.supplier || item.oldVendor || "—");
-    const price = item.selected?.unitPrice ?? item.oldUnitPrice ?? 0;
+    const offers = item.offers || [];
+    const best = notFound ? null : (pickBestOffer(offers, prefs, item) || item.bestOffer || null);
+    const supplier = notFound ? "—" : (best?.supplier || item.oldVendor || "—");
+    const price = best ? best.price : (item.oldUnitPrice ?? 0);
+    const perEa = best ? (best.perUnit ?? null) : null;
     const qty = item.draftQty ?? item.qty ?? 1;
-    const others = (item.recommendation?.offers || []).slice(0, 2).map((offer) => ({
-      name: offer.name || item.product,
-      sub: offer.sku || "",
-      supplier: offer.supplier_name || supplier,
-      price: (offer.comparable_price_cents ?? 0) / 100,
-      perEa: (offer.comparable_price_cents ?? 0) / 100,
-      confidence: Math.max(conf - 12, 40),
-    }));
+    const others = offers
+      .filter((offer) => offer !== best)
+      .slice(0, 3)
+      .map((offer) => ({
+        name: offer.name,
+        sub: [offer.sku, offer.packSize].filter(Boolean).join(" · "),
+        supplier: offer.supplier,
+        price: offer.price,
+        perEa: offer.perUnit ?? null,
+        confidence: Math.max(conf - 10, 40),
+      }));
     return {
       id: index + 1,
-      image: item.imageUrl || item.selected?.image_url || "",
-      source: (item.documentIds || []).includes("scan") ? "scan" : "pdf",
+      image: best?.imageUrl || item.imageUrl || "",
+      source: item.source || ((item.documentIds || []).includes("scan") ? "scan" : "pdf"),
+      canonicalName: notFound ? null : (item.canonicalName || item.product || null),
       importedName: item.extractedFrom,
       importedSub: item.sku ? `SKU: ${item.sku}` : (item.unit || ""),
       supplier,
-      matchName: notFound ? null : item.product,
-      matchSub: notFound ? null : (item.selected?.sku || ""),
+      matchName: notFound ? null : (best?.name || item.canonicalName || item.product || null),
+      matchSub: notFound ? null : (best ? [best.sku, best.packSize].filter(Boolean).join(" · ") : ""),
       confidence: notFound ? null : conf,
       price: notFound ? null : price,
-      perEa: notFound ? null : price,
+      perEa: notFound ? null : perEa,
       status,
       qty,
       uom: item.unit || "ea",
-      lineTotal: notFound ? null : (item.selected?.total ?? price * qty),
+      lineTotal: notFound ? null : (best ? best.price * qty : price * qty),
       others,
     };
   });
@@ -2095,7 +2623,7 @@ function rowMode(row) {
 
 // Mobile card list for the current reorder list (replaces the desktop table on
 // phones). Stats band + status tabs + tappable product cards.
-function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast }) {
+function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div className="m-list">
@@ -2105,6 +2633,30 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
           <Icon name="icon-bell" className="button-icon" />
           <span className="m-brand-badge">3</span>
         </button>
+      </div>
+
+      <div className="m-search-wrap">
+        <label className="m-search">
+          <Icon name="icon-search" className="button-icon" />
+          <input
+            type="search"
+            placeholder="Search products, SKUs, suppliers…"
+            aria-label="Search"
+            value={searchTerm}
+            onChange={(event) => onSearchTerm?.(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Escape") { onSearchTerm?.(""); event.currentTarget.blur(); } }}
+          />
+        </label>
+        {searchTerm.trim() && (
+          <>
+            <div className="topbar-search-backdrop" onClick={() => onSearchTerm?.("")} />
+            <SearchResults
+              results={searchResults}
+              loading={searchLoading}
+              searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`}
+            />
+          </>
+        )}
       </div>
 
       <header className="m-topbar">
@@ -2119,11 +2671,11 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
               <>
                 <div className="crl-add-menu-backdrop" onClick={() => setMenuOpen(false)} />
                 <div className="crl-add-menu m-actions-menu" role="menu">
-                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onToast("List archived"); }}>
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onArchiveList?.(); }}>
                     <Icon name="icon-clipboard" className="button-icon" />
                     <span><strong>Archive list</strong><small>Move to list history</small></span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onToast("List cleared"); }}>
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onClearList?.(); }}>
                     <Icon name="icon-trash" className="button-icon crl-menu-danger" />
                     <span><strong>Clear list</strong><small>Remove all items</small></span>
                   </button>
@@ -2156,7 +2708,7 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
                   ? <em className="m-conf nomatch">Not found</em>
                   : <em className={`m-conf ${mrConfTone(row.confidence)}`}>{row.confidence}%</em>}
                 {row.price != null && <strong>{mrMoney(row.price)}</strong>}
-                {row.price != null && <small>${mrEa(row.perEa)} / ea</small>}
+                {row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}
               </span>
               <Icon name="icon-chevron-right" className="button-icon m-card-chev" />
             </button>
@@ -2229,7 +2781,7 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
                 <input type="radio" name="m-cand" checked={selected === 0} onChange={() => setSelected(0)} />
                 <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
                 <span className="m-match-info"><strong>{candidates[0].name}</strong><small>{candidateSub(candidates[0].supplier, candidates[0].sub)}</small></span>
-                <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrMoney(candidates[0].price)}</strong><small>${mrEa(candidates[0].perEa)} / ea</small></span>
+                <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrMoney(candidates[0].price)}</strong>{candidates[0].perEa != null && <small>${mrEa(candidates[0].perEa)} / ea</small>}</span>
               </label>
             </section>
             {candidates.length > 1 && (
@@ -2239,7 +2791,7 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
                   <label className={`m-match ${selected === index + 1 ? "active" : ""}`} key={index + 1}>
                     <input type="radio" name="m-cand" checked={selected === index + 1} onChange={() => setSelected(index + 1)} />
                     <span className="m-match-info"><strong>{candidate.name}</strong><small>{candidateSub(candidate.supplier, candidate.sub)}</small></span>
-                    <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrMoney(candidate.price)}</strong><small>${mrEa(candidate.perEa)} / ea</small></span>
+                    <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrMoney(candidate.price)}</strong>{candidate.perEa != null && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
                   </label>
                 ))}
               </section>
@@ -2266,6 +2818,113 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
   );
 }
 
+const STRATEGY_LABELS = {
+  "best-price": "Best price",
+  "brand-match": "Exact brand match",
+  balanced: "Balanced",
+};
+const SUBSTITUTION_LABELS = {
+  allowed: "Allowed",
+  approval: "Allowed with approval",
+  none: "Not allowed",
+};
+
+function formatNeedBy(value) {
+  if (!value) return "Any";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? "Any"
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Buying preferences drive which supplier offer wins per item (see
+// pickBestOffer). Preferred-supplier options are the suppliers actually present
+// in the current list, so toggling them visibly re-ranks the table.
+function BuyingPreferencesCard({ prefs, supplierOptions, onSave, onToast, title = "Buying Preferences", savedMessage = "Buying preferences saved" }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(prefs);
+
+  function startEditing() {
+    setDraft(prefs);
+    setEditing(true);
+  }
+  function save(event) {
+    event.preventDefault();
+    onSave(draft);
+    setEditing(false);
+    onToast(savedMessage);
+  }
+  function toggleSupplier(name) {
+    setDraft((current) => {
+      const has = current.preferredSuppliers.includes(name);
+      return {
+        ...current,
+        preferredSuppliers: has
+          ? current.preferredSuppliers.filter((value) => value !== name)
+          : [...current.preferredSuppliers, name],
+      };
+    });
+  }
+
+  return (
+    <section className="crl-card">
+      <div className="crl-card-head">
+        <h3>{title}</h3>
+        {!editing && <button className="crl-edit-link" type="button" onClick={startEditing}>Edit</button>}
+      </div>
+      {editing ? (
+        <form className="crl-pref-form" onSubmit={save}>
+          <label>
+            <span>Need by date</span>
+            <input type="date" value={draft.needByDate} onChange={(event) => setDraft((d) => ({ ...d, needByDate: event.target.value }))} />
+          </label>
+          <label>
+            <span>Buying strategy</span>
+            <select value={draft.strategy} onChange={(event) => setDraft((d) => ({ ...d, strategy: event.target.value }))}>
+              <option value="best-price">Best price</option>
+              <option value="brand-match">Exact brand match</option>
+              <option value="balanced">Balanced</option>
+            </select>
+          </label>
+          <label>
+            <span>Preferred suppliers</span>
+            {supplierOptions.length ? (
+              <div className="crl-pref-checks">
+                {supplierOptions.map((name) => (
+                  <label key={name}>
+                    <input type="checkbox" checked={draft.preferredSuppliers.includes(name)} onChange={() => toggleSupplier(name)} /> {name}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <small className="crl-pref-hint">Add items to choose preferred suppliers.</small>
+            )}
+          </label>
+          <label>
+            <span>Substitutions</span>
+            <select value={draft.substitutions} onChange={(event) => setDraft((d) => ({ ...d, substitutions: event.target.value }))}>
+              <option value="allowed">Allowed</option>
+              <option value="approval">Allowed with approval</option>
+              <option value="none">Not allowed</option>
+            </select>
+          </label>
+          <div className="crl-pref-actions">
+            <button className="crl-ghost-btn" type="button" onClick={() => setEditing(false)}>Cancel</button>
+            <button className="primary-action compact" type="submit">Save</button>
+          </div>
+        </form>
+      ) : (
+        <div className="crl-pref">
+          <div><Icon name="icon-calendar" className="button-icon" /><span>Need by date</span><strong>{formatNeedBy(prefs.needByDate)}</strong></div>
+          <div><Icon name="icon-check-circle" className="button-icon" /><span>Buying strategy</span><strong>{STRATEGY_LABELS[prefs.strategy] || "Best price"}</strong></div>
+          <div><Icon name="icon-users" className="button-icon" /><span>Preferred suppliers</span><strong>{prefs.preferredSuppliers.length ? `${prefs.preferredSuppliers.length} selected` : "All suppliers"}</strong></div>
+          <div><Icon name="icon-shuffle" className="button-icon" /><span>Substitutions</span><strong>{SUBSTITUTION_LABELS[prefs.substitutions] || "Allowed"}</strong></div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function CurrentReorderList({
   items,
   addMode,
@@ -2277,6 +2936,10 @@ function CurrentReorderList({
   onUpload,
   uploading,
   uploadProgress,
+  uploadElapsed,
+  uploadError,
+  onCancelUpload,
+  onClearUploadError,
   isDraggingInvoice,
   onDragStateChange,
   onInvoiceDrop,
@@ -2284,18 +2947,30 @@ function CurrentReorderList({
   selectedInvoiceName,
   hasUploadedInvoice,
   onScan,
+  searchTerm,
+  onSearchTerm,
+  searchResults,
+  searchLoading,
   onToast,
+  listTouched,
+  buyingPrefs,
+  onBuyingPrefs,
+  onArchiveList,
+  onClearList,
 }) {
-  const realRows = deriveMatchRows(items);
+  const realRows = deriveMatchRows(items, buyingPrefs);
   const usingReal = realRows.length > 0;
-  const rows = (usingReal ? realRows : matchReviewSample).map((row) => ({
+  // Show the sample list only for a brand-new, untouched workspace; once the
+  // buyer has added (or cleared) items, an empty list reads as truly empty.
+  const showSample = !usingReal && !listTouched;
+  const isEmpty = !usingReal && listTouched;
+  const rows = (usingReal ? realRows : showSample ? matchReviewSample : []).map((row) => ({
     ...row,
     source: row.source || CRL_SAMPLE_SOURCES[row.id] || "pdf",
   }));
-  const stats = usingReal ? mrComputeStats(rows) : matchReviewSampleStats;
-  const totalItems = usingReal ? rows.length : stats.total;
+  const stats = usingReal ? mrComputeStats(rows) : showSample ? matchReviewSampleStats : mrComputeStats(rows);
+  const totalItems = usingReal ? rows.length : showSample ? stats.total : 0;
   const [tab, setTab] = useState("all");
-  const [editingPrefs, setEditingPrefs] = useState(false);
   const [detail, setDetail] = useState(null);
   const [detailWide, setDetailWide] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -2308,6 +2983,25 @@ function CurrentReorderList({
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+
+  // Suppliers that actually appear in this list's offers — the real choices for
+  // the preferred-supplier filter (toggling them re-ranks the best offer).
+  const supplierOptions = useMemo(() => {
+    const names = new Set();
+    for (const item of items || []) {
+      for (const offer of item.offers || []) {
+        if (offer.supplier) names.add(offer.supplier);
+      }
+    }
+    return [...names].sort();
+  }, [items]);
+
+  const planSummary = useMemo(() => {
+    const total = rows.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+    const suppliers = new Set(rows.map((row) => row.supplier).filter((name) => name && name !== "—"));
+    const coverage = rows.length ? Math.round((stats.matched / rows.length) * 100) : 0;
+    return { total, suppliers: suppliers.size, coverage };
+  }, [rows, stats]);
 
   const tabFilter = {
     all: () => true,
@@ -2330,6 +3024,12 @@ function CurrentReorderList({
           onTab={setTab}
           onOpenRow={openRow}
           onToast={onToast}
+          onArchiveList={onArchiveList}
+          onClearList={onClearList}
+          searchTerm={searchTerm}
+          onSearchTerm={onSearchTerm}
+          searchResults={searchResults}
+          searchLoading={searchLoading}
         />
         {detail && (
           <MobileItemDetail
@@ -2348,6 +3048,10 @@ function CurrentReorderList({
             onUpload={onUpload}
             uploading={uploading}
             uploadProgress={uploadProgress}
+            uploadElapsed={uploadElapsed}
+            uploadError={uploadError}
+            onCancelUpload={onCancelUpload}
+            onClearUploadError={onClearUploadError}
             isDraggingInvoice={isDraggingInvoice}
             onDragStateChange={onDragStateChange}
             onInvoiceDrop={onInvoiceDrop}
@@ -2366,9 +3070,13 @@ function CurrentReorderList({
   return (
     <div className={`crl ${detail ? "detail-open" : ""}`}>
       <header className="crl-header">
-        <div className="crl-title">
+        <div className="crl-title crl-title-main">
           <h2 id="homeHeading">Current Reorder List</h2>
-          <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Autosaved just now</span>
+          <p className="crl-subtitle">
+            <span className="crl-listname">June Restock</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Auto saved just now</span>
+          </p>
         </div>
         <div className="crl-header-actions">
           <button
@@ -2394,11 +3102,11 @@ function CurrentReorderList({
               <>
                 <div className="crl-add-menu-backdrop" onClick={() => setMoreOpen(false)} />
                 <div className="crl-add-menu crl-more-menu" role="menu">
-                  <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onToast("List archived"); }}>
+                  <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onArchiveList(); }}>
                     <Icon name="icon-clipboard" className="button-icon" />
                     <span><strong>Archive this list</strong><small>Move to list history</small></span>
                   </button>
-                  <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onToast("List cleared"); }}>
+                  <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onClearList(); }}>
                     <Icon name="icon-trash" className="button-icon crl-menu-danger" />
                     <span><strong>Clear this list</strong><small>Remove all items</small></span>
                   </button>
@@ -2409,10 +3117,29 @@ function CurrentReorderList({
         </div>
       </header>
 
-      {addMode === "scan" && (
+      {(addMode === "scan" || addMode === "search") && (
         <section className="crl-add">
-          <div className="crl-add-panel"><DesktopBarcodeScan onScan={onScan} /></div>
-        </section>
+            {addMode === "scan" && (
+              <div className="crl-add-panel"><DesktopBarcodeScan onScan={onScan} /></div>
+            )}
+            {addMode === "search" && (
+              <div className="crl-add-panel crl-search-panel">
+                <label className="crl-search">
+                  <Icon name="icon-search" className="button-icon" />
+                  <input
+                    type="search"
+                    placeholder="Search the catalog…"
+                    value={searchTerm}
+                    onChange={(event) => onSearchTerm(event.target.value)}
+                    autoFocus
+                  />
+                </label>
+                {searchTerm.trim() && (
+                  <SearchResults results={searchResults} loading={searchLoading} searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`} />
+                )}
+              </div>
+            )}
+          </section>
       )}
 
       <div className={`crl-layout ${detail ? "has-detail" : ""} ${detail && detailWide ? "detail-wide" : ""}`}>
@@ -2446,6 +3173,16 @@ function CurrentReorderList({
                 <span className="crl-price-h">Best price <Icon name="icon-info" className="button-icon" /></span>
                 <span>Actions</span>
               </div>
+              {isEmpty && (
+                <div className="crl-empty">
+                  <Icon name="icon-cloud-upload" className="button-icon" />
+                  <strong>Your reorder list is empty</strong>
+                  <p>Upload an invoice (PDF or CSV) or scan a barcode to start matching items to the best supplier.</p>
+                  <button className="primary-action compact" type="button" onClick={() => onAddMode("upload")}>
+                    <Icon name="icon-cloud-upload" className="button-icon" />Upload invoice
+                  </button>
+                </div>
+              )}
               {filtered.map((row) => {
                 const status = CRL_STATUS[row.status];
                 const notFound = row.status === "Not found";
@@ -2455,14 +3192,17 @@ function CurrentReorderList({
                   <div className={`crl-row crl-row-click ${detail?.row.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setDetail({ row, mode })}>
                     <span><input type="checkbox" aria-label={`Select ${row.importedName}`} onClick={(event) => event.stopPropagation()} /></span>
                     <span className="crl-item">
-                      <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
+                      <ProductThumb image={row.image} alt={row.canonicalName || row.importedName} />
                       <span className="crl-item-id">
-                        <strong>{row.importedName}</strong>
-                        <small>SKU on source: {(row.importedSub || "").replace(/^SKU:\s*/, "") || "—"}</small>
+                        <strong>{row.canonicalName || row.importedName}</strong>
+                        <small>{row.canonicalName ? `From source: ${row.importedName}` : `SKU on source: ${(row.importedSub || "").replace(/^SKU:\s*/, "") || "—"}`}</small>
                       </span>
                     </span>
-                    <span className="crl-source"><Icon name={CRL_SOURCE_ICON[row.source] || "icon-file-text"} className="button-icon" /></span>
-                    <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
+                    <span className="crl-source" title={`Imported from ${row.source.toUpperCase()}`}><Icon name={CRL_SOURCE_ICON[row.source] || "icon-file-text"} className="button-icon" /></span>
+                    <span className="crl-status-cell">
+                      <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
+                      {row.confidence != null && <small className={`crl-conf ${mrConfTone(row.confidence)}`}>{row.confidence}% confidence</small>}
+                    </span>
                     <span className="crl-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
                     <span className="crl-match">
                       {notFound ? (
@@ -2473,7 +3213,7 @@ function CurrentReorderList({
                       ) : (
                         <>
                           <strong>{row.matchName}</strong>
-                          <small>{row.matchSub}</small>
+                          {row.matchSub && <small>{row.matchSub}</small>}
                           <MatchSupplier name={row.supplier} />
                         </>
                       )}
@@ -2482,7 +3222,7 @@ function CurrentReorderList({
                       {notFound ? <span className="crl-dash">—</span> : (
                         <>
                           <strong>{mrMoney(row.price)}</strong>
-                          <small>${mrEa(row.perEa)} / ea</small>
+                          {row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}
                         </>
                       )}
                     </span>
@@ -2513,67 +3253,30 @@ function CurrentReorderList({
           />
         ) : (
         <aside className="crl-rail">
-          <section className="crl-card">
-            <div className="crl-card-head">
-              <h3>Buying Preferences</h3>
-              {!editingPrefs && (
-                <button className="crl-edit-link" type="button" onClick={() => setEditingPrefs(true)}>Edit</button>
-              )}
-            </div>
-            {editingPrefs ? (
-              <form className="crl-pref-form" onSubmit={(event) => { event.preventDefault(); setEditingPrefs(false); onToast("Buying preferences saved"); }}>
-                <label>
-                  <span>Need by date</span>
-                  <input type="date" defaultValue="2025-06-20" />
-                </label>
-                <label>
-                  <span>Buying strategy</span>
-                  <select defaultValue="best-price">
-                    <option value="best-price">Best price</option>
-                    <option value="brand-match">Exact brand match</option>
-                    <option value="balanced">Balanced</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Preferred suppliers</span>
-                  <div className="crl-pref-checks">
-                    <label><input type="checkbox" defaultChecked /> Patterson Dental</label>
-                    <label><input type="checkbox" defaultChecked /> Henry Schein</label>
-                    <label><input type="checkbox" defaultChecked /> Darby Dental</label>
-                    <label><input type="checkbox" /> Net32</label>
-                  </div>
-                </label>
-                <label>
-                  <span>Substitutions</span>
-                  <select defaultValue="allowed">
-                    <option value="allowed">Allowed</option>
-                    <option value="approval">Allowed with approval</option>
-                    <option value="none">Not allowed</option>
-                  </select>
-                </label>
-                <div className="crl-pref-actions">
-                  <button className="crl-ghost-btn" type="button" onClick={() => setEditingPrefs(false)}>Cancel</button>
-                  <button className="primary-action compact" type="submit">Save</button>
-                </div>
-              </form>
-            ) : (
-              <div className="crl-pref">
-                <div><Icon name="icon-calendar" className="button-icon" /><span>Need by date</span><strong>Jun 20, 2025</strong></div>
-                <div><Icon name="icon-check-circle" className="button-icon" /><span>Buying strategy</span><strong>Best price</strong></div>
-                <div><Icon name="icon-users" className="button-icon" /><span>Preferred suppliers</span><strong>3 selected</strong></div>
-                <div><Icon name="icon-shuffle" className="button-icon" /><span>Substitutions</span><strong>Allowed</strong></div>
-              </div>
-            )}
-          </section>
+          <BuyingPreferencesCard
+            prefs={buyingPrefs}
+            supplierOptions={supplierOptions}
+            onSave={onBuyingPrefs}
+            onToast={onToast}
+          />
 
           <section className="crl-card">
             <h3>Plan Preview</h3>
-            <div className="crl-plan">
-              <div><span>Estimated total</span><strong>$5,842.16</strong></div>
-              <div><span>Suppliers</span><strong>5</strong></div>
-              <div><span>Coverage</span><strong>92%</strong></div>
-              <div><span>Potential savings</span><strong className="green">$842.15</strong></div>
-            </div>
+            {usingReal ? (
+              <div className="crl-plan">
+                <div><span>Estimated total</span><strong>{money.format(planSummary.total)}</strong></div>
+                <div><span>Suppliers</span><strong>{planSummary.suppliers}</strong></div>
+                <div><span>Coverage</span><strong>{planSummary.coverage}%</strong></div>
+                <div><span>Items</span><strong>{totalItems}</strong></div>
+              </div>
+            ) : (
+              <div className="crl-plan">
+                <div><span>Estimated total</span><strong>$5,842.16</strong></div>
+                <div><span>Suppliers</span><strong>5</strong></div>
+                <div><span>Coverage</span><strong>92%</strong></div>
+                <div><span>Potential savings</span><strong className="green">$842.15</strong></div>
+              </div>
+            )}
             <button className="crl-plan-btn" type="button" onClick={() => onToast("Procurement plan coming next")}>Open procurement plan <Icon name="icon-arrow-right" className="button-icon" /></button>
           </section>
         </aside>
@@ -2586,6 +3289,10 @@ function CurrentReorderList({
           onUpload={onUpload}
           uploading={uploading}
           uploadProgress={uploadProgress}
+          uploadElapsed={uploadElapsed}
+          uploadError={uploadError}
+          onCancelUpload={onCancelUpload}
+          onClearUploadError={onClearUploadError}
           isDraggingInvoice={isDraggingInvoice}
           onDragStateChange={onDragStateChange}
           onInvoiceDrop={onInvoiceDrop}
@@ -2610,6 +3317,10 @@ function UploadModal({
   onUpload,
   uploading,
   uploadProgress,
+  uploadElapsed = 0,
+  uploadError = "",
+  onCancelUpload,
+  onClearUploadError,
   isDraggingInvoice,
   onDragStateChange,
   onInvoiceDrop,
@@ -2620,6 +3331,8 @@ function UploadModal({
   onClose,
   onUploadAnother,
 }) {
+  const phase = uploadProgress < 35 ? "Reading the invoice…" : "Matching products to the catalog…";
+  const warming = uploading && uploadElapsed > 10000;
   const resultRows = lastUpload ? deriveMatchRows(lastUpload.items) : [];
   const matched = resultRows.filter((row) => row.status === "Matched").length;
   const review = resultRows.filter((row) => row.status === "Review").length;
@@ -2631,7 +3344,7 @@ function UploadModal({
         <header className="crl-modal-head">
           <div>
             <h3 id="uploadModalTitle">{lastUpload ? "Invoice matched" : "Upload invoice"}</h3>
-            <p>{lastUpload ? `${lastUpload.items.length} line items from ${lastUpload.name}` : "We read the PDF, match each line to the canonical catalog, and add the matched products to your list."}</p>
+            <p>{lastUpload ? `${lastUpload.items.length} line items from ${lastUpload.name}` : "We read the PDF or CSV, match each line to the canonical catalog, and add the matched products to your list."}</p>
           </div>
           <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose} disabled={uploading}><Icon name="icon-x" className="button-icon" /></button>
         </header>
@@ -2640,30 +3353,45 @@ function UploadModal({
           <div className="crl-modal-body">
             <form ref={uploadFormRef} onSubmit={onUpload} className="upload-layout">
               <div
-                className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""}`}
-                onDragEnter={(event) => { event.preventDefault(); onDragStateChange(true); }}
+                className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""} ${uploadError ? "has-error" : ""}`}
+                onDragEnter={(event) => { event.preventDefault(); if (!uploading) onDragStateChange(true); }}
                 onDragOver={(event) => event.preventDefault()}
                 onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onDragStateChange(false); }}
                 onDrop={onInvoiceDrop}
               >
-                <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
-                <h3>{uploading ? "Processing invoice..." : isDraggingInvoice ? "Drop your file here" : "Drag and drop your invoice"}</h3>
-                <p>{uploading ? selectedInvoiceName : selectedInvoiceName || "or"}</p>
-                <span className="select-file-button"><Icon name="icon-cloud-upload" className="button-icon" />Choose file</span>
-                <small>Text-based PDF invoice · Max 20MB</small>
-                {uploading && (
-                  <div className="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={uploadProgress}>
-                    <div className="processing-track"><div style={{ width: `${uploadProgress}%` }}></div></div>
-                    <span>{uploadProgress < 45 ? "Reading PDF" : uploadProgress < 80 ? "Matching products" : "Adding to list"}</span>
-                  </div>
+                {uploadError && !uploading ? (
+                  <>
+                    <div className="upload-icon error"><Icon name="icon-alert-triangle" /></div>
+                    <h3>Upload didn&rsquo;t finish</h3>
+                    <p className="upload-error-msg">{uploadError}</p>
+                    <button className="primary-action compact" type="button" onClick={onClearUploadError}>
+                      <Icon name="icon-cloud-upload" className="button-icon" />Try again
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
+                    <h3>{uploading ? "Processing invoice…" : isDraggingInvoice ? "Drop your file here" : "Drag and drop your invoice"}</h3>
+                    <p>{uploading ? (selectedInvoiceName || "Your invoice") : selectedInvoiceName || "or"}</p>
+                    {!uploading && <span className="select-file-button"><Icon name="icon-cloud-upload" className="button-icon" />Choose file</span>}
+                    {!uploading && <small>Text-based PDF or CSV invoice · Max 20MB</small>}
+                    {uploading && (
+                      <div className="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(uploadProgress)}>
+                        <div className="processing-track"><div style={{ width: `${uploadProgress}%` }}></div></div>
+                        <span>{phase}{uploadElapsed > 4000 ? ` · ${Math.round(uploadElapsed / 1000)}s` : ""}</span>
+                        {warming && <small className="processing-hint">First match in a while can take up to a minute while the catalog warms up — hang tight.</small>}
+                      </div>
+                    )}
+                  </>
                 )}
                 <input
                   className="file-input"
                   data-testid="invoice-file-input"
                   name="file"
                   type="file"
-                  accept=".pdf,application/pdf"
+                  accept=".pdf,.csv,application/pdf,text/csv"
                   required
+                  disabled={uploading}
                   onChange={(event) => onInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
                 />
                 <button className="primary-action compact hidden-submit" data-testid="save-parse-request" type="submit" disabled={uploading}>Add to list</button>
@@ -2709,8 +3437,10 @@ function UploadModal({
               <button className="crl-ghost-btn" type="button" onClick={onUploadAnother}>Upload another</button>
               <button className="primary-action compact" type="button" onClick={onClose}>View list</button>
             </>
+          ) : uploading ? (
+            <button className="crl-ghost-btn" type="button" onClick={onCancelUpload}>Cancel upload</button>
           ) : (
-            <button className="crl-ghost-btn" type="button" onClick={onClose} disabled={uploading}>Cancel</button>
+            <button className="crl-ghost-btn" type="button" onClick={onClose}>Cancel</button>
           )}
         </footer>
       </div>
@@ -2724,14 +3454,15 @@ const ARCHIVED_LISTS = [
   { id: "april-ortho", name: "April Ortho Supplies", date: "Apr 14, 2025", items: 52, suppliers: 3, total: "$1,905.00" },
 ];
 
-function HistoryView({ onOpen }) {
+function HistoryView({ onOpen, archivedLists = [] }) {
+  const lists = [...archivedLists, ...ARCHIVED_LISTS];
   return (
     <div className="crl">
       <header className="crl-header">
         <div className="crl-title"><h2>History / Past Lists</h2></div>
       </header>
       <div className="history-list">
-        {ARCHIVED_LISTS.map((list) => (
+        {lists.map((list) => (
           <button className="history-row" type="button" key={list.id} onClick={() => onOpen(list.id)}>
             <span className="history-icon"><Icon name="icon-clock" className="button-icon" /></span>
             <span className="history-info">
@@ -2747,8 +3478,10 @@ function HistoryView({ onOpen }) {
   );
 }
 
-function HistoryDetail({ id, onBack }) {
-  const list = ARCHIVED_LISTS.find((entry) => entry.id === id) || ARCHIVED_LISTS[0];
+function HistoryDetail({ id, onBack, archivedLists = [] }) {
+  const lists = [...archivedLists, ...ARCHIVED_LISTS];
+  const list = lists.find((entry) => entry.id === id) || lists[0];
+  const rows = list?.rows || [];
   return (
     <div className="crl">
       <header className="crl-header">
@@ -2764,6 +3497,40 @@ function HistoryDetail({ id, onBack }) {
         <div><small>Suppliers</small><strong>{list.suppliers}</strong></div>
         <div><small>Total</small><strong>{list.total}</strong></div>
       </div>
+      {rows.length > 0 && (
+        <div className="crl-table history-detail-table">
+          <div className="crl-row crl-row-head">
+            <span>Item</span>
+            <span>Status</span>
+            <span>Qty</span>
+            <span>Best matched product</span>
+            <span className="crl-price-h">Best price</span>
+          </div>
+          {rows.map((row) => {
+            const status = CRL_STATUS[row.status];
+            const notFound = row.status === "Not found";
+            return (
+              <div className="crl-row" key={row.id}>
+                <span className="crl-item">
+                  <ProductThumb image={row.image} alt={row.canonicalName || row.importedName} />
+                  <span className="crl-item-id">
+                    <strong>{row.canonicalName || row.importedName}</strong>
+                    {row.canonicalName && <small>From source: {row.importedName}</small>}
+                  </span>
+                </span>
+                <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
+                <span className="crl-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+                <span className="crl-match">
+                  {notFound ? <strong>No match found</strong> : (<><strong>{row.matchName}</strong><MatchSupplier name={row.supplier} /></>)}
+                </span>
+                <span className="crl-price">
+                  {notFound ? <span className="crl-dash">—</span> : (<><strong>{mrMoney(row.price)}</strong>{row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}</>)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <p className="history-detail-note">This reorder list is archived and read-only. Reopen or duplicate it to start a new reorder, or revisit the supplier handoff.</p>
       <div className="history-detail-actions">
         <button className="primary-action compact" type="button">Reopen list</button>
@@ -2774,7 +3541,7 @@ function HistoryDetail({ id, onBack }) {
   );
 }
 
-function SettingsView() {
+function SettingsView({ onLogout, defaultBuyingPrefs, onSaveDefaults, supplierOptions = [], onToast }) {
   return (
     <div className="crl">
       <header className="crl-header">
@@ -2786,12 +3553,20 @@ function SettingsView() {
           <h3>Alex Kim</h3>
           <p>Northline Dental · Buyer</p>
         </div>
-        <div className="ops-panel">
-          <p className="eyebrow">Default Buying Preferences</p>
-          <h3>Exact brand if possible</h3>
-          <p>Allow vetted equivalents when they reduce cost and preserve product quality.</p>
-        </div>
+        <BuyingPreferencesCard
+          title="Default Buying Preferences"
+          savedMessage="Default preferences saved"
+          prefs={defaultBuyingPrefs}
+          supplierOptions={supplierOptions}
+          onSave={onSaveDefaults}
+          onToast={onToast}
+        />
       </div>
+      <p className="settings-prefs-note">
+        <Icon name="icon-info" className="button-icon" />
+        New reorder lists start from these defaults. You can still tweak preferences per list on Home.
+      </p>
+      <button className="secondary-action" type="button" onClick={onLogout} style={{ marginTop: "1.5rem" }}>Sign out</button>
     </div>
   );
 }

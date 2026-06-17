@@ -54,6 +54,10 @@ DEMO_SUPPLIERS = {
     "smoke-dental_city": "Dental City",
     "smoke-pearson_dental": "Pearson Dental",
 }
+# Suppliers whose ingested catalog carries product image URLs. Demo invoices
+# draw their items from these so the matched products render with real
+# thumbnails in the reorder list instead of the placeholder icon.
+DEMO_VENDORS = ["Pearson Dental", "American Dental Accessories"]
 DEMO_SIZES = ["small", "medium", "large", "extra large"]
 
 
@@ -72,8 +76,61 @@ def normalize_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
 
 
-def load_products():
-    """Return demo supplier products from cached ingestion files when available."""
+def load_products_from_db():
+    """Query priced supplier products via psql, including image_url so demo
+    invoices can be restricted to products that render with a thumbnail."""
+    sql = (
+        "SELECT s.name AS supplier, p.sku, p.name, "
+        "COALESCE(p.manufacturer_sku, '') AS manufacturer_sku, "
+        "COALESCE(p.brand, '') AS brand, "
+        "COALESCE(p.pack_size, '') AS pack_size, "
+        "COALESCE(p.unit_of_measure, '') AS unit_of_measure, "
+        "COALESCE(p.product_url, '') AS product_url, "
+        "COALESCE(p.category, '') AS category, "
+        "COALESCE(p.description, '') AS description, "
+        "COALESCE(p.image_url, '') AS image_url, "
+        "snap.price_cents "
+        "FROM medmkp_supplier_product p "
+        "JOIN medmkp_supplier s ON s.id = p.supplier_id AND s.deleted_at IS NULL "
+        "JOIN LATERAL (SELECT price_cents FROM medmkp_supplier_price_snapshot ps "
+        "  WHERE ps.supplier_product_id = p.id AND ps.deleted_at IS NULL "
+        "  ORDER BY captured_at DESC LIMIT 1) snap ON snap.price_cents > 0 "
+        "WHERE p.deleted_at IS NULL"
+    )
+    out = subprocess.run(
+        ["psql", database_url(), "-tA", "-F", "\t", "-c", sql],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    products = []
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 12:
+            continue
+        (supplier, sku, name, manufacturer_sku, brand, pack_size, unit_of_measure,
+         product_url, category, description, image_url, price) = parts
+        products.append(
+            {
+                "supplier": supplier,
+                "sku": sku,
+                "name": name,
+                "manufacturer_sku": manufacturer_sku,
+                "brand": brand,
+                "pack_size": pack_size,
+                "unit_of_measure": unit_of_measure,
+                "product_url": product_url,
+                "category": category,
+                "description": description,
+                "image_url": image_url,
+                "price_cents": int(price),
+            }
+        )
+    return products
+
+
+def load_products_from_cache():
+    """Fallback only: cached ingestion files (no image_url)."""
     cache_root = ROOT / "medusa-backend" / "apps" / "backend" / ".medmkp" / "ingestion"
     cached_products = []
     if cache_root.exists():
@@ -98,54 +155,23 @@ def load_products():
                         "unit_of_measure": entry.get("unit_of_measure", ""),
                         "product_url": entry.get("product_url", ""),
                         "category": entry.get("category", ""),
+                        "image_url": entry.get("image_url", ""),
                         "price_cents": round(float(entry.get("price", 0)) * 100),
                     }
                 )
-        if cached_products:
-            return cached_products
+    return cached_products
 
-    """Fallback: query priced supplier products via psql (no driver dep)."""
-    sql = (
-        "SELECT s.name AS supplier, p.sku, p.name, "
-        "COALESCE(p.manufacturer_sku, '') AS manufacturer_sku, "
-        "COALESCE(p.brand, '') AS brand, "
-        "COALESCE(p.pack_size, '') AS pack_size, "
-        "COALESCE(p.unit_of_measure, '') AS unit_of_measure, "
-        "COALESCE(p.product_url, '') AS product_url, "
-        "snap.price_cents "
-        "FROM medmkp_supplier_product p "
-        "JOIN medmkp_supplier s ON s.id = p.supplier_id AND s.deleted_at IS NULL "
-        "JOIN LATERAL (SELECT price_cents FROM medmkp_supplier_price_snapshot ps "
-        "  WHERE ps.supplier_product_id = p.id AND ps.deleted_at IS NULL "
-        "  ORDER BY captured_at DESC LIMIT 1) snap ON snap.price_cents > 0 "
-        "WHERE p.deleted_at IS NULL"
-    )
-    out = subprocess.run(
-        ["psql", database_url(), "-tA", "-F", "\t", "-c", sql],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    products = []
-    for line in out.splitlines():
-        parts = line.split("\t")
-        if len(parts) != 9:
-            continue
-        supplier, sku, name, manufacturer_sku, brand, pack_size, unit_of_measure, product_url, price = parts
-        products.append(
-            {
-                "supplier": supplier,
-                "sku": sku,
-                "name": name,
-                "manufacturer_sku": manufacturer_sku,
-                "brand": brand,
-                "pack_size": pack_size,
-                "unit_of_measure": unit_of_measure,
-                "product_url": product_url,
-                "price_cents": int(price),
-            }
-        )
-    return products
+
+def load_products():
+    """Prefer the live DB (current prices + image_url); fall back to cached
+    ingestion files only if the database is unreachable."""
+    try:
+        products = load_products_from_db()
+        if products:
+            return products
+    except Exception as error:  # pragma: no cover - operational fallback
+        print(f"DB load failed ({error}); falling back to cached ingestion files.", file=sys.stderr)
+    return load_products_from_cache()
 
 
 def extract_size(product_name: str) -> str:
@@ -165,20 +191,21 @@ def extract_size(product_name: str) -> str:
 
 def build_glove_demo_batches(products, rng):
     batches = []
-    for supplier_key, vendor in DEMO_SUPPLIERS.items():
+    for vendor in DEMO_VENDORS:
         supplier_products = [
             product
             for product in products
-            if product.get("supplier_key") == supplier_key
-            and "nitrile" in normalize_key(f"{product['name']} {product['description']} {product['category']}")
-            and "glove" in normalize_key(f"{product['name']} {product['description']} {product['category']}")
+            if product.get("supplier") == vendor
+            and str(product.get("image_url", "")).strip()
+            and "nitrile" in normalize_key(f"{product['name']} {product.get('description', '')} {product.get('category', '')}")
+            and "glove" in normalize_key(f"{product['name']} {product.get('description', '')} {product.get('category', '')}")
         ]
         if not supplier_products:
             continue
 
         by_size = {}
         for product in supplier_products:
-            size = extract_size(product["name"] + " " + product["description"])
+            size = extract_size(product["name"] + " " + product.get("description", ""))
             if size and size not in by_size:
                 by_size[size] = product
 
@@ -382,7 +409,7 @@ def main():
     products = load_products()
     demo_batches = build_glove_demo_batches(products, rng)
     if demo_batches:
-        print(f"Found {len(demo_batches)} demo comparison supplier groups from cached ingestion data.")
+        print(f"Found {len(demo_batches)} image-backed demo supplier groups (Pearson / American Dental).")
     else:
         groups = build_overlap_groups(products)
         supplier_pools = build_supplier_pools(groups)
