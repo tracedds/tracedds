@@ -187,9 +187,17 @@ export function buildSupplierCatalogIngestion(
   const canonicalProductMatches: unknown[] = []
   const priceSnapshots: unknown[] = []
 
+  const seenSkus = new Set<string>()
   input.rows.forEach((row, index) => {
     const sku = row.sku?.trim() || row.manufacturer_sku?.trim() || `NO-SKU-${index + 1}`
-    const supplierProductId = boundedId("msp", [input.supplier_id, input.source_catalog, sku, String(index)], 96)
+    // Collapse a SKU that repeats within a single catalog (same product listed
+    // on multiple pages). Combined with deriving the id only from
+    // (supplier, source_catalog, sku) below — never the row position — this
+    // makes re-ingestion idempotent: a reordered or re-listed catalog updates
+    // existing rows in place instead of spawning duplicate supplier products.
+    if (seenSkus.has(sku)) return
+    seenSkus.add(sku)
+    const supplierProductId = boundedId("msp", [input.supplier_id, input.source_catalog, sku], 96)
     const name = row.name?.trim() || row.description?.trim() || sku
     const description = row.description?.trim() || name
     const category = row.category?.trim() || "Dental supplies"
@@ -226,7 +234,7 @@ export function buildSupplierCatalogIngestion(
     })
 
     canonicalProductMatches.push({
-      id: boundedId("mcpm", [input.supplier_id, input.source_catalog, sku, String(index)], 96),
+      id: boundedId("mcpm", [input.supplier_id, input.source_catalog, sku], 96),
       canonical_product_id: match.canonicalProductId,
       supplier_product_id: supplierProductId,
       supplier_id: input.supplier_id,
@@ -246,7 +254,7 @@ export function buildSupplierCatalogIngestion(
 
     if (typeof row.price_cents === "number" && row.price_cents >= 0) {
       priceSnapshots.push({
-        id: boundedId("msps", [input.supplier_id, input.source_catalog, sku, capturedAt, String(index)], 96),
+        id: boundedId("msps", [input.supplier_id, input.source_catalog, sku, capturedAt], 96),
         supplier_product_id: supplierProductId,
         supplier_id: input.supplier_id,
         price_cents: row.price_cents,
