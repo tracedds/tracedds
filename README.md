@@ -65,8 +65,8 @@ npm run db:migrate
 been applied.
 
 Catalog data comes from the supplier ingestion pipeline (see
-`SUPPLIER_INGESTION.md`) followed by `npm run products:match -- --commit`
-(see `PRODUCT_MATCHING.md`), or from importing an existing catalog dump.
+`docs/SUPPLIER_INGESTION.md`) followed by `npm run products:match -- --commit`
+(see `docs/PRODUCT_MATCHING.md`), or from importing an existing catalog dump.
 
 ### 3. Create the Local Medusa Admin User
 
@@ -141,6 +141,14 @@ http://localhost:3000
 
 If port `3000` is busy, Next will print the alternate port, often `3001`.
 
+### 6. Password Reset
+
+The web app has a forgot/reset-password flow (`/forgot-password`, `/reset-password`)
+on top of Medusa's email/password auth. Set `MEDMKP_FRONTEND_URL` on the Medusa
+backend (local `.env` and Render) so reset links point at the web app. Until a
+notification provider is configured, the reset link is written to the Medusa logs
+by the `auth.password_reset` subscriber, so the flow can be completed in development.
+
 ### Quick Health Check
 
 With Docker and Medusa running:
@@ -152,6 +160,65 @@ curl http://localhost:3000
 ```
 
 If all three respond, infrastructure, backend, and frontend are up.
+
+## Worktree Dev Instances
+
+Each git worktree can run its own isolated frontend `next dev` on a unique port,
+with an in-app badge showing which branch and database it is pointed at — so you
+can verify a feature in one worktree without it clashing with another.
+
+Once per clone, install the hook:
+
+```bash
+npm run wt:setup
+```
+
+From then on, every `git worktree add` auto-writes a gitignored `.env.local` for
+the new worktree with a unique port (range `3001`–`3099`), a backend target, and
+the branch name. To run it:
+
+```bash
+npm run dev        # next dev on this worktree's assigned port
+```
+
+A fixed badge appears in the bottom-left of the app:
+
+```text
+claude/my-feature · DB: PROD · :3042
+```
+
+It is **red** when the worktree points at the prod backend and **blue** when it
+points at local Medusa. New worktrees default to **prod** so `npm run dev` shows
+real data with no local Postgres/Medusa — which means writes hit prod data; the
+red badge is the reminder. Switch targets any time (restart `npm run dev` to
+apply):
+
+```bash
+npm run wt:local   # point at local Medusa (http://127.0.0.1:9000)
+npm run wt:prod    # point at the Render prod backend
+```
+
+List every worktree's instance:
+
+```bash
+npm run wt:list
+# PORT    DB     BRANCH                    PATH
+# 3042    prod   claude/my-feature         /Users/.../.claude/worktrees/...
+```
+
+Notes:
+
+- Isolation is **frontend-only**: the badge controls which backend (and thus
+  which DB) this worktree's frontend calls via `MEDUSA_BACKEND_URL`. The backend
+  is shared — local mode uses the single Medusa on `:9000` (start it per
+  [Run Locally](#run-locally) above); prod mode needs nothing local.
+- `.env.local` is read only by Next.js (the frontend); it does not affect the
+  Medusa backend, which reads only `.env`.
+- The main checkout is unaffected: it keeps running on `:3000` with no badge.
+- The hook lives in the shared `.git/hooks`, so `wt:setup` only needs running
+  once per clone. A worktree auto-provisions only if its branch contains these
+  scripts, so this must be on `main` for new worktrees to inherit it; retrofit an
+  existing worktree with `npm run wt:init`.
 
 ## Static Demo
 
@@ -200,7 +267,7 @@ Nitrile Exam Gloves, Medium, 100/Box
 
 Canonical products are generated from the ingested supplier catalogs by the
 product matching pipeline (`npm run products:match`, see
-`PRODUCT_MATCHING.md`).
+`docs/PRODUCT_MATCHING.md`).
 
 ## Deploy
 
@@ -217,7 +284,7 @@ Render Postgres: database for Medusa
 Create a Vercel project from this repo:
 
 ```text
-Repository: demuizon/medmkp-demo
+Repository: medmkp/medmkp-demo
 Root directory: ./
 Framework: Next.js
 Build command: npm run build
@@ -226,7 +293,7 @@ Build command: npm run build
 Set this Vercel environment variable after the Render backend exists:
 
 ```text
-MEDUSA_BACKEND_URL=https://medmkp-medusa.onrender.com
+MEDUSA_BACKEND_URL=https://medmkp.com
 ```
 
 The frontend does not call Medusa directly from browser code. It calls the local
@@ -239,7 +306,7 @@ The repo includes [render.yaml](./render.yaml) for a Render Blueprint.
 Create a Render Blueprint from this repo:
 
 ```text
-Repository: demuizon/medmkp-demo
+Repository: medmkp/medmkp-demo
 Blueprint file: render.yaml
 ```
 
@@ -308,7 +375,7 @@ account/password before sharing the admin URL.
 
 ## Product Direction
 
-See [PRODUCT_BRIEF.md](./PRODUCT_BRIEF.md) for the current Sean-notes product brief.
+See [PRODUCT_BRIEF.md](./docs/PRODUCT_BRIEF.md) for the current Sean-notes product brief.
 
 The key marketplace rule is to separate canonical products from seller offers:
 
