@@ -696,42 +696,99 @@ function AboutPage({ onNavigate }) {
   );
 }
 
-function AuthShell({ title, subtitle, children, onNavigate }) {
+function AuthShell({ subtitle, children, onNavigate }) {
   return (
     <main className="auth-page">
       <a className="auth-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="MedMKP home">
         <BrandMark />
       </a>
       <div className="auth-card">
-        <h1>{title}</h1>
-        <p className="auth-sub">{subtitle}</p>
         {children}
       </div>
     </main>
   );
 }
 
-function LoginPage({ onNavigate }) {
+function LoginPage({ onNavigate, onAuthed }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "Could not sign in.");
+        return;
+      }
+      onAuthed();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to your MedMKP workspace." onNavigate={onNavigate}>
-      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); onNavigate("/app"); }}>
-        <label><span>Email</span><input type="email" placeholder="you@practice.com" required /></label>
-        <label><span>Password</span><input type="password" placeholder="••••••••" required /></label>
-        <button className="primary-action" type="submit">Sign in</button>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <label><span>Email</span><input type="email" placeholder="you@practice.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label><span>Password</span><input type="password" placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {error && <p className="auth-error" style={{ color: "#c0392b", fontSize: "0.85rem", margin: 0 }}>{error}</p>}
+        <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
       </form>
       <p className="auth-alt">New to MedMKP? <a href="/signup" onClick={(event) => { event.preventDefault(); onNavigate("/signup"); }}>Create an account</a></p>
     </AuthShell>
   );
 }
 
-function SignupPage({ onNavigate }) {
+function SignupPage({ onNavigate, onAuthed }) {
+  const [practiceName, setPracticeName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ practiceName, email, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error || "Could not create account.");
+        return;
+      }
+      onAuthed();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <AuthShell title="Create your account" subtitle="Start optimizing your dental supply reorders." onNavigate={onNavigate}>
-      <form className="auth-form" onSubmit={(event) => { event.preventDefault(); onNavigate("/app"); }}>
-        <label><span>Practice name</span><input type="text" placeholder="Bright Smiles Dental" required /></label>
-        <label><span>Email</span><input type="email" placeholder="you@practice.com" required /></label>
-        <label><span>Password</span><input type="password" placeholder="Create a password" required /></label>
-        <button className="primary-action" type="submit">Create account</button>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <label><span>Practice name</span><input type="text" placeholder="Bright Smiles Dental" value={practiceName} onChange={(event) => setPracticeName(event.target.value)} required /></label>
+        <label><span>Email</span><input type="email" placeholder="you@practice.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label><span>Password</span><input type="password" placeholder="Create a password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {error && <p className="auth-error" style={{ color: "#c0392b", fontSize: "0.85rem", margin: 0 }}>{error}</p>}
+        <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Creating…" : "Create account"}</button>
       </form>
       <p className="auth-alt">Already have an account? <a href="/login" onClick={(event) => { event.preventDefault(); onNavigate("/login"); }}>Log in</a></p>
     </AuthShell>
@@ -740,7 +797,9 @@ function SignupPage({ onNavigate }) {
 
 export default function Home() {
   const uploadFormRef = useRef(null);
+  const searchRef = useRef(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authed, setAuthed] = useState(null);
   const [view, setViewState] = useState("landing");
   const [historyId, setHistoryId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -760,6 +819,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [canonicalResults, setCanonicalResults] = useState([]);
   const [canonicalSource, setCanonicalSource] = useState("idle");
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
     function syncViewFromLocation() {
@@ -778,6 +838,32 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => response.json())
+      .then(({ authenticated }) => setAuthed(Boolean(authenticated)))
+      .catch(() => setAuthed(false));
+  }, []);
+
+  // Keep unauthenticated visitors out of the authenticated app routes.
+  useEffect(() => {
+    if (authed === false && isLoggedIn) {
+      navigate("/login");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, isLoggedIn]);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
     fetch("/api/catalog")
       .then((response) => response.json())
       .then(({ categories }) => {
@@ -793,23 +879,27 @@ export default function Home() {
     if (!query) {
       setCanonicalResults([]);
       setCanonicalSource("idle");
+      setSearchLoading(false);
       return undefined;
     }
 
+    setSearchLoading(true);
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      fetch(`/api/canonical-products?q=${encodeURIComponent(query)}&limit=5`, {
+      fetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=8`, {
         signal: controller.signal,
       })
         .then((response) => response.json())
         .then(({ canonical_products: products, source }) => {
           setCanonicalResults(products || []);
           setCanonicalSource(source || "fallback");
+          setSearchLoading(false);
         })
         .catch((error) => {
           if (error.name === "AbortError") return;
           setCanonicalResults([]);
           setCanonicalSource("fallback");
+          setSearchLoading(false);
         });
     }, 250);
 
@@ -862,7 +952,10 @@ export default function Home() {
         name: product.name,
         category: product.category,
         supplier_name: product.best_offer?.supplier_name,
-        unit_price_cents: product.best_offer?.price_cents,
+        price_cents: product.best_offer?.price_cents,
+        per_unit_cents: product.best_offer?.unit_price_cents,
+        pack_size: product.best_offer?.pack_size,
+        base_unit: product.base_unit,
         handle: product.handle,
         price_range_cents: product.price_range_cents,
         offer_count: product.offer_count,
@@ -876,7 +969,7 @@ export default function Home() {
         name: item.name || category.name,
         category: category.name,
         supplier_name: item.supplier_name,
-        unit_price_cents: item.unit_price_cents,
+        price_cents: item.unit_price_cents,
         handle: "",
       };
     });
@@ -893,6 +986,17 @@ export default function Home() {
     setMobileAddItemRoute(Boolean(next.mobileAddItemRoute));
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleAuthed() {
+    setAuthed(true);
+    navigate("/app");
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    setAuthed(false);
+    navigate("/");
   }
 
   function setView(nextView) {
@@ -1003,28 +1107,43 @@ export default function Home() {
     showToast(`${request.lineItems.length} items added to your list`);
   }
 
-  function addScannedItem(code) {
+  async function addScannedItem(code) {
     setUploadedDocs((docs) => docs.some((doc) => doc.id === "scan")
       ? docs
       : [...docs, { id: "scan", name: "Barcode scans", itemCount: 0 }]);
-    setDraftItems((items) => {
-      const index = code ? items.findIndex((item) => item.barcode === code) : -1;
-      if (index >= 0) {
-        const next = [...items];
-        const existing = next[index];
-        next[index] = {
-          ...existing,
-          draftQty: (existing.draftQty || 1) + 1,
-          qty: (existing.qty || 1) + 1,
-          included: true,
-          documentQuantities: { ...(existing.documentQuantities || {}), scan: ((existing.documentQuantities || {}).scan || 0) + 1 },
-        };
-        return next;
+
+    // Already scanned this code → just bump the quantity.
+    if (code && draftItems.some((item) => item.barcode === code)) {
+      setDraftItems((items) => items.map((item) => item.barcode === code
+        ? {
+            ...item,
+            draftQty: (item.draftQty || 1) + 1,
+            qty: (item.qty || 1) + 1,
+            included: true,
+            documentQuantities: { ...(item.documentQuantities || {}), scan: ((item.documentQuantities || {}).scan || 0) + 1 },
+          }
+        : item));
+      showToast("Quantity updated");
+      return;
+    }
+
+    // Look the scanned code up against the real supplier catalog.
+    let product = null;
+    if (code) {
+      try {
+        const response = await fetch(`/api/products/search?code=${encodeURIComponent(code)}&limit=1`);
+        const data = await response.json();
+        product = data.canonical_products?.[0] || null;
+      } catch {
+        product = null;
       }
-      return [...items, makeScanDraftItem(code)];
+    }
+
+    setDraftItems((items) => {
+      if (code && items.some((item) => item.barcode === code)) return items; // race guard
+      return [...items, makeScanDraftItem(code, product)];
     });
-    const hit = code ? SCAN_CATALOG[code] : null;
-    showToast(hit ? `Added ${hit.product}` : code ? `Scanned ${code} — needs review` : "Item added");
+    showToast(product ? `Added ${product.name}` : code ? `Scanned ${code} — needs review` : "Item added");
   }
 
   function removeDraftItem(product) {
@@ -1045,8 +1164,8 @@ export default function Home() {
       <>
         {view === "pricing" ? <PricingPage onNavigate={navigate} />
           : view === "about" ? <AboutPage onNavigate={navigate} />
-          : view === "login" ? <LoginPage onNavigate={navigate} />
-          : view === "signup" ? <SignupPage onNavigate={navigate} />
+          : view === "login" ? <LoginPage onNavigate={navigate} onAuthed={handleAuthed} />
+          : view === "signup" ? <SignupPage onNavigate={navigate} onAuthed={handleAuthed} />
           : <LoggedOutLanding onNavigate={navigate} />}
         <IconSprite />
       </>
@@ -1060,6 +1179,31 @@ export default function Home() {
           <button className="topbar-brand" type="button" onClick={() => setView("home")} aria-label="MedMKP home">
             <BrandMark />
           </button>
+          <div className="topbar-search-wrap">
+            <label className="topbar-search">
+              <Icon name="icon-search" className="button-icon" />
+              <input
+                ref={searchRef}
+                type="search"
+                placeholder="Search products, SKUs, suppliers…"
+                aria-label="Search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Escape") { setSearchTerm(""); event.currentTarget.blur(); } }}
+              />
+              <kbd className="topbar-kbd">⌘K</kbd>
+            </label>
+            {searchTerm.trim() && (
+              <>
+                <div className="topbar-search-backdrop" onClick={() => setSearchTerm("")} />
+                <SearchResults
+                  results={searchResults}
+                  loading={searchLoading}
+                  searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`}
+                />
+              </>
+            )}
+          </div>
           <div className="topbar-right">
             <button className="topbar-alerts" type="button" aria-label="Alerts">
               <Icon name="icon-bell" className="button-icon" />
@@ -1123,6 +1267,10 @@ export default function Home() {
                 selectedInvoiceName={selectedInvoiceName}
                 hasUploadedInvoice={hasUploadedInvoice}
                 onScan={handleScanComplete}
+                searchTerm={searchTerm}
+                onSearchTerm={setSearchTerm}
+                searchResults={searchResults}
+                searchLoading={searchLoading}
                 onToast={showToast}
               />
             )
@@ -1132,7 +1280,7 @@ export default function Home() {
 
           {view === "historyDetail" && <HistoryDetail id={historyId} onBack={() => navigate("/app/history")} />}
 
-          {view === "settings" && <SettingsView />}
+          {view === "settings" && <SettingsView onLogout={handleLogout} />}
         </main>
         <MobileBottomNav view={view} onNavigate={setView} onAdd={() => setMobileAddOpen(true)} />
         {mobileAddOpen && (
@@ -1160,17 +1308,23 @@ export default function Home() {
   );
 }
 
-function SearchResults({ results, searchHref }) {
+function SearchResults({ results, searchHref, loading }) {
+  const headerLabel = loading && !results.length
+    ? "Searching…"
+    : results.length ? "Matching canonical products" : "No catalog matches";
   return (
     <div className="search-results" role="region" aria-label="Catalog search results">
       <div className="search-results-header">
-        <strong>{results.length ? "Matching canonical products" : "No catalog matches"}</strong>
+        <strong>{headerLabel}</strong>
         <Link className="search-results-link" href={searchHref}>View catalog</Link>
       </div>
       {results.slice(0, 5).map((result) => {
-        const price = typeof result.unit_price_cents === "number"
-          ? money.format(result.unit_price_cents / 100)
+        const price = typeof result.price_cents === "number"
+          ? money.format(result.price_cents / 100)
           : "Price pending";
+        const perUnit = typeof result.per_unit_cents === "number"
+          ? `${money.format(result.per_unit_cents / 100)}/${result.base_unit || "unit"}`
+          : null;
         const href = result.handle ? `/catalog/${result.handle}` : searchHref;
 
         return (
@@ -1179,11 +1333,18 @@ function SearchResults({ results, searchHref }) {
               <strong>{result.name}</strong>
               <small>{result.category || "Uncategorized"} · {result.supplier_name || "Supplier pending"}</small>
             </span>
-            <em>{price}</em>
+            <em style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+              <span>{price}</span>
+              {perUnit && (
+                <small style={{ color: "var(--muted)", fontWeight: 600, fontStyle: "normal" }}>
+                  {perUnit}{result.pack_size ? ` · ${result.pack_size}` : ""}
+                </small>
+              )}
+            </em>
           </Link>
         );
       })}
-      {!results.length && (
+      {!results.length && !loading && (
         <p>Try gloves, burs, bibs, impression material, or anesthetics.</p>
       )}
     </div>
@@ -1267,8 +1428,7 @@ const SCAN_CATALOG = {
   "PAT-GLOVE-NIT-M-200": { product: "Nitrile Exam Gloves PF Medium", supplier: "Patterson", sku: "PAT-GLOVE-NIT-M-200", unit: "Box", price: 11.3, confidence: 0.89 },
 };
 
-function makeScanDraftItem(code) {
-  const hit = code ? SCAN_CATALOG[code] : null;
+function makeScanDraftItem(code, product) {
   const base = {
     draftQty: 1,
     qty: 1,
@@ -1278,6 +1438,28 @@ function makeScanDraftItem(code) {
     barcode: code || "",
     extractedFrom: `Scanned · ${code || "no code"}`,
   };
+  // Real catalog match from the lookup endpoint.
+  if (product) {
+    const best = product.best_offer;
+    const unitPrice = best ? best.price_cents / 100 : 0;
+    return {
+      ...base,
+      product: product.name,
+      sku: best?.sku || code || "",
+      unit: product.unit_of_measure || "ea",
+      status: "Parsed",
+      imageUrl: product.image_url || best?.image_url || "",
+      selected: best ? { supplier: best.supplier_name, sku: best.sku, unitPrice, total: unitPrice } : null,
+      oldVendor: best?.supplier_name || "",
+      oldUnitPrice: unitPrice,
+      recommendation: {
+        confidence: product.match?.score ?? 0,
+        offers: (product.offers || []).map((offer) => ({ supplier: offer.supplier_name, sku: offer.sku, unitPrice: offer.price_cents / 100 })),
+      },
+    };
+  }
+  // Demo barcodes (test-barcodes.html) still resolve via the local map.
+  const hit = code ? SCAN_CATALOG[code] : null;
   if (hit) {
     return {
       ...base,
@@ -1634,7 +1816,7 @@ function rowMode(row) {
 
 // Mobile card list for the current reorder list (replaces the desktop table on
 // phones). Stats band + status tabs + tappable product cards.
-function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast }) {
+function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, searchTerm = "", onSearchTerm, searchResults = [], searchLoading }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div className="m-list">
@@ -1644,6 +1826,30 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
           <Icon name="icon-bell" className="button-icon" />
           <span className="m-brand-badge">3</span>
         </button>
+      </div>
+
+      <div className="m-search-wrap">
+        <label className="m-search">
+          <Icon name="icon-search" className="button-icon" />
+          <input
+            type="search"
+            placeholder="Search products, SKUs, suppliers…"
+            aria-label="Search"
+            value={searchTerm}
+            onChange={(event) => onSearchTerm?.(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Escape") { onSearchTerm?.(""); event.currentTarget.blur(); } }}
+          />
+        </label>
+        {searchTerm.trim() && (
+          <>
+            <div className="topbar-search-backdrop" onClick={() => onSearchTerm?.("")} />
+            <SearchResults
+              results={searchResults}
+              loading={searchLoading}
+              searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`}
+            />
+          </>
+        )}
       </div>
 
       <header className="m-topbar">
@@ -1823,6 +2029,10 @@ function CurrentReorderList({
   selectedInvoiceName,
   hasUploadedInvoice,
   onScan,
+  searchTerm,
+  onSearchTerm,
+  searchResults,
+  searchLoading,
   onToast,
 }) {
   const realRows = deriveMatchRows(items);
@@ -1869,6 +2079,10 @@ function CurrentReorderList({
           onTab={setTab}
           onOpenRow={openRow}
           onToast={onToast}
+          searchTerm={searchTerm}
+          onSearchTerm={onSearchTerm}
+          searchResults={searchResults}
+          searchLoading={searchLoading}
         />
         {detail && (
           <MobileItemDetail
@@ -1905,9 +2119,13 @@ function CurrentReorderList({
   return (
     <div className={`crl ${detail ? "detail-open" : ""}`}>
       <header className="crl-header">
-        <div className="crl-title">
+        <div className="crl-title crl-title-main">
           <h2 id="homeHeading">Current Reorder List</h2>
-          <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Autosaved just now</span>
+          <p className="crl-subtitle">
+            <span className="crl-listname">June Restock</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Auto saved just now</span>
+          </p>
         </div>
         <div className="crl-header-actions">
           <button
@@ -1948,10 +2166,29 @@ function CurrentReorderList({
         </div>
       </header>
 
-      {addMode === "scan" && (
+      {(addMode === "scan" || addMode === "search") && (
         <section className="crl-add">
-          <div className="crl-add-panel"><DesktopBarcodeScan onScan={onScan} /></div>
-        </section>
+            {addMode === "scan" && (
+              <div className="crl-add-panel"><DesktopBarcodeScan onScan={onScan} /></div>
+            )}
+            {addMode === "search" && (
+              <div className="crl-add-panel crl-search-panel">
+                <label className="crl-search">
+                  <Icon name="icon-search" className="button-icon" />
+                  <input
+                    type="search"
+                    placeholder="Search the catalog…"
+                    value={searchTerm}
+                    onChange={(event) => onSearchTerm(event.target.value)}
+                    autoFocus
+                  />
+                </label>
+                {searchTerm.trim() && (
+                  <SearchResults results={searchResults} loading={searchLoading} searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`} />
+                )}
+              </div>
+            )}
+          </section>
       )}
 
       <div className={`crl-layout ${detail ? "has-detail" : ""} ${detail && detailWide ? "detail-wide" : ""}`}>
@@ -2313,7 +2550,7 @@ function HistoryDetail({ id, onBack }) {
   );
 }
 
-function SettingsView() {
+function SettingsView({ onLogout }) {
   return (
     <div className="crl">
       <header className="crl-header">
@@ -2331,6 +2568,7 @@ function SettingsView() {
           <p>Allow vetted equivalents when they reduce cost and preserve product quality.</p>
         </div>
       </div>
+      <button className="secondary-action" type="button" onClick={onLogout} style={{ marginTop: "1.5rem" }}>Sign out</button>
     </div>
   );
 }

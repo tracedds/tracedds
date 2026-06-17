@@ -6,6 +6,8 @@ const SupplierPriceSnapshot = model.define("medmkp_supplier_price_snapshot", {
   supplier_id: model.text().searchable(),
   price_cents: model.number(),
   price_basis: model.enum(["each", "box", "case", "pack", "unknown"]),
+  // price_cents / supplier_product.pack_quantity, persisted for comparison.
+  unit_price_cents: model.number().nullable(),
   min_quantity: model.number(),
   availability: model.enum(["in_stock", "limited", "backordered", "unknown"]),
   captured_at: model.text(),

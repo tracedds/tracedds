@@ -1,4 +1,5 @@
 import { createHash } from "crypto"
+import { parsePack, unitPriceCents } from "./pack"
 
 type MatchStatus = "exact" | "variant" | "substitute" | "needs_review" | "unmatched"
 type SourceType = "website" | "pdf" | "csv" | "manual" | "api" | "email" | "agent"
@@ -193,6 +194,7 @@ export function buildSupplierCatalogIngestion(
     const description = row.description?.trim() || name
     const category = row.category?.trim() || "Dental supplies"
     const match = scoreCanonicalMatch(row, canonicalProducts)
+    const pack = parsePack(row.pack_size, name, category)
 
     supplierProducts.push({
       id: supplierProductId,
@@ -214,6 +216,11 @@ export function buildSupplierCatalogIngestion(
       product_line: row.product_line ?? "",
       pack_size: row.pack_size ?? "",
       unit_of_measure: row.unit_of_measure ?? "",
+      pack_quantity: pack.pack_quantity,
+      base_unit: pack.pack_quantity !== null ? pack.base_unit : null,
+      pack_basis: pack.pack_quantity !== null ? pack.basis : null,
+      pack_parse_source: pack.source,
+      pack_parse_confidence: pack.pack_quantity !== null ? Math.round(pack.confidence * 100) : null,
       features_text: compact([row.brand, row.pack_size, row.unit_of_measure]),
       raw_text: JSON.stringify(row.raw ?? row),
     })
@@ -244,6 +251,7 @@ export function buildSupplierCatalogIngestion(
         supplier_id: input.supplier_id,
         price_cents: row.price_cents,
         price_basis: normalizePriceBasis(row.price_basis),
+        unit_price_cents: unitPriceCents(row.price_cents, pack.pack_quantity),
         min_quantity: row.min_quantity ?? 1,
         availability: normalizeAvailability(row.availability),
         captured_at: capturedAt,

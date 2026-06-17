@@ -20,6 +20,13 @@ const SupplierProduct = model.define("medmkp_supplier_product", {
   product_line: model.text().searchable(),
   pack_size: model.text(),
   unit_of_measure: model.text(),
+  // Structured pack normalization (see ingestion/pack.ts). pack_quantity is the
+  // total base_unit count in one purchasable SKU; null when unrecoverable.
+  pack_quantity: model.number().nullable(),
+  base_unit: model.text().nullable(),
+  pack_basis: model.text().nullable(),
+  pack_parse_source: model.text().nullable(),
+  pack_parse_confidence: model.number().nullable(),
   features_text: model.text(),
   raw_text: model.text(),
 })
