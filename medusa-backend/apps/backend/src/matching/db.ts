@@ -62,7 +62,7 @@ function mostCommon(values: string[]): string {
   return best
 }
 
-async function batchInsert(
+export async function batchInsert(
   client: Client,
   table: string,
   columns: string[],
