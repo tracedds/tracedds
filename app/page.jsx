@@ -1529,7 +1529,7 @@ export default function Home() {
               <input
                 ref={searchRef}
                 type="search"
-                placeholder="Search products, SKUs, suppliers…"
+                placeholder="Search products, suppliers…"
                 aria-label="Search"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -2650,7 +2650,7 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
             <span className="crl-drawer-label">Find a match</span>
             <label className="crl-search crl-drawer-search">
               <Icon name="icon-search" className="button-icon" />
-              <input type="search" placeholder="Search products, SKUs, suppliers…" />
+              <input type="search" placeholder="Search products, suppliers…" />
             </label>
             <p className="crl-drawer-empty">No catalog match found yet. Search above to link this item to a product.</p>
           </section>
@@ -2716,7 +2716,7 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
           <Icon name="icon-search" className="button-icon" />
           <input
             type="search"
-            placeholder="Search products, SKUs, suppliers…"
+            placeholder="Search products, suppliers…"
             aria-label="Search"
             value={searchTerm}
             onChange={(event) => onSearchTerm?.(event.target.value)}
@@ -2846,7 +2846,7 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
         {isResolve ? (
           <section className="m-detail-sec">
             <span className="m-detail-label">Find a match</span>
-            <label className="crl-search"><Icon name="icon-search" className="button-icon" /><input type="search" placeholder="Search products, SKUs, suppliers…" /></label>
+            <label className="crl-search"><Icon name="icon-search" className="button-icon" /><input type="search" placeholder="Search products, suppliers…" /></label>
             <p className="m-detail-empty">No catalog match found yet. Search above to link this item to a product.</p>
           </section>
         ) : (
