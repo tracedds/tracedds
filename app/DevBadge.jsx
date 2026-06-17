@@ -1,8 +1,11 @@
 // Per-worktree dev badge. Server component: reads MEDMKP_* from process.env
 // (set in .env.local by scripts/worktree-init.sh) and renders a small fixed
 // pill so you can tell, at a glance, which branch + DB this instance is on.
-// Renders nothing when MEDMKP_BRANCH is unset (e.g. the production build).
+// Never rendered in a production build (next build/start, Vercel) regardless of
+// env; also a no-op when MEDMKP_BRANCH is unset (e.g. the main checkout).
 export default function DevBadge() {
+  if (process.env.NODE_ENV === "production") return null;
+
   const branch = process.env.MEDMKP_BRANCH;
   if (!branch) return null;
 
