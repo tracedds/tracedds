@@ -5,6 +5,7 @@ import { discoverDcDentalCatalogUrls } from "./dcdental-catalog-discovery"
 import { discoverPearsonCatalogUrls } from "./pearson-catalog-discovery"
 import { discoverShastaCatalogUrls } from "./shasta-catalog-discovery"
 import { extractProductPages } from "./product-extraction"
+import { extractDcDentalCatalogProducts } from "./dcdental-catalog-extraction"
 import { extractShopifyCatalogProducts } from "./shopify-catalog-extraction"
 import { filterSuppliers, supplierRowsFromCsv } from "./suppliers"
 import { indexSupplierSitemapUrls, summarizeIndexedUrls } from "./url-index"
@@ -178,11 +179,9 @@ export async function runSupplierIngestionPipeline(
       )
       indexedUrls.push(...shastaCatalogUrls)
     }
-    const dcDentalCatalogUrls = await discoverDcDentalCatalogUrls(suppliers, indexedUrls, {
+    const dcDentalCatalogUrls = await discoverDcDentalCatalogUrls(suppliers, {
       timeoutMs: options.timeoutMs,
       debug: options.debug,
-      concurrency: options.sourceConcurrency,
-      maxPages: options.maxDcDentalCatalogPages,
     })
     if (dcDentalCatalogUrls.length) {
       log(
@@ -205,10 +204,18 @@ export async function runSupplierIngestionPipeline(
       `Beginning extract stage: ${candidates.length} product candidate(s) to process`,
       options.productLimit ? `(limit ${options.productLimit})` : ""
     )
-    const catalogExtracted = await extractShopifyCatalogProducts(candidates, {
+    const dcDentalExtracted = await extractDcDentalCatalogProducts(candidates, suppliers, {
       timeoutMs: options.timeoutMs,
     })
-    if (catalogExtracted.remaining.length !== candidates.length) {
+    if (dcDentalExtracted.products.length) {
+      log(
+        `Extract stage DC Dental catalog pre-pass: ${dcDentalExtracted.products.length} products from flat /api/items`
+      )
+    }
+    const catalogExtracted = await extractShopifyCatalogProducts(dcDentalExtracted.remaining, {
+      timeoutMs: options.timeoutMs,
+    })
+    if (catalogExtracted.remaining.length !== dcDentalExtracted.remaining.length) {
       log(
         `Extract stage Shopify catalog pre-pass: ${catalogExtracted.products.length} products from products.json, ${catalogExtracted.failures.length} rejected, ${catalogExtracted.remaining.length} candidate(s) falling back to page extraction`
       )
@@ -219,8 +226,8 @@ export async function runSupplierIngestionPipeline(
       debug: options.debug,
     })
     extracted = {
-      products: [...catalogExtracted.products, ...pageExtracted.products],
-      failures: [...catalogExtracted.failures, ...pageExtracted.failures],
+      products: [...dcDentalExtracted.products, ...catalogExtracted.products, ...pageExtracted.products],
+      failures: [...dcDentalExtracted.failures, ...catalogExtracted.failures, ...pageExtracted.failures],
     }
     log(
       `Extract stage complete: ${extracted.products.length} products extracted, ${extracted.failures.length} failures`
