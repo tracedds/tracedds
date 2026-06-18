@@ -8,4 +8,5 @@ research/
 wireframes/
 .env*
 __pycache__/
+.barcode-venv/
 .claude
