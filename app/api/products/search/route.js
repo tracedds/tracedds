@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const MEDUSA_URL = process.env.MEDUSA_BACKEND_URL || "http://127.0.0.1:9000";
+import { MEDUSA_URL } from "../../../../lib/medusaAuth";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);

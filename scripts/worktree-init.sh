@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision (idempotently) an isolated frontend instance for this worktree:
 # writes a gitignored .env.local with a unique dev port, a backend/DB target
-# (default: prod, for zero-setup verification), and the current branch — so
+# (default: local 127.0.0.1:9000), and the current branch — so
 # `npm run dev` runs on its own port and the in-app badge shows branch + DB.
 #
 # Re-running is safe: an existing port + DB choice are kept; branch/name refresh.
@@ -41,10 +41,10 @@ if [ -z "$port" ]; then
   [ -n "$port" ] || { echo "worktree-init: no free port in $PORT_MIN-$PORT_MAX" >&2; exit 1; }
 fi
 
-# Default DB target = prod; only honour an explicit existing "local" choice.
+# Default DB target = local; only honour an explicit existing "prod" choice.
 case "$db" in
-  local) url="$LOCAL_URL" ;;
-  *)     db="prod"; url="$PROD_URL" ;;
+  prod) url="$PROD_URL" ;;
+  *)    db="local"; url="$LOCAL_URL" ;;
 esac
 
 cat > "$envfile" <<EOF

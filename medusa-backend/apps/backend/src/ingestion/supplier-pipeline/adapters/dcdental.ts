@@ -10,6 +10,7 @@ type DCDentalApiItem = {
   custitem_category_facet?: string
   custitem_dc_specs?: string
   internalid?: number | string
+  upccode?: string
   isbackorderable?: boolean
   isinstock?: boolean
   itemid?: string
@@ -29,7 +30,7 @@ type DCDentalApiItem = {
   urlcomponent?: string
 }
 
-function apiImageValues(value: unknown): string[] {
+export function apiImageValues(value: unknown): string[] {
   if (!value) {
     return []
   }
@@ -139,7 +140,7 @@ function productDescription(html: string, item: DCDentalApiItem | undefined) {
   ]))
 }
 
-function price(item: DCDentalApiItem | undefined) {
+export function price(item: DCDentalApiItem | undefined) {
   return item?.onlinecustomerprice_detail?.onlinecustomerprice_formatted ??
     (typeof item?.onlinecustomerprice_detail?.onlinecustomerprice === "number"
       ? String(item.onlinecustomerprice_detail.onlinecustomerprice)
@@ -155,7 +156,7 @@ function categoryParts(candidate: ProductPageCandidate, item: DCDentalApiItem | 
   }
 }
 
-function availability(item: DCDentalApiItem | undefined) {
+export function availability(item: DCDentalApiItem | undefined) {
   if (item?.isinstock) {
     return "in_stock" as const
   }
@@ -167,7 +168,12 @@ function availability(item: DCDentalApiItem | undefined) {
   return "unknown" as const
 }
 
-function packSize(value: string) {
+export function normalizeBarcode(item: DCDentalApiItem | undefined) {
+  const value = String(item?.upccode ?? "").trim()
+  return /^\d{8,14}$/.test(value) ? value : ""
+}
+
+export function packSize(value: string) {
   return firstMatch(value, [
     /([0-9][0-9,]*\s*\/\s*(?:bag|box|case|pack|pkg|bottle|tube|syringe|unit|cartridge)s?)/i,
     /((?:bag|box|case|pack|pkg|bottle|tube|syringe|unit|cartridge)s?\s+of\s+[0-9][A-Za-z0-9/-]*)/i,
@@ -190,6 +196,7 @@ export const dcDentalAdapter: SupplierProductAdapter = {
     return {
       sku,
       manufacturer_sku: sku,
+      barcode: normalizeBarcode(item),
       brand: item?.manufacturer || htmlManufacturer(html),
       name,
       description,

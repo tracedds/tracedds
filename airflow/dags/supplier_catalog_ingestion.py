@@ -58,10 +58,13 @@ SUPPLIERS = [
         "schedule": "0 3 * * 0",
         "args": [
             "--max-links-per-source=500",
-            "--max-dcdental-catalog-pages=30",
+            # supplier:ingest:db is delete-and-replace, so the page cap must
+            # cover the WHOLE catalog (~39.7k items / 50 per page ~= 800 pages),
+            # otherwise a run hard-deletes everything it didn't re-discover.
+            "--max-dcdental-catalog-pages=1000",
             "--source-concurrency=3",
             "--sitemap-concurrency=4",
-            "--product-concurrency=6",
+            "--product-concurrency=12",
             "--timeout-ms=30000",
         ],
     },

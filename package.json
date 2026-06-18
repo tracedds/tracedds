@@ -1,6 +1,7 @@
 {
   "scripts": {
     "dev": "bash scripts/worktree-dev.sh",
+    "dev:all": "concurrently -k -n backend,frontend -c blue,green \"npm run dev --prefix medusa-backend/apps/backend\" \"npm run dev\"",
     "build": "next build",
     "start": "next start",
     "deploy:airflow": "scripts/deploy-airflow-nuc.sh",
@@ -15,5 +16,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "unpdf": "^1.6.2"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }
