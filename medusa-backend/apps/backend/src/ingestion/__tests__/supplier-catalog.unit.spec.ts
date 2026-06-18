@@ -75,4 +75,34 @@ describe("buildSupplierCatalogIngestion", () => {
     expect(ingestion.supplierProducts).toHaveLength(1)
     expect(ingestion.canonicalProductMatches).toHaveLength(1)
   })
+
+  it("keeps distinct ids for SKUs that slugify identically (e.g. 809-151 vs 809-151+)", () => {
+    // Real DC Dental collision that aborted a full-catalog commit on a duplicate
+    // primary key: the '+' is stripped by slugification.
+    const ingestion = buildSupplierCatalogIngestion(
+      baseInput([
+        { sku: "809-151", name: "Widget", price_cents: 100 },
+        { sku: "809-151+", name: "Widget Plus", price_cents: 200 },
+      ]),
+      []
+    )
+    const productIds = ingestion.supplierProducts.map((p) => (p as { id: string }).id)
+    const matchIds = ingestion.canonicalProductMatches.map((m) => (m as { id: string }).id)
+    const priceIds = ingestion.priceSnapshots.map((s) => (s as { id: string }).id)
+    expect(ingestion.supplierProducts).toHaveLength(2)
+    expect(new Set(productIds).size).toBe(2)
+    expect(new Set(matchIds).size).toBe(2)
+    expect(new Set(priceIds).size).toBe(2)
+  })
+
+  it("does not disambiguate a non-colliding SKU (stable id preserved)", () => {
+    const ingestion = buildSupplierCatalogIngestion(
+      baseInput([{ sku: "809-151", name: "Widget", price_cents: 100 }]),
+      []
+    )
+    // No collision -> plain slug id, no hash suffix.
+    expect((ingestion.supplierProducts[0] as { id: string }).id).toBe(
+      "msp_msup_pearson_pearson_dental_website_public_809_151"
+    )
+  })
 })
