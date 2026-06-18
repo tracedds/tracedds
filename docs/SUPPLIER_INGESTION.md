@@ -318,3 +318,110 @@ Frontier Dental (frontierdental.com) is currently not ingestible.
 - Do not attempt to bypass the block. Options: request a catalog feed or
   dealer API access from the supplier, or use a manually exported CSV via
   `supplier:import-csv`.
+
+## Marketplace Ingestion (Alibaba, Amazon)
+
+Marketplaces have no catalog we can crawl, so they use a different,
+search-driven pipeline. Instead of `discover -> index -> extract`, we ask the
+marketplace whether it carries the products MedMKP already knows about:
+
+```text
+list canonical products -> search by name -> parse results -> persist
+```
+
+For each canonical product we run a marketplace search for its `name`, take the
+top results, and save each as a supplier product with an `image_url` and a price
+snapshot. Because we searched *by* a known canonical product, the canonical match
+is attached directly (graded by title token overlap), rather than re-running the
+fuzzy supplier-catalog scorer.
+
+The code lives in:
+
+```text
+medusa-backend/apps/backend/src/ingestion/marketplace/
+  fetch.ts            # injectable fetcher + anti-bot detection
+  parse.ts            # price / image / id / title-overlap + card + JSON-LD parsers
+  providers/          # alibaba.ts, amazon.ts, index.ts (registry)
+  search.ts           # canonical product -> search -> rows
+  persist.ts          # rows -> supplier products + matches + price snapshots
+```
+
+Adding another marketplace is just a new provider (search-URL builder + a
+`parseResults` that reuses the shared parsers) registered in `providers/index.ts`.
+
+### Transport: marketplaces block bots
+
+Alibaba (and Amazon) answer automated traffic with a captcha/"slider" page that
+still returns HTTP 200. Plain `fetch` *and* a stealth headless browser both land
+on it; direct access succeeds only intermittently. The fetcher detects these
+interstitials (`detectAntiBot`) and yields zero rows rather than persisting a
+captcha page as a product.
+
+For reliable results, route the fetcher through a scraping proxy / data API by
+setting a URL template (must contain `{url}`):
+
+```bash
+# ScraperAPI / ScrapingBee / Zyte-style endpoints all fit this shape:
+export MARKETPLACE_SCRAPER_URL="https://api.scraperapi.com/?api_key=KEY&render=true&url={url}"
+```
+
+The parser is transport-agnostic — it reads whatever rendered HTML comes back,
+whether from a direct fetch, a proxy, or a data API.
+
+### Run it
+
+```bash
+cd medusa-backend/apps/backend
+
+# Dry run (default): reads canonical products from the DB, searches, prints a
+# summary + sample. Never writes. The DB read works against prod read-only.
+npm run marketplace:ingest -- --provider=alibaba --limit=25 --results=3
+
+# Commit (replaces this marketplace's catalog for the source). Guarded by the
+# remote-DB safety check; configure MARKETPLACE_SCRAPER_URL first or most rows
+# will be anti-bot blocked and the commit is refused.
+npm run marketplace:ingest -- --provider=alibaba --limit=200 --results=3 --commit
+```
+
+Options (CLI flag or `MARKETPLACE_*` env): `--provider` (`alibaba`|`amazon`),
+`--limit` (canonical products), `--results` (per product), `--query-prefix`,
+`--category` (filter canonical products), `--concurrency`, `--timeout-ms`,
+`--sample`, `--progress-every`, `--commit`. Products land under supplier
+`msup_<provider>` (auto provisioned) and source catalog
+`<provider>-marketplace-search`.
+
+### Monitor progress
+
+The ingest emits a live progress line every `--progress-every` canonical
+products (default 10) so a long run is observable instead of only printing a
+summary at the end:
+
+```text
+[marketplace-ingestion] progress 120/500 | with_results 96 | listings 271 | blocked 0 | errored 2 | 210s
+```
+
+`tail -f` the run, or watch it in the Render/Airflow logs. To inspect what's
+actually persisted at any time (read-only):
+
+```bash
+npm run marketplace:status                      # all providers
+npm run marketplace:status -- --provider=amazon # one provider
+```
+
+It reports, per provider: supplier provisioned, product count, products with an
+image, distinct canonical products matched, match-status breakdown, price
+snapshot count, and the last crawl timestamp.
+
+### Official APIs vs scraping
+
+Neither marketplace offers an open keyword→price API: Amazon's Product
+Advertising API is gated behind the Associates (affiliate) program and a sales
+quota, and SP-API is scoped to a seller's own listings; Alibaba.com (B2B) has no
+practical buyer price API (the accessible AliExpress affiliate API is a
+different, retail catalog). That is why ingestion goes through `MARKETPLACE_SCRAPER_URL`.
+If you obtain API credentials later, add an API-backed provider implementing the
+same `MarketplaceProvider` interface — the rest of the pipeline is unchanged.
+
+Note: Alibaba is a "protected domain" for many scraping APIs; ScraperAPI in
+particular requires a paid plan (premium/residential proxies) for it, while
+Amazon works on the free tier with `render=true`.
