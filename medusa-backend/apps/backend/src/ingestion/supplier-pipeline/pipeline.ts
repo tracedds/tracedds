@@ -3,6 +3,7 @@ import { discoverSupplierSitemaps } from "./sitemap-discovery"
 import { discoverSupplierSourceUrls } from "./source-url-discovery"
 import { discoverDcDentalCatalogUrls } from "./dcdental-catalog-discovery"
 import { discoverPearsonCatalogUrls } from "./pearson-catalog-discovery"
+import { discoverPracticonCatalogUrls } from "./practicon-catalog-discovery"
 import { discoverShastaCatalogUrls } from "./shasta-catalog-discovery"
 import { extractProductPages } from "./product-extraction"
 import { extractDcDentalCatalogProducts } from "./dcdental-catalog-extraction"
@@ -38,6 +39,7 @@ export type SupplierIngestionPipelineOptions = {
   maxSitemapsPerSupplier?: number
   maxDcDentalCatalogPages?: number
   maxPearsonCatalogPages?: number
+  maxPracticonCatalogPages?: number
   maxShastaCatalogPages?: number
   debug?: boolean
   debugOutputDir?: string
@@ -178,6 +180,18 @@ export async function runSupplierIngestionPipeline(
         `Index stage Shasta full-catalog discovery: ${shastaCatalogUrls.length} product URL(s)`
       )
       indexedUrls.push(...shastaCatalogUrls)
+    }
+    const practiconCatalogUrls = await discoverPracticonCatalogUrls(suppliers, {
+      timeoutMs: options.timeoutMs,
+      debug: options.debug,
+      concurrency: options.sourceConcurrency,
+      maxPages: options.maxPracticonCatalogPages,
+    })
+    if (practiconCatalogUrls.length) {
+      log(
+        `Index stage Practicon catalog discovery: ${practiconCatalogUrls.length} product URL(s)`
+      )
+      indexedUrls.push(...practiconCatalogUrls)
     }
     const dcDentalCatalogUrls = await discoverDcDentalCatalogUrls(suppliers, {
       timeoutMs: options.timeoutMs,
