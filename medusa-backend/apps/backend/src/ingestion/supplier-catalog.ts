@@ -188,9 +188,36 @@ export function buildSupplierCatalogIngestion(
   const canonicalProductMatches: unknown[] = []
   const priceSnapshots: unknown[] = []
 
+  const rowSku = (row: SupplierCatalogRow, index: number) =>
+    row.sku?.trim() || row.manufacturer_sku?.trim() || `NO-SKU-${index + 1}`
+
+  // The ids below slugify the SKU, so distinct SKUs can collide on the primary
+  // key (e.g. "809-151" vs "809-151+" both slug to "..._809_151"). Pre-compute
+  // which id-slugs are claimed by more than one distinct SKU; only those SKUs get
+  // a deterministic disambiguating suffix, so every other SKU keeps its stable id
+  // and re-ingestion stays idempotent.
+  const idSlugOf = (sku: string) => slug([input.supplier_id, input.source_catalog, sku].join("_"))
+  const skusByIdSlug = new Map<string, Set<string>>()
+  const seenForSlug = new Set<string>()
+  input.rows.forEach((row, index) => {
+    const sku = rowSku(row, index)
+    if (seenForSlug.has(sku)) return
+    seenForSlug.add(sku)
+    const idSlug = idSlugOf(sku)
+    if (!skusByIdSlug.has(idSlug)) skusByIdSlug.set(idSlug, new Set())
+    skusByIdSlug.get(idSlug)!.add(sku)
+  })
+  const idKey = (sku: string) => {
+    const base = [input.supplier_id, input.source_catalog, sku]
+    if ((skusByIdSlug.get(idSlugOf(sku))?.size ?? 0) > 1) {
+      base.push(createHash("sha1").update(sku).digest("hex").slice(0, 8))
+    }
+    return base
+  }
+
   const seenSkus = new Set<string>()
   input.rows.forEach((row, index) => {
-    const sku = row.sku?.trim() || row.manufacturer_sku?.trim() || `NO-SKU-${index + 1}`
+    const sku = rowSku(row, index)
     // Collapse a SKU that repeats within a single catalog (same product listed
     // on multiple pages). Combined with deriving the id only from
     // (supplier, source_catalog, sku) below — never the row position — this
@@ -198,7 +225,7 @@ export function buildSupplierCatalogIngestion(
     // existing rows in place instead of spawning duplicate supplier products.
     if (seenSkus.has(sku)) return
     seenSkus.add(sku)
-    const supplierProductId = boundedId("msp", [input.supplier_id, input.source_catalog, sku], 96)
+    const supplierProductId = boundedId("msp", idKey(sku), 96)
     const name = row.name?.trim() || row.description?.trim() || sku
     const description = row.description?.trim() || name
     const category = row.category?.trim() || "Dental supplies"
@@ -236,7 +263,7 @@ export function buildSupplierCatalogIngestion(
     })
 
     canonicalProductMatches.push({
-      id: boundedId("mcpm", [input.supplier_id, input.source_catalog, sku], 96),
+      id: boundedId("mcpm", idKey(sku), 96),
       canonical_product_id: match.canonicalProductId,
       supplier_product_id: supplierProductId,
       supplier_id: input.supplier_id,
@@ -256,7 +283,7 @@ export function buildSupplierCatalogIngestion(
 
     if (typeof row.price_cents === "number" && row.price_cents >= 0) {
       priceSnapshots.push({
-        id: boundedId("msps", [input.supplier_id, input.source_catalog, sku, capturedAt], 96),
+        id: boundedId("msps", [...idKey(sku), capturedAt], 96),
         supplier_product_id: supplierProductId,
         supplier_id: input.supplier_id,
         price_cents: row.price_cents,
