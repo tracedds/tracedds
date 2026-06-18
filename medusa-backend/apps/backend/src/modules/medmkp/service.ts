@@ -8,6 +8,7 @@ import Invoice from "./models/invoice"
 import PracticeSubscription from "./models/practice-subscription"
 import ProcurementRequest from "./models/procurement-request"
 import Quote from "./models/quote"
+import ReorderList from "./models/reorder-list"
 import SavingsOpportunity from "./models/savings-opportunity"
 import SavingsReport from "./models/savings-report"
 import SupplierCatalogSource from "./models/supplier-catalog-source"
@@ -31,6 +32,7 @@ class MedMKPModuleService extends MedusaService({
   CatalogItem,
   ProcurementRequest,
   Quote,
+  ReorderList,
 }) {}
 
 export default MedMKPModuleService

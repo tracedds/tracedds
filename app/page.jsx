@@ -1139,6 +1139,7 @@ export default function Home() {
   const searchRef = useRef(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authed, setAuthed] = useState(null);
+  const [me, setMe] = useState(null);
   const [view, setViewState] = useState("landing");
   const [historyId, setHistoryId] = useState(null);
   const [productHandle, setProductHandle] = useState(null);
@@ -1167,49 +1168,103 @@ export default function Home() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [archivedLists, setArchivedLists] = useState([]);
   const [listTouched, setListTouched] = useState(false);
+  const [listName, setListName] = useState("June Restock");
   const [buyingPrefs, setBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
   const [defaultBuyingPrefs, setDefaultBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
   const [supplierOptions, setSupplierOptions] = useState([]);
   const [stateLoaded, setStateLoaded] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
+  const serverLoadStartedRef = useRef(false);
+  const saveTimerRef = useRef(null);
 
-  // Persist the working reorder list, archive, and preferences locally so the
-  // app keeps its state across reloads (there is no per-user list store yet).
+  // Apply a saved app-state blob (from localStorage or the per-practice server
+  // store) to component state.
+  const hydrateFromState = (saved) => {
+    if (!saved) return;
+    const savedDefaults = { ...DEFAULT_BUYING_PREFS, ...(saved.defaultBuyingPrefs || {}) };
+    // Backfill ids on lists saved before stable ids existed, so verification
+    // decisions have a row to write back to.
+    const items = (saved.draftItems || []).map((item) => (item.id ? item : { ...item, id: newItemId() }));
+    setDraftItems(items);
+    setUploadedDocs(saved.uploadedDocs || []);
+    setArchivedLists(saved.archivedLists || []);
+    setListTouched(Boolean(saved.listTouched));
+    if (saved.listName) setListName(saved.listName);
+    setDefaultBuyingPrefs(savedDefaults);
+    // A list with no items is "new", so it starts from the saved defaults;
+    // an in-progress list keeps its own working preferences.
+    setBuyingPrefs(items.length ? { ...DEFAULT_BUYING_PREFS, ...(saved.buyingPrefs || {}) } : savedDefaults);
+    if (items.length) setHasUploadedInvoice(true);
+  };
+
+  // Hydrate from localStorage first for an instant paint; the per-practice
+  // server store (loaded below once auth is known) takes over for cross-device
+  // sync. localStorage stays as an offline cache + migration source.
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(APP_STATE_KEY) || "null");
-      if (saved) {
-        const savedDefaults = { ...DEFAULT_BUYING_PREFS, ...(saved.defaultBuyingPrefs || {}) };
-        // Backfill ids on lists saved before stable ids existed, so verification
-        // decisions have a row to write back to.
-        setDraftItems((saved.draftItems || []).map((item) => (item.id ? item : { ...item, id: newItemId() })));
-        setUploadedDocs(saved.uploadedDocs || []);
-        setArchivedLists(saved.archivedLists || []);
-        setListTouched(Boolean(saved.listTouched));
-        setDefaultBuyingPrefs(savedDefaults);
-        // A list with no items is "new", so it starts from the saved defaults;
-        // an in-progress list keeps its own working preferences.
-        setBuyingPrefs((saved.draftItems || []).length
-          ? { ...DEFAULT_BUYING_PREFS, ...(saved.buyingPrefs || {}) }
-          : savedDefaults);
-        if ((saved.draftItems || []).length) setHasUploadedInvoice(true);
-      }
+      if (saved) hydrateFromState(saved);
     } catch {
       // ignore corrupt state
     }
     setStateLoaded(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Once we know the visitor is signed in, pull the practice's saved list. A
+  // server list wins (it's the cross-device source of truth); if there's none
+  // yet, migrate any in-progress local list up once so it isn't lost.
+  useEffect(() => {
+    if (authed !== true || serverLoadStartedRef.current) return;
+    serverLoadStartedRef.current = true;
+    (async () => {
+      try {
+        const response = await fetch("/api/reorder-list", { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (data && data.state) {
+          hydrateFromState(data.state);
+        } else {
+          const local = JSON.parse(window.localStorage.getItem(APP_STATE_KEY) || "null");
+          if (local && (local.draftItems || []).length) {
+            await fetch("/api/reorder-list", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(local),
+            });
+          }
+        }
+      } catch {
+        // offline / server down — keep whatever localStorage hydrated.
+      }
+      setServerReady(true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
 
   useEffect(() => {
     if (!stateLoaded) return;
+    const blob = { draftItems, uploadedDocs, archivedLists, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
     try {
-      window.localStorage.setItem(
-        APP_STATE_KEY,
-        JSON.stringify({ draftItems, uploadedDocs, archivedLists, listTouched, buyingPrefs, defaultBuyingPrefs })
-      );
+      window.localStorage.setItem(APP_STATE_KEY, JSON.stringify(blob));
     } catch {
       // storage full / unavailable — non-fatal
     }
-  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, listTouched, buyingPrefs, defaultBuyingPrefs]);
+    // Mirror to the server (debounced, last-write-wins). Gated on serverReady so
+    // a save can't race ahead of the initial load and clobber the stored list.
+    if (authed === true && serverReady) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        fetch("/api/reorder-list", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(blob),
+        }).catch(() => {
+          // offline — localStorage still holds it; next change retries.
+        });
+      }, 800);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
 
   // Supplier names for the preferred-supplier picker in default preferences.
   useEffect(() => {
@@ -1240,7 +1295,10 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/auth/me")
       .then((response) => response.json())
-      .then(({ authenticated }) => setAuthed(Boolean(authenticated)))
+      .then((data) => {
+        setAuthed(Boolean(data.authenticated));
+        setMe(data.authenticated ? { customer: data.customer || null, practice: data.practice || null } : null);
+      })
       .catch(() => setAuthed(false));
   }, []);
 
@@ -1332,6 +1390,16 @@ export default function Home() {
 
   const visibleDraftItems = draftItems.filter((item) => item.documentIds.some((documentId) => uploadedDocs.some((doc) => doc.id === documentId)));
   const activeDraftItems = visibleDraftItems.filter((item) => item.included);
+
+  // Who's signed in, for the topbar / profile / upload metadata. Falls back to
+  // neutral labels until /api/auth/me resolves (or if a field is missing).
+  const buyerName = me?.customer
+    ? ([me.customer.first_name, me.customer.last_name].filter(Boolean).join(" ") || (me.customer.email || "").split("@")[0] || "")
+    : "";
+  const practiceName = me?.practice?.name || "";
+  const buyerInitials = buyerName
+    ? buyerName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()
+    : "";
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const catalogMatches = useMemo(() => {
     if (!catalog.length) return [];
@@ -1742,8 +1810,8 @@ export default function Home() {
               <span className="topbar-badge">3</span>
             </button>
             <button className="topbar-user" type="button">
-              <span className="topbar-avatar">AK</span>
-              <span className="topbar-user-id"><strong>Alex Kim</strong><small>Buyer</small></span>
+              <span className="topbar-avatar">{buyerInitials || "··"}</span>
+              <span className="topbar-user-id"><strong>{buyerName || "Your account"}</strong><small>{practiceName || "Buyer"}</small></span>
               <Icon name="icon-chevron-down" className="button-icon" />
             </button>
           </div>
@@ -1785,6 +1853,10 @@ export default function Home() {
             ) : (
               <CurrentReorderList
                 items={activeDraftItems}
+                listName={listName}
+                onRenameList={setListName}
+                buyerName={buyerName}
+                practiceName={practiceName}
                 addMode={addMode}
                 onAddMode={setAddMode}
                 lastUpload={lastUpload}
@@ -1840,6 +1912,8 @@ export default function Home() {
           {view === "settings" && (
             <SettingsView
               onLogout={handleLogout}
+              buyerName={buyerName}
+              practiceName={practiceName}
               defaultBuyingPrefs={defaultBuyingPrefs}
               onSaveDefaults={setDefaultBuyingPrefs}
               supplierOptions={supplierOptions}
@@ -3842,6 +3916,10 @@ function BuyingPreferencesCard({ prefs, supplierOptions, onSave, onToast, title 
 
 function CurrentReorderList({
   items,
+  listName = "June Restock",
+  onRenameList,
+  buyerName = "",
+  practiceName = "",
   addMode,
   onAddMode,
   lastUpload,
@@ -4014,6 +4092,8 @@ function CurrentReorderList({
             selectedInvoiceName={selectedInvoiceName}
             hasUploadedInvoice={hasUploadedInvoice}
             lastUpload={lastUpload}
+            buyerName={buyerName}
+            practiceName={practiceName}
             onClose={onCloseUpload}
             onUploadAnother={onUploadAnother}
           />
@@ -4028,7 +4108,13 @@ function CurrentReorderList({
         <div className="crl-title crl-title-main">
           <h2 id="homeHeading">Current Reorder List</h2>
           <p className="crl-subtitle">
-            <span className="crl-listname">June Restock</span>
+            <input
+              className="crl-listname crl-listname-input"
+              value={listName}
+              onChange={(event) => onRenameList?.(event.target.value)}
+              aria-label="Reorder list name"
+              style={{ font: "inherit", color: "inherit", border: "none", background: "transparent", padding: 0, width: `${Math.max(listName.length, 8)}ch` }}
+            />
             <span className="crl-dot" aria-hidden="true">·</span>
             <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Auto saved just now</span>
           </p>
@@ -4292,6 +4378,8 @@ function CurrentReorderList({
           selectedInvoiceName={selectedInvoiceName}
           hasUploadedInvoice={hasUploadedInvoice}
           lastUpload={lastUpload}
+          buyerName={buyerName}
+          practiceName={practiceName}
           onClose={onCloseUpload}
           onUploadAnother={onUploadAnother}
         />
@@ -4320,6 +4408,8 @@ function UploadModal({
   selectedInvoiceName,
   hasUploadedInvoice,
   lastUpload,
+  buyerName = "",
+  practiceName = "",
   onClose,
   onUploadAnother,
 }) {
@@ -4387,8 +4477,8 @@ function UploadModal({
                   onChange={(event) => onInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
                 />
                 <button className="primary-action compact hidden-submit" data-testid="save-parse-request" type="submit" disabled={uploading}>Add to list</button>
-                <input type="hidden" name="clinic" value="Northline Dental" />
-                <input type="hidden" name="buyer" value="Alex Kim" />
+                <input type="hidden" name="clinic" value={practiceName || "Unknown clinic"} />
+                <input type="hidden" name="buyer" value={buyerName || "Unknown buyer"} />
                 <input type="hidden" name="shippingAddress" value="500 Healthcare Blvd, Nashville, TN" />
                 <input type="hidden" name="preference" value="Exact brand if possible, alternatives allowed" />
               </div>
@@ -4533,7 +4623,7 @@ function HistoryDetail({ id, onBack, archivedLists = [] }) {
   );
 }
 
-function SettingsView({ onLogout, defaultBuyingPrefs, onSaveDefaults, supplierOptions = [], onToast }) {
+function SettingsView({ onLogout, buyerName = "", practiceName = "", defaultBuyingPrefs, onSaveDefaults, supplierOptions = [], onToast }) {
   return (
     <div className="crl">
       <header className="crl-header">
@@ -4542,8 +4632,8 @@ function SettingsView({ onLogout, defaultBuyingPrefs, onSaveDefaults, supplierOp
       <div className="settings-grid">
         <div className="ops-panel">
           <p className="eyebrow">Buyer Profile</p>
-          <h3>Alex Kim</h3>
-          <p>Northline Dental · Buyer</p>
+          <h3>{buyerName || "Your account"}</h3>
+          <p>{practiceName ? `${practiceName} · Buyer` : "Buyer"}</p>
         </div>
         <BuyingPreferencesCard
           title="Default Buying Preferences"
