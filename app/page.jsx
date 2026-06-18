@@ -365,17 +365,48 @@ function useBarcodeScanner({ active, onScan }) {
         }
         setCameraStatus("ready");
 
+        // Prefer the native BarcodeDetector (Chrome/Edge/Android). iOS Safari —
+        // and every WebKit browser on iPhone/iPad — doesn't ship it, so fall back
+        // to ZXing decoding the same video frames. Without this, iOS has no decoder
+        // at all and the shutter can only hand off to manual entry.
         if ("BarcodeDetector" in window) {
           try {
             detector = new window.BarcodeDetector();
-            setAutoDetect(true);
-            intervalId = window.setInterval(async () => {
-              const code = await detectFrame();
-              if (code) fire(code);
-            }, 350);
           } catch (error) {
             detector = null;
           }
+        }
+
+        if (!detector) {
+          try {
+            const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = await import("@zxing/library");
+            if (!isMounted) return;
+            const hints = new Map([[DecodeHintType.POSSIBLE_FORMATS, [
+              BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.EAN_13,
+              BarcodeFormat.EAN_8, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
+            ]]]);
+            const reader = new BrowserMultiFormatReader(hints);
+            detector = {
+              detect(video) {
+                try {
+                  const result = reader.decodeBitmap(reader.createBinaryBitmap(video));
+                  return result ? [{ rawValue: result.getText() }] : [];
+                } catch (error) {
+                  return []; // NotFoundException == no barcode in this frame
+                }
+              },
+            };
+          } catch (error) {
+            detector = null; // import failed → stay on manual entry
+          }
+        }
+
+        if (detector && isMounted) {
+          setAutoDetect(true);
+          intervalId = window.setInterval(async () => {
+            const code = await detectFrame();
+            if (code) fire(code);
+          }, 350);
         }
       } catch (error) {
         setCameraStatus("denied");
