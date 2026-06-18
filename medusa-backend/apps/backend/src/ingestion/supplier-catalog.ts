@@ -61,7 +61,7 @@ function compact(parts: unknown[]) {
     .join(" ")
 }
 
-function boundedId(prefix: string, parts: string[], maxLength = 96) {
+export function boundedId(prefix: string, parts: string[], maxLength = 96) {
   const base = slug(parts.filter(Boolean).join("_")) || "unknown"
   const full = `${prefix}_${base}`
 

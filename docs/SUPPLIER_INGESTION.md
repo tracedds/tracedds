@@ -318,3 +318,168 @@ Frontier Dental (frontierdental.com) is currently not ingestible.
 - Do not attempt to bypass the block. Options: request a catalog feed or
   dealer API access from the supplier, or use a manually exported CSV via
   `supplier:import-csv`.
+
+## Marketplace Ingestion (Alibaba, Amazon)
+
+Marketplaces have no catalog we can crawl, so they use a different,
+search-driven pipeline. Instead of `discover -> index -> extract`, we ask the
+marketplace whether it carries the products MedMKP already knows about:
+
+```text
+list canonical products -> search by name -> parse results -> persist
+```
+
+For each canonical product we run a marketplace search for its `name`, take the
+top results, and save each as a supplier product with an `image_url` and a price
+snapshot. Because we searched *by* a known canonical product, the canonical match
+is attached directly (graded by title token overlap), rather than re-running the
+fuzzy supplier-catalog scorer.
+
+The code lives in:
+
+```text
+medusa-backend/apps/backend/src/ingestion/marketplace/
+  fetch.ts            # injectable fetcher + anti-bot detection
+  parse.ts            # price / image / id / title-overlap + card + JSON-LD parsers
+  providers/          # alibaba.ts, amazon.ts, index.ts (registry)
+  search.ts           # canonical product -> search -> rows
+  persist.ts          # rows -> supplier products + matches + price snapshots
+```
+
+Adding another marketplace is just a new provider (search-URL builder + a
+`parseResults` that reuses the shared parsers) registered in `providers/index.ts`.
+
+### Transport: marketplaces block bots
+
+Alibaba (and Amazon) answer automated traffic with a captcha/"slider" page that
+still returns HTTP 200. Plain `fetch` *and* a stealth headless browser both land
+on it; direct access succeeds only intermittently. The fetcher detects these
+interstitials (`detectAntiBot`) and yields zero rows rather than persisting a
+captcha page as a product.
+
+For reliable results, route the fetcher through a scraping proxy / data API by
+setting a URL template (must contain `{url}`):
+
+```bash
+# ScraperAPI / ScrapingBee / Zyte-style endpoints all fit this shape:
+export MARKETPLACE_SCRAPER_URL="https://api.scraperapi.com/?api_key=KEY&render=true&url={url}"
+```
+
+The parser is transport-agnostic — it reads whatever rendered HTML comes back,
+whether from a direct fetch, a proxy, or a data API.
+
+### Run it
+
+```bash
+cd medusa-backend/apps/backend
+
+# Dry run (default): reads canonical products from the DB, searches, prints a
+# summary + sample. Never writes. The DB read works against prod read-only.
+npm run marketplace:ingest -- --provider=alibaba --limit=25 --results=3
+
+# Commit (replaces this marketplace's catalog for the source). Guarded by the
+# remote-DB safety check; configure MARKETPLACE_SCRAPER_URL first or most rows
+# will be anti-bot blocked and the commit is refused.
+npm run marketplace:ingest -- --provider=alibaba --limit=200 --results=3 --commit
+```
+
+Options (CLI flag or `MARKETPLACE_*` env): `--provider` (`alibaba`|`amazon`),
+`--limit` (canonical products), `--results` (per product), `--query-prefix`,
+`--category` (filter canonical products), `--concurrency`, `--timeout-ms`,
+`--sample`, `--progress-every`, `--commit`. Products land under supplier
+`msup_<provider>` (auto provisioned) and source catalog
+`<provider>-marketplace-search`.
+
+### Focused ingest from a seed list
+
+By default the ingest searches canonical products by their own name. To instead
+ingest a curated set of products (e.g. the top dental reorder items), pass a seed
+file of query phrases — one per line, `#` comments allowed:
+
+```bash
+npm run marketplace:ingest -- --provider=amazon \
+  --seeds-file=./data/marketplace-seeds/top-dental-reorder.txt \
+  --results=20 --commit
+```
+
+Each seed is searched on the marketplace and its results are attached to the
+best-matching canonical product (`bestCanonicalAnchor`, scored by token overlap,
+ignoring the generic `dental`/`disposable` tokens). Seeds whose best anchor falls
+below `--anchor-min` (default 20%) are skipped. Preview the seed → canonical
+mapping without any marketplace fetch (free, no credits):
+
+```bash
+npm run marketplace:ingest -- --provider=amazon \
+  --seeds-file=./data/marketplace-seeds/top-dental-reorder.txt --resolve-only
+```
+
+`data/marketplace-seeds/top-dental-reorder.txt` is the 50 products from
+[top-50-dental-reorder-products.md](./top-50-dental-reorder-products.md). With
+`--results=20`, ~50 seeds yield just under 1,000 marketplace products.
+
+### Monitor progress
+
+The ingest emits a live progress line every `--progress-every` queries
+(default 10) so a long run is observable instead of only printing a
+summary at the end:
+
+```text
+[marketplace-ingestion] progress 120/500 | with_results 96 | listings 271 | blocked 0 | errored 2 | 210s
+```
+
+`tail -f` the run, or watch it in the Render/Airflow logs. To inspect what's
+actually persisted at any time (read-only):
+
+```bash
+npm run marketplace:status                      # all providers
+npm run marketplace:status -- --provider=amazon # one provider
+```
+
+It reports, per provider: supplier provisioned, product count, products with an
+image, distinct canonical products matched, match-status breakdown, price
+snapshot count, and the last crawl timestamp.
+
+Every ingest also logs ScraperAPI credits remaining before and after the run
+(and `credits_used` in the JSON summary) for cost auditing, e.g.:
+
+```text
+[marketplace-ingestion] scraperapi credits before run: 3920 / 5000
+[marketplace-ingestion] scraperapi credits remaining: 3900 / 5000 (used 20 this run)
+```
+
+The key is read from `SCRAPERAPI_API_KEY` or the `api_key` of
+`MARKETPLACE_SCRAPER_URL`; the audit is a no-op when neither is a ScraperAPI key.
+
+### Scheduled / re-running (Airflow)
+
+`airflow/dags/marketplace_ingestion.py` defines one DAG per marketplace
+(`marketplace_amazon`, `marketplace_alibaba`). Each is a two-task chain:
+`ingest` (logs credits + summary) then `status` (logs persisted counts). Trigger
+a re-run any time from the Airflow UI.
+
+Because the marketplace fetch costs ScraperAPI credits, the DAGs default to
+**manual trigger** (`schedule=None`). Set a cron to refresh prices periodically:
+
+```text
+airflow variables set medmkp_marketplace_amazon_schedule "0 9 * * 1"   # weekly Mon
+```
+
+The host's env file (`medmkp_env_file`) must define `MARKETPLACE_SCRAPER_URL`
+(keep the key there, not in the DAG). Other knobs are Airflow Variables:
+`medmkp_marketplace_commit`, `medmkp_marketplace_concurrency`,
+`medmkp_marketplace_seeds_file`, `medmkp_marketplace_<name>_results`,
+`medmkp_marketplace_<name>_anchor_min`. See the DAG docstring for the full list.
+
+### Official APIs vs scraping
+
+Neither marketplace offers an open keyword→price API: Amazon's Product
+Advertising API is gated behind the Associates (affiliate) program and a sales
+quota, and SP-API is scoped to a seller's own listings; Alibaba.com (B2B) has no
+practical buyer price API (the accessible AliExpress affiliate API is a
+different, retail catalog). That is why ingestion goes through `MARKETPLACE_SCRAPER_URL`.
+If you obtain API credentials later, add an API-backed provider implementing the
+same `MarketplaceProvider` interface — the rest of the pipeline is unchanged.
+
+Note: Alibaba is a "protected domain" for many scraping APIs; ScraperAPI in
+particular requires a paid plan (premium/residential proxies) for it, while
+Amazon works on the free tier with `render=true`.

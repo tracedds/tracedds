@@ -1,0 +1,55 @@
+# Seed search queries for marketplace ingestion, one per line.
+# Curated from docs/top-50-dental-reorder-products.md (the top reorder products).
+# Lines starting with # and blank lines are ignored. Each query is searched on
+# the marketplace and its results are attached to the best-matching canonical
+# product. See `npm run marketplace:ingest -- --seeds-file=...`.
+Nitrile exam gloves
+ASTM Level 3 earloop face masks
+Surface disinfectant wipes
+Dental patient bibs
+Self-seal sterilization pouches
+Saliva ejectors dental
+HVE evacuation tips dental
+Cotton rolls #2 medium dental
+Gauze sponges 2x2 dental
+Disposable air water syringe tips
+Barrier film tape 4x6 perforated dental
+Tray sleeves barrier bags dental
+Disposable prophy angles soft cup
+Prophy paste medium
+Lidocaine carpules dental
+Articaine carpules dental
+Dental needles 27 gauge long
+Topical anesthetic gel dental
+Dental composite resin syringe
+Universal dental bonding agent adhesive
+Phosphoric acid etchant 37% gel dental
+VPS impression material light body
+Flowable composite dental
+Bis-acryl temporary crown material
+Dental diamond burs assorted
+Dental carbide burs
+VPS bite registration material
+Disposable dental impression trays
+Resin permanent dental cement
+Temporary dental cement non-eugenol
+Glass ionomer liner base dental
+Dental matrix bands sectional wedges
+Dental finishing polishing discs
+Dental articulating paper blue
+Rotary NiTi endodontic files
+Endo hand K-files
+Gutta percha points
+Endodontic paper points
+Sodium hypochlorite dental irrigant
+Fluoride varnish unit dose
+Pit and fissure sealant material
+Take-home dental patient kits
+Microbrush applicators dental
+Cotton tip applicators
+Patient rinse cups 5 oz
+Disposable dental mouth mirrors
+Sterilization spore test strips
+Disposable isolation gowns
+Dental x-ray sensor sleeves
+Surface disinfectant spray gallon
