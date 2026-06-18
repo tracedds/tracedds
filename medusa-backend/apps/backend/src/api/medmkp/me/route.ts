@@ -1,4 +1,4 @@
-import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { MEDMKP_MODULE } from "../../../modules/medmkp"
 import type MedMKPModuleService from "../../../modules/medmkp/service"
@@ -7,7 +7,7 @@ import { resolvePracticeId } from "../../../utils/practice"
 // Identity for the signed-in buyer: their name (for the topbar/profile) and the
 // practice they belong to (for the list header). The frontend /api/auth/me
 // proxies this with the session cookie as a Bearer token.
-export async function GET(req: MedusaRequest, res: MedusaResponse) {
+export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
   const customerId = req.auth_context?.actor_id
   if (!customerId) {
     res.status(401).json({ error: "Not authenticated." })
