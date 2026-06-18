@@ -15,19 +15,26 @@ import type {
   SupplierSeedRow,
 } from "./types"
 
-// DC Dental runs on NetSuite SuiteCommerce. Its /api/items endpoint paginates
-// the ENTIRE catalog by offset (no category filter), so a single offset walk
-// returns every distinct item exactly once — unlike the per-category crawl,
-// which re-paginates products shared across categories and needs an unbounded
-// page budget. An explicit `fields` list (not fieldset=details) returns the
-// GTIN/UPC `upccode` alongside the nested price/image objects the row needs.
+// DC Dental runs on NetSuite SuiteCommerce. Its /api/items endpoint refuses
+// offset >= 5000, so the catalog (~40k items) cannot be walked flat. Instead we
+// page it one category at a time (every category is well under the cap), reading
+// the category tree from the API's own `category` facet. An explicit `fields`
+// list (not fieldset=details) returns the GTIN/UPC `upccode` alongside the
+// nested price/image objects a row needs, so rows are built directly here
+// without a per-product fetch. Products cross-list across categories, so results
+// are deduped by SKU; a final completeness check against the catalog `total`
+// guards against a partial set being handed to the delete-and-replace commit.
 const DC_DENTAL_COMPANY_ID = "1075085"
 const DC_DENTAL_SITE_ID = "3"
 const CATALOG_PAGE_SIZE = 100
-// Safety ceiling so a malformed `total` can't loop forever. The live catalog is
-// ~40k items (~400 pages); 5000 pages = 500k items is comfortably out of reach.
-const MAX_CATALOG_PAGES = 5000
+const MAX_OFFSET = 5000 // NetSuite hard cap; pages must keep offset < this
 const PAGE_FETCH_ATTEMPTS = 3
+// Categories at/above the offset cap are inclusive parents whose products are
+// also reachable through their (smaller) child categories, so they are skipped.
+const CATEGORY_SKIP_AT = MAX_OFFSET
+// The original per-category crawl recovered ~99.7% of `total`; require most of
+// the catalog so a broken partition can't silently shrink it.
+const MIN_COMPLETE_RATIO = 0.97
 
 const CATALOG_FIELDS = [
   "internalid", "itemid", "upccode", "manufacturer",
@@ -61,9 +68,11 @@ type DcDentalCatalogItem = {
   itemimages_detail?: unknown
 }
 
-type DcDentalCatalogPage = {
+type DcDentalCategoryNode = { id?: string; values?: DcDentalCategoryNode[] }
+type DcDentalApiResponse = {
   total?: number
   items?: DcDentalCatalogItem[]
+  facets?: Array<{ id?: string; values?: DcDentalCategoryNode[] }>
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -94,90 +103,114 @@ function supplierOrigin(supplier: SupplierSeedRow) {
   }
 }
 
-function catalogPageUrl(origin: string, offset: number, fields: string) {
-  const params = new URLSearchParams({
+function apiUrl(origin: string, params: Record<string, string>) {
+  const search = new URLSearchParams({
     c: DC_DENTAL_COMPANY_ID,
     country: "US",
     currency: "USD",
     language: "en",
     n: DC_DENTAL_SITE_ID,
     pricelevel: "10",
-    fields,
-    limit: String(CATALOG_PAGE_SIZE),
-    offset: String(offset),
+    ...params,
   })
-  return `${origin}/api/items?${params.toString()}`
+  return `${origin}/api/items?${search.toString()}`
 }
 
-function productUrl(origin: string, item: DcDentalCatalogItem) {
-  if (!item.urlcomponent) {
-    return ""
+async function fetchJson(url: string, timeoutMs?: number): Promise<DcDentalApiResponse> {
+  for (let attempt = 1; attempt <= PAGE_FETCH_ATTEMPTS; attempt += 1) {
+    const response = await downloadText(url, timeoutMs)
+    if (response.ok && response.body) {
+      try {
+        return JSON.parse(response.body) as DcDentalApiResponse
+      } catch {
+        throw new Error(`DC Dental API returned non-JSON: ${url}`)
+      }
+    }
+    if (attempt === PAGE_FETCH_ATTEMPTS) {
+      throw new Error(`DC Dental API fetch failed (status ${response.status}): ${url}`)
+    }
+    await sleep(500 * attempt)
   }
+  throw new Error(`DC Dental API fetch failed: ${url}`)
+}
 
-  try {
-    return new URL(`/${item.urlcomponent}`, origin).href
-  } catch {
-    return ""
+function flattenCategoryPaths(nodes: DcDentalCategoryNode[] | undefined, acc: string[]) {
+  for (const node of nodes ?? []) {
+    if (typeof node.id === "string" && node.id !== "Home") {
+      acc.push("/" + node.id.replace(/^Home\//, ""))
+    }
+    flattenCategoryPaths(node.values, acc)
   }
 }
 
-// Walk the whole catalog by offset. All-or-nothing: every page is retried, and
-// any page that still fails throws — we must never return a partial catalog,
-// because the commit replaces the supplier by deleting everything first.
+async function fetchCategoryPaths(origin: string, timeoutMs?: number): Promise<string[]> {
+  const json = await fetchJson(
+    apiUrl(origin, { include: "facets", fields: "internalid", limit: "1", offset: "0" }),
+    timeoutMs
+  )
+  const categoryFacet = (json.facets ?? []).find((facet) => facet.id === "category")
+  const paths: string[] = []
+  flattenCategoryPaths(categoryFacet?.values, paths)
+  return [...new Set(paths)]
+}
+
+// Page a single category. Skips inclusive parents at/above the offset cap (their
+// products are reached via child categories); every other category is fully read.
+async function fetchCategoryItems(
+  origin: string,
+  categoryUrl: string,
+  fields: string,
+  timeoutMs?: number
+): Promise<DcDentalCatalogItem[]> {
+  const first = await fetchJson(
+    apiUrl(origin, { commercecategoryurl: categoryUrl, fields, limit: String(CATALOG_PAGE_SIZE), offset: "0" }),
+    timeoutMs
+  )
+  const total = typeof first.total === "number" ? first.total : 0
+  const items = [...(first.items ?? [])]
+  if (total >= CATEGORY_SKIP_AT) {
+    return items
+  }
+  for (let offset = CATALOG_PAGE_SIZE; offset < total && offset < MAX_OFFSET; offset += CATALOG_PAGE_SIZE) {
+    const page = await fetchJson(
+      apiUrl(origin, { commercecategoryurl: categoryUrl, fields, limit: String(CATALOG_PAGE_SIZE), offset: String(offset) }),
+      timeoutMs
+    )
+    items.push(...(page.items ?? []))
+  }
+  return items
+}
+
+// Walk every category and dedupe by SKU. All-or-nothing: any unrecoverable page
+// fetch throws, and a short collected count throws, so the commit never replaces
+// the supplier with a partial catalog.
 async function fetchCatalogItems(
   origin: string,
   fields: string,
   options: { timeoutMs?: number } = {}
 ): Promise<DcDentalCatalogItem[]> {
-  const items: DcDentalCatalogItem[] = []
-  let total = Number.POSITIVE_INFINITY
+  const head = await fetchJson(apiUrl(origin, { fields: "internalid", limit: "1", offset: "0" }), options.timeoutMs)
+  const total = typeof head.total === "number" ? head.total : 0
+  const paths = await fetchCategoryPaths(origin, options.timeoutMs)
 
-  for (let page = 0; page < MAX_CATALOG_PAGES; page += 1) {
-    const offset = page * CATALOG_PAGE_SIZE
-    if (offset >= total) {
-      break
-    }
-
-    const url = catalogPageUrl(origin, offset, fields)
-    let body = ""
-    for (let attempt = 1; attempt <= PAGE_FETCH_ATTEMPTS; attempt += 1) {
-      const response = await downloadText(url, options.timeoutMs)
-      if (response.ok && response.body) {
-        body = response.body
-        break
+  const bySku = new Map<string, DcDentalCatalogItem>()
+  for (const path of paths) {
+    const items = await fetchCategoryItems(origin, path, fields, options.timeoutMs)
+    for (const item of items) {
+      const sku = item.itemid?.trim()
+      if (sku && !bySku.has(sku)) {
+        bySku.set(sku, item)
       }
-      if (attempt === PAGE_FETCH_ATTEMPTS) {
-        throw new Error(
-          `DC Dental catalog fetch failed at offset ${offset} (status ${response.status}); aborting to avoid a partial replace`
-        )
-      }
-      await sleep(500 * attempt)
     }
-
-    let parsed: DcDentalCatalogPage
-    try {
-      parsed = JSON.parse(body) as DcDentalCatalogPage
-    } catch {
-      throw new Error(`DC Dental catalog returned non-JSON at offset ${offset}; aborting`)
-    }
-
-    if (typeof parsed.total === "number") {
-      total = parsed.total
-    }
-    const pageItems = parsed.items ?? []
-    if (!pageItems.length) {
-      break
-    }
-    items.push(...pageItems)
   }
 
-  if (Number.isFinite(total) && items.length < total) {
+  const collected = [...bySku.values()]
+  if (total > 0 && collected.length < total * MIN_COMPLETE_RATIO) {
     throw new Error(
-      `DC Dental catalog incomplete: collected ${items.length} of ${total} items; aborting to avoid a partial replace`
+      `DC Dental catalog incomplete: collected ${collected.length} of ${total} items across ${paths.length} categories; aborting to avoid a partial replace`
     )
   }
-
-  return items
+  return collected
 }
 
 // itemimages_detail is shaped { urls: [{ url, altimagetext }] }, which the
@@ -222,6 +255,17 @@ function imageUrls(origin: string, item: DcDentalCatalogItem) {
         .filter(Boolean)
     ),
   ]
+}
+
+function productUrl(origin: string, item: DcDentalCatalogItem) {
+  if (!item.urlcomponent) {
+    return ""
+  }
+  try {
+    return new URL(`/${item.urlcomponent}`, origin).href
+  } catch {
+    return ""
+  }
 }
 
 // storedisplayname2 is usually the product name but is occasionally just the
@@ -271,9 +315,8 @@ export function dcDentalItemToRow(item: DcDentalCatalogItem, origin: string): Ex
   }
 }
 
-// Index-stage helper: enumerate every product URL once via the flat catalog walk
-// (lightweight fields). Replaces the per-category crawl, which truncated under a
-// page-budget cap because shared products re-paginate in each category.
+// Index-stage helper: enumerate every product URL once via the category walk
+// (lightweight fields), so the index stage produces real product candidates.
 export async function discoverDcDentalCatalogProductUrls(
   suppliers: SupplierSeedRow[],
   options: { timeoutMs?: number } = {}
@@ -285,22 +328,15 @@ export async function discoverDcDentalCatalogProductUrls(
 
   const origin = supplierOrigin(supplier)
   const items = await fetchCatalogItems(origin, DISCOVERY_FIELDS, options)
-  const seen = new Set<string>()
-  const urls: string[] = []
-  for (const item of items) {
-    const sku = item.itemid?.trim()
-    if (!sku || seen.has(sku)) {
-      continue
-    }
-    seen.add(sku)
-    urls.push(productUrl(origin, item) || `${origin}/item-${item.internalid ?? sku}`)
-  }
+  const urls = items.map(
+    (item) => productUrl(origin, item) || `${origin}/item-${item.internalid ?? item.itemid}`
+  )
   return { supplier, origin, urls }
 }
 
 // Extract-stage pre-pass mirroring the Shopify products.json pre-pass: produce
-// every DC Dental row (with barcode) directly from the flat catalog API, and
-// drop DC Dental candidates from `remaining` so per-product extraction skips them.
+// every DC Dental row (with barcode) directly from the category walk, and drop
+// DC Dental candidates from `remaining` so per-product extraction skips them.
 export async function extractDcDentalCatalogProducts(
   candidates: ProductPageCandidate[],
   suppliers: SupplierSeedRow[],
@@ -314,17 +350,7 @@ export async function extractDcDentalCatalogProducts(
   const origin = supplierOrigin(supplier)
   const remaining = candidates.filter((candidate) => !isDcDentalCandidate(candidate))
   const items = await fetchCatalogItems(origin, CATALOG_FIELDS, options)
-
-  const seen = new Set<string>()
-  const products: ExtractedProductRow[] = []
-  for (const item of items) {
-    const sku = item.itemid?.trim()
-    if (!sku || seen.has(sku)) {
-      continue
-    }
-    seen.add(sku)
-    products.push(dcDentalItemToRow(item, origin))
-  }
+  const products = items.map((item) => dcDentalItemToRow(item, origin))
 
   return { products, failures: [], remaining }
 }
