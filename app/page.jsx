@@ -2540,6 +2540,33 @@ function CaptureTray({ items, onReview, onRemove, compact }) {
           <Icon name="icon-scan" className="button-icon" />
           <p>Scanned and uploaded items collect here, then you review them together.</p>
         </div>
+      ) : compact ? (
+        <ul className="capture-tray-list">
+          {rows.map((row) => {
+            const status = MR_STATUS[row.status];
+            // For a matched item the name is the product; for a not-found scan it's
+            // already "Scanned · <code>", so don't repeat the code underneath.
+            const title = row.matchName || row.importedName;
+            const sub = row.matchName ? (row.matchSub || row.importedSub) : "";
+            return (
+              <li className="capture-tray-card" key={row.id}>
+                <div className="ctc-body">
+                  <strong className="ctc-name">{title}</strong>
+                  {sub ? <span className="ctc-sub">{sub}</span> : null}
+                  <div className="ctc-tags">
+                    <span className={`mr-status ${status.cls}`}>{status.label}</span>
+                    {row.qty > 1 ? <span className="ctc-qty">×{row.qty}</span> : null}
+                    {row.supplier && row.supplier !== "—" ? <span className="ctc-supplier">{row.supplier}</span> : null}
+                    {row.price != null ? <span className="ctc-price">{mrMoney(row.price)}</span> : null}
+                  </div>
+                </div>
+                <button className="ctc-remove" type="button" onClick={() => onRemove(items[row.id - 1])} aria-label={`Remove ${title}`}>
+                  <Icon name="icon-x" className="button-icon" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       ) : (
         <div className="capture-tray-table">
           <div className="capture-tray-row capture-tray-header">
