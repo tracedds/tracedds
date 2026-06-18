@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CATALOG_CATEGORIES, CATALOG_TINTS, bucketCategories, categoryBySlug } from "./catalogData";
 
@@ -867,6 +866,7 @@ function SampleReorderList({ onNavigate }) {
             onSearchTerm={() => {}}
             searchResults={[]}
             searchLoading={false}
+            onNavigate={onNavigate}
             onToast={showToast}
             listTouched={false}
             allowSample
@@ -2006,7 +2006,14 @@ export default function Home() {
                 aria-label="Search"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Escape") { setSearchTerm(""); event.currentTarget.blur(); } }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") { setSearchTerm(""); event.currentTarget.blur(); }
+                  else if (event.key === "Enter" && searchTerm.trim()) {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                    navigate(`/app/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`);
+                  }
+                }}
               />
               <kbd className="topbar-kbd">⌘K</kbd>
             </label>
@@ -2016,7 +2023,8 @@ export default function Home() {
                 <SearchResults
                   results={searchResults}
                   loading={searchLoading}
-                  searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`}
+                  query={searchTerm.trim()}
+                  onNavigate={navigate}
                 />
               </>
             )}
@@ -2118,6 +2126,7 @@ export default function Home() {
                 onSearchTerm={setSearchTerm}
                 searchResults={searchResults}
                 searchLoading={searchLoading}
+                onNavigate={navigate}
                 onToast={showToast}
                 listTouched={listTouched}
                 buyingPrefs={buyingPrefs}
@@ -2172,15 +2181,18 @@ export default function Home() {
   );
 }
 
-function SearchResults({ results, searchHref, loading }) {
+function SearchResults({ results, query = "", loading, onNavigate }) {
   const headerLabel = loading && !results.length
     ? "Searching…"
     : results.length ? "Matching canonical products" : "No catalog matches";
+  const trimmed = query.trim();
+  const catalogHref = trimmed ? `/app/catalog/search?q=${encodeURIComponent(trimmed)}` : "/app/catalog";
+  const go = (href) => (event) => { event.preventDefault(); onNavigate?.(href); };
   return (
     <div className="search-results" role="region" aria-label="Catalog search results">
       <div className="search-results-header">
         <strong>{headerLabel}</strong>
-        <Link className="search-results-link" href={searchHref}>View catalog</Link>
+        <a className="search-results-link" href={catalogHref} onClick={go(catalogHref)}>View catalog</a>
       </div>
       {results.slice(0, 5).map((result) => {
         const price = typeof result.price_cents === "number"
@@ -2189,10 +2201,10 @@ function SearchResults({ results, searchHref, loading }) {
         const perUnit = typeof result.per_unit_cents === "number"
           ? `${money.format(result.per_unit_cents / 100)}/${result.base_unit || "unit"}`
           : null;
-        const href = result.handle ? `/app/product/${result.handle}` : searchHref;
+        const href = result.handle ? `/app/product/${result.handle}` : catalogHref;
 
         return (
-          <Link className="search-result" key={result.id} href={href}>
+          <a className="search-result" key={result.id} href={href} onClick={go(href)}>
             <span>
               <strong>{result.name}</strong>
               <small>{result.category || "Uncategorized"} · {result.supplier_name || "Supplier pending"}</small>
@@ -2205,7 +2217,7 @@ function SearchResults({ results, searchHref, loading }) {
                 </small>
               )}
             </em>
-          </Link>
+          </a>
         );
       })}
       {!results.length && !loading && (
@@ -2499,6 +2511,143 @@ function CatalogView({ onNavigate }) {
           )}
         </aside>
       </div>
+    </div>
+  );
+}
+
+// In-app search results (/app/catalog/search?q=). Reached from the topbar search
+// dropdown ("View catalog" / Enter); self-fetches the same canonical search the
+// dropdown uses (higher limit) and lists matches in the category view's table.
+function CatalogSearchView({ query, onNavigate }) {
+  const [input, setInput] = useState(query || "");
+  const [products, setProducts] = useState([]);
+  const [status, setStatus] = useState(query ? "loading" : "idle");
+
+  // Keep the refine box in sync when the query changes via the topbar / history.
+  useEffect(() => { setInput(query || ""); }, [query]);
+
+  useEffect(() => {
+    const q = (query || "").trim();
+    if (!q) { setProducts([]); setStatus("idle"); return undefined; }
+    const controller = new AbortController();
+    setStatus("loading");
+    fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=48`, { signal: controller.signal })
+      .then((r) => r.json())
+      .then(({ canonical_products }) => {
+        if (controller.signal.aborted) return;
+        setProducts(canonical_products || []);
+        setStatus("ready");
+      })
+      .catch((error) => {
+        if (error.name === "AbortError") return;
+        setProducts([]);
+        setStatus("ready");
+      });
+    return () => controller.abort();
+  }, [query]);
+
+  function submit(event) {
+    event.preventDefault();
+    const q = input.trim();
+    onNavigate(q ? `/app/catalog/search?q=${encodeURIComponent(q)}` : "/app/catalog");
+  }
+
+  return (
+    <div className="cat">
+      <nav className="cat-crumb" aria-label="Breadcrumb">
+        <button type="button" onClick={() => onNavigate("/app/catalog")}>Catalog</button>
+        <Icon name="icon-chevron-right" className="cat-crumb-sep" />
+        <strong>Search</strong>
+      </nav>
+      <h1 className="cat-title">{query ? `Results for “${query}”` : "Search the catalog"}</h1>
+      <p className="cat-lede">
+        {status === "ready"
+          ? `${products.length} matching product${products.length === 1 ? "" : "s"}.`
+          : "Search canonical dental products across every supplier."}
+      </p>
+
+      <form className="cat-search-form" onSubmit={submit}>
+        <label className="topbar-search">
+          <Icon name="icon-search" className="button-icon" />
+          <input
+            type="search"
+            value={input}
+            placeholder="Search products"
+            aria-label="Search products"
+            onChange={(event) => setInput(event.target.value)}
+          />
+        </label>
+        <button type="submit" className="primary-action compact">Search</button>
+      </form>
+
+      {status === "loading" ? (
+        <div className="cat-ptable-wrap">
+          {Array.from({ length: 6 }).map((_, i) => <div className="cat-pt-skeleton" key={i} />)}
+        </div>
+      ) : products.length ? (
+        <div className="cat-ptable-wrap">
+          <table className="cat-ptable">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Category / SKU</th>
+                <th>Best price</th>
+                <th className="cat-pt-num">Suppliers matched</th>
+                <th className="cat-pt-act">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((product) => {
+                const best = product.best_offer;
+                const open = product.handle ? () => onNavigate(`/app/product/${product.handle}`) : undefined;
+                return (
+                  <tr key={product.id}>
+                    <td>
+                      <div className="cat-pt-product">
+                        <span className="cat-pt-thumb">
+                          {product.image_url ? (
+                            <img src={product.image_url} alt="" loading="lazy" />
+                          ) : (
+                            <Icon name="icon-image" className="nav-icon" />
+                          )}
+                        </span>
+                        {open ? (
+                          <button type="button" className="cat-pt-name" onClick={open}>{product.name}</button>
+                        ) : (
+                          <span className="cat-pt-name">{product.name}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="cat-pt-path">
+                      <span>{product.category || "Uncategorized"}</span>
+                      <em>{best?.sku || "—"}</em>
+                    </td>
+                    <td>
+                      <div className="cat-pt-price">
+                        <strong>{best ? catMoney(best.price_cents) : "—"}</strong>
+                      </div>
+                    </td>
+                    <td className="cat-pt-num">{product.offer_count}</td>
+                    <td className="cat-pt-act">
+                      {open && (
+                        <button type="button" className="cat-pt-view" onClick={open}>
+                          View product
+                          <Icon name="icon-link" className="button-icon" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state">
+          <strong>{query ? `No products for “${query}”` : "Start typing to search"}</strong>
+          <span>Try gloves, burs, bibs, impression material, or anesthetics.</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2912,7 +3061,7 @@ function ProductDetail({ handle, onNavigate, onToast }) {
       <div className="pdp-state">
         <strong>Product not found</strong>
         <p>We couldn&rsquo;t find that product in the catalog.</p>
-        <Link className="secondary-action compact" href="/catalog/search">Back to search</Link>
+        <a className="secondary-action compact" href="/app/catalog/search" onClick={(event) => { event.preventDefault(); onNavigate("/app/catalog/search"); }}>Back to search</a>
       </div>
     );
   }
@@ -3110,7 +3259,7 @@ function ProductDetail({ handle, onNavigate, onToast }) {
             <section className="crl-card pdp-subs">
               <div className="pdp-card-head">
                 <h2>Comparable products / substitutes</h2>
-                <Link className="pdp-link" href="/catalog/search">View all</Link>
+                <a className="pdp-link" href="/app/catalog" onClick={(event) => { event.preventDefault(); onNavigate("/app/catalog"); }}>View all</a>
               </div>
               {subs.length === 0 && <p className="pdp-empty">No substitutes found in this category.</p>}
               {subs.map((sub) => {
@@ -3936,7 +4085,7 @@ function rowMode(row) {
 
 // Mobile card list for the current reorder list (replaces the desktop table on
 // phones). Stats band + status tabs + tappable product cards.
-function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading }) {
+function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div className="m-list">
@@ -3957,7 +4106,14 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
             aria-label="Search"
             value={searchTerm}
             onChange={(event) => onSearchTerm?.(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Escape") { onSearchTerm?.(""); event.currentTarget.blur(); } }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { onSearchTerm?.(""); event.currentTarget.blur(); }
+              else if (event.key === "Enter" && searchTerm.trim()) {
+                event.preventDefault();
+                event.currentTarget.blur();
+                onNavigate?.(`/app/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`);
+              }
+            }}
           />
         </label>
         {searchTerm.trim() && (
@@ -3966,7 +4122,8 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
             <SearchResults
               results={searchResults}
               loading={searchLoading}
-              searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`}
+              query={searchTerm.trim()}
+              onNavigate={onNavigate}
             />
           </>
         )}
@@ -4341,6 +4498,7 @@ function CurrentReorderList({
   onSearchTerm,
   searchResults,
   searchLoading,
+  onNavigate,
   onToast,
   listTouched,
   allowSample = false,
@@ -4467,6 +4625,7 @@ function CurrentReorderList({
           onSearchTerm={onSearchTerm}
           searchResults={searchResults}
           searchLoading={searchLoading}
+          onNavigate={onNavigate}
         />
         {detail && (
           <MobileItemDetail
@@ -4580,11 +4739,18 @@ function CurrentReorderList({
                     placeholder="Search the catalog…"
                     value={searchTerm}
                     onChange={(event) => onSearchTerm(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && searchTerm.trim()) {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                        onNavigate?.(`/app/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`);
+                      }
+                    }}
                     autoFocus
                   />
                 </label>
                 {searchTerm.trim() && (
-                  <SearchResults results={searchResults} loading={searchLoading} searchHref={`/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`} />
+                  <SearchResults results={searchResults} loading={searchLoading} query={searchTerm.trim()} onNavigate={onNavigate} />
                 )}
               </div>
             )}
