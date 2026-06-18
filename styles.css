@@ -8570,6 +8570,14 @@ th {
 .crl-imported-info { display: grid; gap: 6px; min-width: 0; }
 .crl-imported-info > strong { color: var(--ink); font-size: 14px; }
 .crl-imported-info > small { color: var(--muted); font-size: 12px; }
+.crl-imported-link {
+  display: inline-flex; align-items: center; gap: 5px; justify-self: start;
+  padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; text-align: left;
+}
+.crl-imported-link:hover { color: var(--blue); text-decoration: underline; }
+.crl-imported-link .button-icon { width: 14px; height: 14px; color: var(--blue); }
+.m-detail-catalog { margin-top: 4px; }
 .crl-qty-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .crl-qty-step button { width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 15px; line-height: 1; }
 .crl-qty-step em { font-style: normal; font-weight: 700; color: var(--ink); }

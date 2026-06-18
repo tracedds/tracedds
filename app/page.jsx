@@ -1896,6 +1896,7 @@ export default function Home() {
         ...item,
         product: product.name,
         canonicalName: product.name,
+        canonicalHandle: product.handle || product.id || item.canonicalHandle || "",
         imageUrl: product.image_url || best?.imageUrl || item.imageUrl || "",
         unit: product.base_unit || item.unit || "ea",
         offers,
@@ -2127,6 +2128,7 @@ export default function Home() {
                 onLinkProduct={linkProductToItem}
                 onRemoveItem={removeDraftItem}
                 onVerifyItems={verifyItems}
+                onNavigate={navigate}
               />
             )
           )}
@@ -3387,6 +3389,7 @@ function makeScanDraftItem(code, product) {
       ...base,
       product: product.name,
       canonicalName: product.name,
+      canonicalHandle: product.handle || product.id || "",
       sku: product.best_offer?.sku || code || "",
       unit: product.base_unit || product.unit_of_measure || "ea",
       matchStatus: "exact",
@@ -3511,6 +3514,7 @@ function deriveMatchRows(items, prefs) {
       image: best?.imageUrl || item.imageUrl || "",
       source: item.source || ((item.documentIds || []).includes("scan") ? "scan" : "pdf"),
       canonicalName: notFound ? null : (item.canonicalName || item.product || null),
+      canonicalHandle: notFound ? null : (item.canonicalHandle || null),
       importedName: item.extractedFrom,
       importedSub: item.sku ? `SKU: ${item.sku}` : (item.unit || ""),
       supplier,
@@ -3645,6 +3649,9 @@ const CRL_STATUS = {
 const CRL_SAMPLE_SOURCES = { 1: "pdf", 2: "csv", 3: "scan", 4: "pdf", 5: "csv", 6: "scan", 7: "pdf" };
 const CRL_SOURCE_ICON = { pdf: "icon-file-text", csv: "icon-table", scan: "icon-scan" };
 
+// Rows rendered before "Load more" reveals the rest. Sized to roughly a screenful
+// so the footer only appears when the list actually runs past the initial view.
+const CRL_PAGE_SIZE = 10;
 
 // The Home surface: the active reorder list. Add Items (upload / scan / search)
 // feeds the Item List below; the right rail summarizes status and next steps.
@@ -3761,7 +3768,7 @@ function ProductSearchResults({ query, results, loading, onPick, emptyHint }) {
 // Confirming, picking a different offer, editing qty, adding a note, linking a
 // product, or removing the item all persist back to the draft list via the
 // callbacks (keyed by row.itemId). Sample rows (no itemId) stay demo-only.
-function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirmMatch, onLinkProduct, onRemoveItem }) {
+function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate }) {
   const isResolve = mode === "resolve";
   const isView = mode === "view";
   const candidates = isResolve ? [] : offerCandidates(row);
@@ -3835,7 +3842,14 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
           <div className="crl-imported">
             <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
             <div className="crl-imported-info">
-              <strong>{row.matchName || row.importedName}</strong>
+              {row.canonicalHandle ? (
+                <button type="button" className="crl-imported-link" onClick={() => onNavigate?.(`/app/product/${row.canonicalHandle}`)} title="View this product in the catalog">
+                  {row.matchName || row.importedName}
+                  <Icon name="icon-arrow-right" className="button-icon" />
+                </button>
+              ) : (
+                <strong>{row.matchName || row.importedName}</strong>
+              )}
               <small>{row.importedName}</small>
               <div className="crl-qty-step">
                 <span>Qty:</span>
@@ -3961,7 +3975,6 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
       <header className="m-topbar">
         <h1>{title}</h1>
         <div className="m-topbar-actions">
-          <button className="m-iconbtn" type="button" aria-label="Filters"><Icon name="icon-filter" className="button-icon" /></button>
           <div className="m-menu-wrap">
             <button className="m-iconbtn" type="button" aria-label="List actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
               <svg className="crl-kebab-dots" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
@@ -4040,7 +4053,7 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
 
 // Full-screen mobile detail page. Layout follows the mobile mockup; the footer
 // actions mirror the desktop MatchPanel (Cancel / Confirm by mode).
-function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConfirmMatch, onLinkProduct, onRemoveItem }) {
+function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate }) {
   const idx = rows.findIndex((r) => r.id === row.id);
   const total = rows.length;
   const isResolve = mode === "resolve";
@@ -4118,6 +4131,11 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
           <strong className="m-detail-name">{row.importedName}</strong>
           <small>{row.importedSub}</small>
           {row.supplier && row.supplier !== "—" && <small>Imported by {row.supplier}</small>}
+          {row.canonicalHandle && (
+            <button type="button" className="crl-drawer-link m-detail-catalog" onClick={() => onNavigate?.(`/app/product/${row.canonicalHandle}`)}>
+              View in product catalog <Icon name="icon-arrow-right" className="button-icon" />
+            </button>
+          )}
         </section>
 
         {searching ? (
@@ -4334,6 +4352,7 @@ function CurrentReorderList({
   onLinkProduct,
   onRemoveItem,
   onVerifyItems,
+  onNavigate,
 }) {
   const realRows = deriveMatchRows(items, buyingPrefs);
   const usingReal = realRows.length > 0;
@@ -4353,6 +4372,8 @@ function CurrentReorderList({
   const [detailWide, setDetailWide] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  // Client-side pagination: show a screenful, reveal the rest on "Load more".
+  const [visibleCount, setVisibleCount] = useState(CRL_PAGE_SIZE);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -4361,6 +4382,9 @@ function CurrentReorderList({
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+
+  // Switching tabs starts the new (filtered) list back at the first page.
+  useEffect(() => { setVisibleCount(CRL_PAGE_SIZE); }, [tab]);
 
   // Suppliers that actually appear in this list's offers — the real choices for
   // the preferred-supplier filter (toggling them re-ranks the best offer).
@@ -4388,6 +4412,8 @@ function CurrentReorderList({
     nomatch: (row) => row.status === "Not found",
   };
   const filtered = rows.filter(tabFilter[tab] || tabFilter.all);
+  const visible = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visible.length;
   const openRow = (row) => setDetail({ row, mode: rowMode(row) });
 
   // Bulk selection — keyed by stable item id so it survives tab/sort changes.
@@ -4454,6 +4480,7 @@ function CurrentReorderList({
             onConfirmMatch={onConfirmMatch}
             onLinkProduct={onLinkProduct}
             onRemoveItem={onRemoveItem}
+            onNavigate={onNavigate}
           />
         )}
         {addMode === "upload" && (
@@ -4510,7 +4537,7 @@ function CurrentReorderList({
           </button>
           <button
             type="button"
-            className="crl-add-btn"
+            className="crl-add-scan"
             onClick={() => onAddMode("upload")}
           >
             <Icon name="icon-cloud-upload" className="button-icon" />
@@ -4578,10 +4605,6 @@ function CurrentReorderList({
                   <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
                 ))}
               </nav>
-              <div className="crl-tabs-actions">
-                <button className="crl-ghost-btn" type="button"><Icon name="icon-filter" className="button-icon" />Filters</button>
-                <button className="crl-ghost-btn" type="button"><Icon name="icon-shuffle" className="button-icon" />Sort <Icon name="icon-chevron-down" className="button-icon" /></button>
-              </div>
             </div>
 
             {selectedCount > 0 && (
@@ -4611,12 +4634,9 @@ function CurrentReorderList({
                   <Icon name="icon-cloud-upload" className="button-icon" />
                   <strong>Your reorder list is empty</strong>
                   <p>Upload an invoice (PDF or CSV) or scan a barcode to start matching items to the best supplier.</p>
-                  <button className="primary-action compact" type="button" onClick={() => onAddMode("upload")}>
-                    <Icon name="icon-cloud-upload" className="button-icon" />Upload invoice
-                  </button>
                 </div>
               )}
-              {filtered.map((row) => {
+              {visible.map((row) => {
                 const status = row.verified ? CRL_STATUS.Verified : CRL_STATUS[row.status];
                 const notFound = row.status === "Not found";
                 const mode = notFound ? "resolve" : row.status === "Review" ? "review" : "view";
@@ -4690,10 +4710,16 @@ function CurrentReorderList({
               })}
             </div>
 
-            <div className="crl-foot">
-              <span className="crl-foot-count">Showing 1 to {Math.min(7, filtered.length)} of {totalItems} items</span>
-              <button className="crl-ghost-btn" type="button">Load more <Icon name="icon-chevron-down" className="button-icon" /></button>
-            </div>
+            {filtered.length > CRL_PAGE_SIZE && (
+              <div className="crl-foot">
+                <span className="crl-foot-count">Showing 1 to {visible.length} of {filtered.length} items</span>
+                {hasMore && (
+                  <button className="crl-ghost-btn" type="button" onClick={() => setVisibleCount((count) => count + CRL_PAGE_SIZE)}>
+                    Load more <Icon name="icon-chevron-down" className="button-icon" />
+                  </button>
+                )}
+              </div>
+            )}
           </section>
         </div>
 
@@ -4709,6 +4735,7 @@ function CurrentReorderList({
             onConfirmMatch={onConfirmMatch}
             onLinkProduct={onLinkProduct}
             onRemoveItem={onRemoveItem}
+            onNavigate={onNavigate}
           />
         ) : (
         <aside className="crl-rail">

@@ -84,6 +84,9 @@ function toUiLineItem(match, vendor, source) {
     source,
     product: matched ? match.canonical_product?.name || best?.name || item.description : null,
     canonicalName: matched ? match.canonical_product?.name || best?.name || null : null,
+    // Handle (or id, which the canonical-products lookup also resolves) used to
+    // open this match's catalog page from the detail drawer.
+    canonicalHandle: matched ? match.canonical_product?.handle || match.canonical_product?.id || null : null,
     imageUrl,
     extractedFrom: item.description,
     sku: item.sku || "",
