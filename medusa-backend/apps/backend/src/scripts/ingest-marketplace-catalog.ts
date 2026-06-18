@@ -1,9 +1,16 @@
+import { readFileSync } from "fs"
 import type { MedusaContainer } from "@medusajs/framework"
 import { createMarketplaceFetcher } from "../ingestion/marketplace/fetch"
 import { buildMarketplaceIngestion } from "../ingestion/marketplace/persist"
 import { getMarketplaceProvider } from "../ingestion/marketplace/providers"
 import {
+  readSeedQueries,
+  resolveSeeds,
+  type CanonicalRecord,
+} from "../ingestion/marketplace/seeds"
+import {
   searchCanonicalOnMarketplace,
+  type CanonicalProductInput,
   type MarketplaceCatalogRow,
   type SearchCanonicalResult,
 } from "../ingestion/marketplace/search"
@@ -18,6 +25,9 @@ type CliOptions = {
   results: number
   queryPrefix: string
   category?: string
+  seedsFile?: string
+  anchorMin: number
+  resolveOnly: boolean
   concurrency: number
   timeoutMs: number
   sample: number
@@ -37,6 +47,11 @@ function parseOptions(): CliOptions {
     results: process.env.MARKETPLACE_RESULTS ? Number(process.env.MARKETPLACE_RESULTS) : 3,
     queryPrefix: process.env.MARKETPLACE_QUERY_PREFIX ?? "",
     category: process.env.MARKETPLACE_CATEGORY,
+    seedsFile: process.env.MARKETPLACE_SEEDS_FILE,
+    anchorMin: process.env.MARKETPLACE_ANCHOR_MIN
+      ? Number(process.env.MARKETPLACE_ANCHOR_MIN)
+      : 20,
+    resolveOnly: process.env.MARKETPLACE_RESOLVE_ONLY === "1",
     concurrency: process.env.MARKETPLACE_CONCURRENCY
       ? Number(process.env.MARKETPLACE_CONCURRENCY)
       : 3,
@@ -61,9 +76,46 @@ function parseOptions(): CliOptions {
     if (arg.startsWith("--timeout-ms=")) options.timeoutMs = Number(optionValue(arg))
     if (arg.startsWith("--sample=")) options.sample = Number(optionValue(arg))
     if (arg.startsWith("--progress-every=")) options.progressEvery = Number(optionValue(arg))
+    if (arg.startsWith("--seeds-file=")) options.seedsFile = optionValue(arg)
+    if (arg.startsWith("--anchor-min=")) options.anchorMin = Number(optionValue(arg))
+    if (arg === "--resolve-only") options.resolveOnly = true
   }
 
   return options
+}
+
+/**
+ * Resolve seed queries to search items against the canonical catalog, logging
+ * each seed -> canonical anchor decision so a run is auditable.
+ */
+function seedSearchItems(
+  seedsFile: string,
+  canonical: CanonicalRecord[],
+  anchorMin: number
+): CanonicalProductInput[] {
+  const resolutions = resolveSeeds(
+    readSeedQueries(readFileSync(seedsFile, "utf8")),
+    canonical,
+    anchorMin
+  )
+
+  for (const resolution of resolutions) {
+    if (resolution.item && resolution.anchor) {
+      console.log(
+        `[marketplace-ingestion] seed "${resolution.seed}" -> canonical ${resolution.anchor.id}` +
+          ` "${resolution.anchor.name}" (${resolution.score}%)`
+      )
+    } else {
+      console.log(
+        `[marketplace-ingestion] seed "${resolution.seed}" -> no canonical anchor >= ${anchorMin}%` +
+          ` (best ${resolution.score}%); skipping`
+      )
+    }
+  }
+
+  return resolutions
+    .map((resolution) => resolution.item)
+    .filter((item): item is CanonicalProductInput => item !== undefined)
 }
 
 async function mapWithConcurrency<T, R>(
@@ -212,17 +264,40 @@ export default async function ingestMarketplaceCatalog({
   const medmkp = container.resolve<MedMKPModuleService>(MEDMKP_MODULE)
 
   const allCanonical = await medmkp.listCanonicalProducts()
-  const filtered = options.category
-    ? allCanonical.filter((product) =>
-        product.category?.toLowerCase().includes(options.category!.toLowerCase())
-      )
-    : allCanonical
-  const canonical = filtered.slice(0, options.limit)
+  const canonicalRecords: CanonicalRecord[] = allCanonical.map((product) => ({
+    id: product.id,
+    name: product.name,
+    category: product.category,
+    unit_of_measure: product.unit_of_measure,
+  }))
+
+  // Two ways to choose what to search for:
+  //  - seeds file: curated query phrases (e.g. the top-50 reorder list), each
+  //    attached to its best-matching canonical product;
+  //  - otherwise: the canonical products themselves (optionally category-filtered),
+  //    searched by their own name.
+  const searchItems: CanonicalProductInput[] = options.seedsFile
+    ? seedSearchItems(options.seedsFile, canonicalRecords, options.anchorMin)
+    : (options.category
+        ? canonicalRecords.filter((product) =>
+            product.category?.toLowerCase().includes(options.category!.toLowerCase())
+          )
+        : canonicalRecords
+      ).slice(0, options.limit)
 
   console.log(
-    `[marketplace-ingestion] provider=${provider.id} canonical_products=${canonical.length}` +
-      ` (of ${allCanonical.length}) results_per_product=${options.results} commit=${options.commit}`
+    `[marketplace-ingestion] provider=${provider.id}` +
+      ` ${options.seedsFile ? "seeds" : "canonical_products"}=${searchItems.length}` +
+      ` (of ${allCanonical.length} canonical) results_per_query=${options.results} commit=${options.commit}`
   )
+
+  if (options.resolveOnly) {
+    console.log(
+      `[marketplace-ingestion] resolve-only: ${searchItems.length} search item(s) resolved; exiting before any marketplace fetch.`
+    )
+    return
+  }
+
   if (!process.env.MARKETPLACE_SCRAPER_URL) {
     console.log(
       "[marketplace-ingestion] NOTE: MARKETPLACE_SCRAPER_URL is unset — fetching the marketplace directly. " +
@@ -235,7 +310,7 @@ export default async function ingestMarketplaceCatalog({
   const startedAt = Date.now()
   const progress = { done: 0, listings: 0, blocked: 0, errored: 0, withResults: 0 }
   const searches: SearchCanonicalResult[] = await mapWithConcurrency(
-    canonical,
+    searchItems,
     options.concurrency,
     async (product) => {
       const search = await searchCanonicalOnMarketplace(
@@ -261,10 +336,10 @@ export default async function ingestMarketplaceCatalog({
       if (search.blocked) progress.blocked += 1
       if (search.error) progress.errored += 1
       if (search.results.length) progress.withResults += 1
-      if (progress.done % options.progressEvery === 0 || progress.done === canonical.length) {
+      if (progress.done % options.progressEvery === 0 || progress.done === searchItems.length) {
         const elapsed = Math.round((Date.now() - startedAt) / 1000)
         console.log(
-          `[marketplace-ingestion] progress ${progress.done}/${canonical.length}` +
+          `[marketplace-ingestion] progress ${progress.done}/${searchItems.length}` +
             ` | with_results ${progress.withResults} | listings ${progress.listings}` +
             ` | blocked ${progress.blocked} | errored ${progress.errored} | ${elapsed}s`
         )
@@ -282,8 +357,8 @@ export default async function ingestMarketplaceCatalog({
   const summary = {
     provider: provider.id,
     source_catalog: sourceCatalog,
-    canonical_products_searched: canonical.length,
-    canonical_products_with_results: withResults,
+    queries_searched: searchItems.length,
+    queries_with_results: withResults,
     searches_blocked: blockedCount,
     searches_errored: errorCount,
     listings_found: rows.length,

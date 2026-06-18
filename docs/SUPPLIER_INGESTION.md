@@ -390,10 +390,37 @@ Options (CLI flag or `MARKETPLACE_*` env): `--provider` (`alibaba`|`amazon`),
 `msup_<provider>` (auto provisioned) and source catalog
 `<provider>-marketplace-search`.
 
+### Focused ingest from a seed list
+
+By default the ingest searches canonical products by their own name. To instead
+ingest a curated set of products (e.g. the top dental reorder items), pass a seed
+file of query phrases — one per line, `#` comments allowed:
+
+```bash
+npm run marketplace:ingest -- --provider=amazon \
+  --seeds-file=./data/marketplace-seeds/top-dental-reorder.txt \
+  --results=20 --commit
+```
+
+Each seed is searched on the marketplace and its results are attached to the
+best-matching canonical product (`bestCanonicalAnchor`, scored by token overlap,
+ignoring the generic `dental`/`disposable` tokens). Seeds whose best anchor falls
+below `--anchor-min` (default 20%) are skipped. Preview the seed → canonical
+mapping without any marketplace fetch (free, no credits):
+
+```bash
+npm run marketplace:ingest -- --provider=amazon \
+  --seeds-file=./data/marketplace-seeds/top-dental-reorder.txt --resolve-only
+```
+
+`data/marketplace-seeds/top-dental-reorder.txt` is the 50 products from
+[top-50-dental-reorder-products.md](./top-50-dental-reorder-products.md). With
+`--results=20`, ~50 seeds yield just under 1,000 marketplace products.
+
 ### Monitor progress
 
-The ingest emits a live progress line every `--progress-every` canonical
-products (default 10) so a long run is observable instead of only printing a
+The ingest emits a live progress line every `--progress-every` queries
+(default 10) so a long run is observable instead of only printing a
 summary at the end:
 
 ```text
