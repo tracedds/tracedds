@@ -7051,6 +7051,212 @@ th {
     stroke-width: 2.6;
   }
 
+  .camera-aux-spacer {
+    width: 69px;
+    height: 69px;
+    justify-self: center;
+  }
+
+  /* Two-tab method switcher (Scan / Enter Code) */
+  .mobile-scan-tabs.two-up {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Manual code entry — the fallback for iOS Safari (no BarcodeDetector) and
+     for items whose barcode won't read or that have none. */
+  .mobile-manual-panel {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 28px 24px 22px;
+    background: #f6f9fd;
+  }
+  .mobile-manual-panel form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mobile-manual-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 54px;
+    padding: 0 16px;
+    border: 1.5px solid #cfd9e8;
+    border-radius: 12px;
+    background: #ffffff;
+  }
+  .mobile-manual-field:focus-within {
+    border-color: #0f62ff;
+    box-shadow: 0 0 0 3px rgba(15, 98, 255, 0.14);
+  }
+  .mobile-manual-field .button-icon {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    stroke: #0f62ff;
+    fill: none;
+  }
+  .mobile-manual-field input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 16px;
+    font-weight: 600;
+    color: #081536;
+    letter-spacing: 0.02em;
+  }
+  .mobile-manual-panel .primary-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 50px;
+    border: none;
+    border-radius: 12px;
+    background: #0f62ff;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .mobile-manual-panel .primary-action:disabled {
+    opacity: 0.5;
+  }
+  .mobile-manual-panel .primary-action .button-icon {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+  }
+  .mobile-manual-hint {
+    margin: 0;
+    color: #5a6b86;
+    font-size: 12.5px;
+    line-height: 1.45;
+    text-align: center;
+  }
+
+  /* Scan result / verify card — the immediate "here's what matched" feedback */
+  .scan-result-card {
+    display: grid;
+    grid-template-columns: 46px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid #e2e8f2;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(10, 26, 56, 0.16);
+  }
+  .scan-result-card.match {
+    cursor: pointer;
+  }
+  .scan-result-card.floating {
+    position: absolute;
+    z-index: 6;
+    right: 14px;
+    bottom: 122px;
+    left: 14px;
+    animation: scanResultIn 0.28s ease-out;
+  }
+  @keyframes scanResultIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .scan-result-card.nomatch {
+    border-color: #f3c0c0;
+  }
+  .scan-result-card .src-thumb {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #eef3fb;
+    color: #0f62ff;
+  }
+  .scan-result-card.nomatch .src-thumb {
+    background: #fdecec;
+    color: #d23b3b;
+  }
+  .scan-result-card .src-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .scan-result-card .src-thumb .button-icon {
+    width: 26px;
+    height: 26px;
+    stroke: currentColor;
+    fill: none;
+  }
+  .scan-result-card .src-body {
+    min-width: 0;
+  }
+  .scan-result-card .src-body strong {
+    display: block;
+    overflow: hidden;
+    font-size: 14.5px;
+    font-weight: 750;
+    color: #081536;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .scan-result-card .src-body small {
+    display: block;
+    margin-top: 2px;
+    overflow: hidden;
+    font-size: 12px;
+    color: #5a6b86;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .scan-result-card .src-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    text-align: right;
+  }
+  .scan-result-card .src-right > strong {
+    font-size: 15px;
+    font-weight: 800;
+    color: #081536;
+  }
+  .scan-result-card .src-right > small {
+    font-size: 11px;
+    font-weight: 600;
+    color: #5a6b86;
+  }
+  .scan-result-card .src-pill,
+  .scan-result-card .src-qty {
+    margin-top: 2px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 800;
+    font-style: normal;
+    letter-spacing: 0.02em;
+  }
+  .scan-result-card .src-pill.confirmed { background: #e5f8ef; color: #18915e; }
+  .scan-result-card .src-pill.possible { background: #fdf0d9; color: #b5740a; }
+  .scan-result-card .src-pill.nomatch { background: #fdecec; color: #d23b3b; }
+  .scan-result-card .src-qty { background: #eef3fb; color: #0f62ff; }
+  .scan-result-card .src-action {
+    grid-column: 1 / -1;
+    height: 40px;
+    border: none;
+    border-radius: 10px;
+    background: #0f62ff;
+    color: #ffffff;
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+
   .recognized-sheet {
     position: relative;
     z-index: 5;

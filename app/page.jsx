@@ -397,9 +397,63 @@ function useBarcodeScanner({ active, onScan }) {
   return { videoRef, cameraStatus, autoDetect, capture };
 }
 
-function MobileScanItemView({ onBack, onScan, tray }) {
+// The verify moment: after each scan/lookup, surface what matched so the buyer
+// can confirm it at a glance before scanning the next item. Matched/review
+// cards auto-dismiss so they don't block the next scan; a no-match card sticks
+// around and offers a way to key the code in by hand.
+function ScanResultCard({ result, className = "", onClear, onEnterManually }) {
+  useEffect(() => {
+    if (!result || result.status === "Not found") return undefined;
+    const timer = window.setTimeout(() => onClear?.(), 3500);
+    return () => window.clearTimeout(timer);
+  }, [result, onClear]);
+
+  if (!result) return null;
+  const { item, status, isDuplicate, qty } = result;
+  const notFound = status === "Not found";
+  const offer = item.bestOffer;
+  const price = offer?.price ?? (item.oldUnitPrice || null);
+  const meta = CRL_STATUS[status] || CRL_STATUS.Review;
+
+  return (
+    <div
+      className={`scan-result-card ${notFound ? "nomatch" : "match"} ${className}`}
+      role="status"
+      aria-live="polite"
+      onClick={notFound ? undefined : onClear}
+    >
+      <span className="src-thumb">
+        {item.imageUrl
+          ? <img src={item.imageUrl} alt="" loading="lazy" />
+          : <Icon name={notFound ? "icon-x-circle" : "icon-check-circle"} className="button-icon" />}
+      </span>
+      <div className="src-body">
+        <strong>{notFound ? "No catalog match" : item.product}</strong>
+        <small>
+          {notFound
+            ? (item.barcode ? `Code ${item.barcode} — key it in or search` : "No code read — enter it manually")
+            : `${offer?.supplier || item.oldVendor || "Supplier pending"}${item.unit ? ` · ${item.unit}` : ""}`}
+        </small>
+      </div>
+      <div className="src-right">
+        {!notFound && price != null && <strong>{mrMoney(price)}</strong>}
+        {!notFound && offer?.perUnit != null && <small>${mrEa(offer.perUnit)} / ea</small>}
+        {isDuplicate
+          ? <em className="src-qty">×{qty}</em>
+          : <em className={`src-pill ${meta.cls}`}>{meta.label}</em>}
+      </div>
+      {notFound && (
+        <button className="src-action" type="button" onClick={onEnterManually}>Enter code</button>
+      )}
+    </div>
+  );
+}
+
+function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResult, tray }) {
   const [isMobile, setIsMobile] = useState(false);
+  const [mode, setMode] = useState("scan");
   const [captured, setCaptured] = useState(false);
+  const [manualCode, setManualCode] = useState("");
   const flashTimer = useRef();
 
   useEffect(() => {
@@ -407,7 +461,7 @@ function MobileScanItemView({ onBack, onScan, tray }) {
   }, []);
 
   const { videoRef, cameraStatus, autoDetect, capture } = useBarcodeScanner({
-    active: isMobile,
+    active: isMobile && mode === "scan",
     onScan: (code) => {
       onScan?.(code);
       setCaptured(true);
@@ -416,10 +470,18 @@ function MobileScanItemView({ onBack, onScan, tray }) {
     },
   });
 
+  function submitManual(event) {
+    event.preventDefault();
+    const value = manualCode.trim();
+    if (!value) return;
+    onScan?.(value);
+    setManualCode("");
+  }
+
   return (
     <section className="mobile-scan-screen" aria-labelledby="mobileScanHeading">
       <header className="mobile-scan-header">
-        <button className="mobile-scan-icon-button back" type="button" onClick={onBack} aria-label="Back to add items">
+        <button className="mobile-scan-icon-button back" type="button" onClick={onBack} aria-label="Back to reorder list">
           <Icon name="icon-chevron-right" className="mobile-scan-icon" />
         </button>
         <h1 id="mobileScanHeading">Scan Item</h1>
@@ -428,58 +490,84 @@ function MobileScanItemView({ onBack, onScan, tray }) {
         </button>
       </header>
 
-      <nav className="mobile-scan-tabs" aria-label="Add item method">
-        <button className="active" type="button">
+      <nav className="mobile-scan-tabs two-up" aria-label="Add item method">
+        <button className={mode === "scan" ? "active" : ""} type="button" onClick={() => setMode("scan")}>
           <Icon name="icon-scan" className="mobile-tab-icon" />
           Scan Barcode
         </button>
-        <button type="button">
-          <Icon name="icon-image" className="mobile-tab-icon" />
-          Photo
-        </button>
-        <button type="button">
+        <button className={mode === "manual" ? "active" : ""} type="button" onClick={() => setMode("manual")}>
           <Icon name="icon-plus-circle" className="mobile-tab-icon" />
-          Manual Add
+          Enter Code
         </button>
       </nav>
 
-      <div className={`mobile-camera-stage ${captured ? "scan-captured" : ""}`}>
-        <video ref={videoRef} className="mobile-camera-video" playsInline muted autoPlay aria-label="Live camera preview"></video>
-        {cameraStatus !== "ready" && (
-          <div className="camera-permission-state">
-            <Icon name="icon-scan" className="mobile-control-icon" />
-            <strong>{cameraStatus === "requesting" ? "Camera access needed" : "Camera unavailable"}</strong>
-            <p>
-              {cameraStatus === "requesting"
-                ? "Allow camera access to scan item barcodes."
-                : "Enable camera permissions for this site, or use Photo or Manual Add."}
-            </p>
+      {mode === "scan" ? (
+        <div className={`mobile-camera-stage ${captured ? "scan-captured" : ""}`}>
+          <video ref={videoRef} className="mobile-camera-video" playsInline muted autoPlay aria-label="Live camera preview"></video>
+          {cameraStatus !== "ready" && (
+            <div className="camera-permission-state">
+              <Icon name="icon-scan" className="mobile-control-icon" />
+              <strong>{cameraStatus === "requesting" ? "Camera access needed" : "Camera unavailable"}</strong>
+              <p>
+                {cameraStatus === "requesting"
+                  ? "Allow camera access to scan item barcodes."
+                  : "Enable camera permissions for this site, or tap Enter Code to key it in."}
+              </p>
+            </div>
+          )}
+          <div className="scan-instruction">
+            {captured
+              ? "Barcode captured"
+              : autoDetect
+                ? "Point at a barcode — we capture it automatically"
+                : "Live scanning isn’t supported here — tap to enter the code"}
           </div>
-        )}
-        <div className="scan-instruction">
-          {captured
-            ? "Barcode captured"
-            : autoDetect
-              ? "Point at a barcode — we capture it automatically"
-              : "Align barcode in the frame, then tap to scan"}
+          <div className="scan-frame" aria-hidden="true">
+            <span className="corner top-left"></span>
+            <span className="corner top-right"></span>
+            <span className="corner bottom-left"></span>
+            <span className="corner bottom-right"></span>
+            <span className="scan-line"></span>
+          </div>
+          <ScanResultCard result={scanResult} className="floating" onClear={onClearScanResult} onEnterManually={() => setMode("manual")} />
+          <div className="camera-actions" aria-label="Camera controls">
+            <button className="camera-aux" type="button" onClick={() => setMode("manual")} aria-label="Enter code manually">
+              <Icon name="icon-plus-circle" className="mobile-control-icon" />
+            </button>
+            <button
+              className="shutter"
+              type="button"
+              aria-label={autoDetect ? "Scan item" : "Enter code"}
+              onClick={autoDetect ? capture : () => setMode("manual")}
+              disabled={cameraStatus !== "ready" && autoDetect}
+            ></button>
+            <span className="camera-aux-spacer" aria-hidden="true" />
+          </div>
         </div>
-        <div className="scan-frame" aria-hidden="true">
-          <span className="corner top-left"></span>
-          <span className="corner top-right"></span>
-          <span className="corner bottom-left"></span>
-          <span className="corner bottom-right"></span>
-          <span className="scan-line"></span>
+      ) : (
+        <div className="mobile-manual-panel">
+          <form onSubmit={submitManual}>
+            <label className="mobile-manual-field">
+              <Icon name="icon-scan" className="button-icon" />
+              <input
+                type="text"
+                autoComplete="off"
+                autoCapitalize="characters"
+                placeholder="Enter barcode or SKU"
+                aria-label="Barcode or SKU"
+                value={manualCode}
+                onChange={(event) => setManualCode(event.target.value)}
+              />
+            </label>
+            <button className="primary-action" type="submit" disabled={!manualCode.trim()}>
+              <Icon name="icon-search" className="button-icon" />
+              Look up
+            </button>
+          </form>
+          <p className="mobile-manual-hint">Type the number printed under the barcode if the camera can’t read it.</p>
+          <ScanResultCard result={scanResult} onClear={onClearScanResult} onEnterManually={() => setMode("manual")} />
         </div>
-        <div className="camera-actions" aria-label="Camera controls">
-          <button type="button" aria-label="Toggle flashlight">
-            <Icon name="icon-bolt" className="mobile-control-icon" />
-          </button>
-          <button className="shutter" type="button" aria-label="Scan item" onClick={capture} disabled={cameraStatus !== "ready"}></button>
-          <button type="button" aria-label="Open photo library">
-            <Icon name="icon-image" className="mobile-control-icon" />
-          </button>
-        </div>
-      </div>
+      )}
 
       <section className="recognized-sheet" aria-label="Scanned items">
         {tray}
@@ -488,7 +576,7 @@ function MobileScanItemView({ onBack, onScan, tray }) {
   );
 }
 
-function MobileBottomNav({ view, onNavigate, onAdd }) {
+function MobileBottomNav({ view, onNavigate, onScan }) {
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
       <div className="m-nav-group">
@@ -496,8 +584,8 @@ function MobileBottomNav({ view, onNavigate, onAdd }) {
           <span><Icon name="icon-home" className="mobile-bottom-icon" /></span>Home
         </button>
       </div>
-      <button className="m-nav-fab" type="button" aria-label="Add items" onClick={onAdd}>
-        <Icon name="icon-plus" className="m-nav-fab-icon" />
+      <button className="m-nav-fab" type="button" aria-label="Scan barcode" onClick={onScan}>
+        <Icon name="icon-scan" className="m-nav-fab-icon" />
       </button>
       <div className="m-nav-group">
         <button className={view === "history" ? "active" : ""} type="button" onClick={() => onNavigate("history")}>
@@ -1021,8 +1109,8 @@ export default function Home() {
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
   const [mobileAddItemRoute, setMobileAddItemRoute] = useState(false);
-  const [mobileAddOpen, setMobileAddOpen] = useState(false);
   const [addMode, setAddMode] = useState("");
+  const [scanResult, setScanResult] = useState(null);
   const [lastUpload, setLastUpload] = useState(null);
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [draftItems, setDraftItems] = useState([]);
@@ -1269,6 +1357,7 @@ export default function Home() {
   }
 
   function openMobileScan() {
+    setScanResult(null);
     navigate("/app/scan");
   }
 
@@ -1414,37 +1503,33 @@ export default function Home() {
       ? docs
       : [...docs, { id: "scan", name: "Barcode scans", itemCount: 0 }]);
 
-    // Already scanned this code → just bump the quantity.
-    if (code && draftItems.some((item) => item.barcode === code)) {
+    // Already scanned this code → bump the quantity and re-surface it to verify.
+    const existing = code ? draftItems.find((item) => item.barcode === code) : null;
+    if (existing) {
+      const nextQty = (existing.draftQty || 1) + 1;
       setDraftItems((items) => items.map((item) => item.barcode === code
         ? {
             ...item,
-            draftQty: (item.draftQty || 1) + 1,
+            draftQty: nextQty,
             qty: (item.qty || 1) + 1,
             included: true,
             documentQuantities: { ...(item.documentQuantities || {}), scan: ((item.documentQuantities || {}).scan || 0) + 1 },
           }
         : item));
+      setScanResult({ status: statusFromItem(existing), item: existing, isDuplicate: true, qty: nextQty });
       showToast("Quantity updated");
       return;
     }
 
-    // Look the scanned code up against the real supplier catalog.
-    let product = null;
-    if (code) {
-      try {
-        const response = await fetch(`/api/products/search?code=${encodeURIComponent(code)}&limit=1`);
-        const data = await response.json();
-        product = data.canonical_products?.[0] || null;
-      } catch {
-        product = null;
-      }
-    }
+    // Resolve against the real catalog: GTIN/UPC barcode first, then exact SKU.
+    const product = await lookupScannedProduct(code);
+    const item = makeScanDraftItem(code, product);
 
     setDraftItems((items) => {
-      if (code && items.some((item) => item.barcode === code)) return items; // race guard
-      return [...items, makeScanDraftItem(code, product)];
+      if (code && items.some((it) => it.barcode === code)) return items; // race guard
+      return [...items, item];
     });
+    setScanResult({ status: statusFromItem(item), item, isDuplicate: false, qty: item.draftQty || 1 });
     showToast(product ? `Added ${product.name}` : code ? `Scanned ${code} — needs review` : "Item added");
   }
 
@@ -1635,13 +1720,15 @@ export default function Home() {
           {view === "home" && (
             mobileAddItemRoute ? (
               <MobileScanItemView
-                onBack={() => setMobileAddItemRoute(false)}
+                onBack={() => { setScanResult(null); setMobileAddItemRoute(false); }}
                 onScan={handleScanComplete}
+                scanResult={scanResult}
+                onClearScanResult={() => setScanResult(null)}
                 tray={
                   <CaptureTray
                     items={activeDraftItems}
                     compact
-                    onReview={() => setMobileAddItemRoute(false)}
+                    onReview={() => { setScanResult(null); setMobileAddItemRoute(false); }}
                     onRemove={(item) => removeDraftItem(item)}
                   />
                 }
@@ -1705,23 +1792,7 @@ export default function Home() {
             />
           )}
         </main>
-        <MobileBottomNav view={view} onNavigate={setView} onAdd={() => setMobileAddOpen(true)} />
-        {mobileAddOpen && (
-          <div className="m-sheet-backdrop" onClick={() => setMobileAddOpen(false)}>
-            <div className="m-sheet" role="dialog" aria-label="Add items" onClick={(event) => event.stopPropagation()}>
-              <span className="m-sheet-grip" aria-hidden="true" />
-              <h3>Add items</h3>
-              <button type="button" onClick={() => { setMobileAddOpen(false); setView("home"); setAddMode("upload"); }}>
-                <Icon name="icon-cloud-upload" className="button-icon" />
-                <span><strong>Upload invoice</strong><small>PDF, CSV, or photo</small></span>
-              </button>
-              <button type="button" onClick={() => { setMobileAddOpen(false); openMobileScan(); }}>
-                <Icon name="icon-scan" className="button-icon" />
-                <span><strong>Scan barcode</strong><small>Use your camera</small></span>
-              </button>
-            </div>
-          </div>
-        )}
+        <MobileBottomNav view={view} onNavigate={setView} onScan={openMobileScan} />
         </div>
       </div>
 
@@ -2328,6 +2399,23 @@ function mapSearchOffer(offer) {
     packSize: offer.pack_size || "",
     imageUrl: offer.image_url || "",
   };
+}
+
+// Resolve a scanned value to a catalog product: try the GTIN/UPC barcode path
+// first (the scanner's main case), then fall back to an exact SKU lookup so
+// SKU-encoded labels and manually keyed codes still resolve.
+async function lookupScannedProduct(code) {
+  if (!code) return null;
+  const tryLookup = async (param) => {
+    try {
+      const response = await fetch(`/api/products/search?${param}=${encodeURIComponent(code)}&limit=1`);
+      const data = await response.json();
+      return data.canonical_products?.[0] || null;
+    } catch {
+      return null;
+    }
+  };
+  return (await tryLookup("barcode")) || (await tryLookup("code"));
 }
 
 function makeScanDraftItem(code, product) {
