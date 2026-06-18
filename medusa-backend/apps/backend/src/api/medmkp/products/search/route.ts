@@ -2,13 +2,13 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { MEDMKP_MODULE } from "../../../../modules/medmkp"
 import type MedMKPModuleService from "../../../../modules/medmkp/service"
 import { tokenizeName } from "../../../../matching/normalize"
-import { jaccard } from "../../../../matching/score"
+import { nameSimilarity, trigrams } from "../../../../matching/search"
 import { gtinVariants } from "../../../../matching/gtin"
 
 // Live product lookup for the search box (fuzzy text) and the scanner
-// (exact SKU). Reuses the offline matching engine's tokenizer + jaccard so
-// ranking stays consistent with how invoices are matched, and resolves hits
-// to canonical products so the UI can compare prices across suppliers.
+// (exact SKU). Reuses the offline matching engine's tokenizer so ranking stays
+// consistent with how invoices are matched, and resolves hits to canonical
+// products so the UI can compare prices across suppliers.
 
 type Snapshot = Awaited<ReturnType<MedMKPModuleService["listSupplierPriceSnapshots"]>>[number]
 
@@ -23,33 +23,6 @@ function latestSnapshotsByProduct(snapshots: Snapshot[]) {
     }
     return acc
   }, new Map<string, Snapshot>())
-}
-
-function trigrams(value: string): Set<string> {
-  const padded = `  ${value} `
-  const grams = new Set<string>()
-  for (let i = 0; i < padded.length - 2; i++) {
-    grams.add(padded.slice(i, i + 3))
-  }
-  return grams
-}
-
-function dice(a: Set<string>, b: Set<string>): number {
-  if (!a.size || !b.size) return 0
-  let shared = 0
-  for (const gram of a) {
-    if (b.has(gram)) shared += 1
-  }
-  return (2 * shared) / (a.size + b.size)
-}
-
-// Token overlap + character trigram similarity, so reordered words and minor
-// typos still rank ("gloves nitrile" ~ "Nitrile Gloves").
-function nameSimilarity(queryTokens: string[], queryGrams: Set<string>, name: string): number {
-  const nameTokens = tokenizeName(name)
-  const tokenSim = jaccard(queryTokens, nameTokens)
-  const charSim = dice(queryGrams, trigrams(nameTokens.join(" ")))
-  return 0.5 * tokenSim + 0.5 * charSim
 }
 
 function clamp(value: number, min: number, max: number) {
