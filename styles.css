@@ -7645,6 +7645,57 @@ th {
     color: #0f62ff;
   }
 
+  /* Account avatar replaces the Settings icon: tap to open a menu with
+     Settings + Sign out, mirroring the desktop topbar account menu. */
+  .m-nav-avatar {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    background: var(--blue);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .m-nav-account.active .m-nav-avatar { box-shadow: 0 0 0 2px rgba(15, 98, 255, 0.35); }
+
+  .m-nav-menu-backdrop { position: fixed; inset: 0; z-index: 7; }
+  .m-nav-menu {
+    position: fixed;
+    right: 12px;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    z-index: 8;
+    display: grid;
+    gap: 2px;
+    min-width: 220px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 16px 42px rgba(23, 44, 92, 0.18);
+  }
+  .m-nav-menu-head { display: grid; gap: 2px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .m-nav-menu-head strong { color: var(--ink); font-size: 14px; }
+  .m-nav-menu-head small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-nav-menu button {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .m-nav-menu button .button-icon { width: 18px; height: 18px; color: var(--muted); }
+
   .mobile-bottom-nav span {
     position: relative;
     display: grid;
