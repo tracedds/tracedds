@@ -1,4 +1,7 @@
-import { dcDentalItemToRow } from "../dcdental-catalog-extraction"
+import {
+  assertDcDentalCatalogComplete,
+  dcDentalItemToRow,
+} from "../dcdental-catalog-extraction"
 
 const origin = "https://www.dcdental.com"
 
@@ -58,5 +61,26 @@ describe("dcDentalItemToRow (flat catalog mapping)", () => {
     expect(row.barcode).toBe("")
     expect(row.product_url).toBe("")
     expect(row.name).toBe("X-1")
+  })
+})
+
+describe("assertDcDentalCatalogComplete (partial-replace guard)", () => {
+  it("passes when the brand walk covers the whole catalog", () => {
+    expect(() => assertDcDentalCatalogComplete(39669, 39669, 261)).not.toThrow()
+    // 97% recall is acceptable (cross-listed items dedupe imperfectly).
+    expect(() => assertDcDentalCatalogComplete(38600, 39669, 261)).not.toThrow()
+  })
+
+  it("throws on an unknown catalog size (total<=0) instead of treating it as complete", () => {
+    // The exact trigger of the data-loss incident: a 0/undefined total let an
+    // empty walk count as 'complete' and feed a destructive replace.
+    expect(() => assertDcDentalCatalogComplete(0, 0, 0)).toThrow(/size unknown/i)
+    expect(() => assertDcDentalCatalogComplete(0, -1, 0)).toThrow(/size unknown/i)
+  })
+
+  it("throws when the collected set is well short of the catalog total", () => {
+    // e.g. the category walk's structural 84% ceiling, or the 1,002-row partial.
+    expect(() => assertDcDentalCatalogComplete(33404, 39669, 261)).toThrow(/incomplete/i)
+    expect(() => assertDcDentalCatalogComplete(1002, 39669, 261)).toThrow(/incomplete/i)
   })
 })
