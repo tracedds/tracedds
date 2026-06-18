@@ -16,24 +16,24 @@ import type {
 } from "./types"
 
 // DC Dental runs on NetSuite SuiteCommerce. Its /api/items endpoint refuses
-// offset >= 5000, so the catalog (~40k items) cannot be walked flat. Instead we
-// page it one category at a time (every category is well under the cap), reading
-// the category tree from the API's own `category` facet. An explicit `fields`
-// list (not fieldset=details) returns the GTIN/UPC `upccode` alongside the
-// nested price/image objects a row needs, so rows are built directly here
-// without a per-product fetch. Products cross-list across categories, so results
-// are deduped by SKU; a final completeness check against the catalog `total`
-// guards against a partial set being handed to the delete-and-replace commit.
+// offset >= 5000, so the catalog (~40k items) cannot be walked flat — it must be
+// partitioned into chunks each under the cap. We partition by the `custitem_brand_facet`
+// facet (every item carries a brand; each brand is well under 5000): a full brand
+// walk recovers 100% of `total`, whereas the category facet only reaches ~84%
+// because NetSuite assigns items to leaf categories only and ~16% are uncategorized.
+// An explicit `fields` list (not fieldset=details) returns the GTIN/UPC `upccode`
+// alongside the nested price/image objects a row needs, so rows are built directly
+// here without a per-product fetch. Items cross-list across brands, so results are
+// deduped by SKU; a final completeness check against the catalog `total` guards
+// against a partial set being handed to the delete-and-replace commit.
 const DC_DENTAL_COMPANY_ID = "1075085"
 const DC_DENTAL_SITE_ID = "3"
+const BRAND_FACET = "custitem_brand_facet"
 const CATALOG_PAGE_SIZE = 100
 const MAX_OFFSET = 5000 // NetSuite hard cap; pages must keep offset < this
 const PAGE_FETCH_ATTEMPTS = 3
-// Categories at/above the offset cap are inclusive parents whose products are
-// also reachable through their (smaller) child categories, so they are skipped.
-const CATEGORY_SKIP_AT = MAX_OFFSET
-// The original per-category crawl recovered ~99.7% of `total`; require most of
-// the catalog so a broken partition can't silently shrink it.
+// A full brand walk recovers ~100% of `total`; require most of the catalog so a
+// broken partition can't silently shrink it.
 const MIN_COMPLETE_RATIO = 0.97
 
 const CATALOG_FIELDS = [
@@ -68,11 +68,11 @@ type DcDentalCatalogItem = {
   itemimages_detail?: unknown
 }
 
-type DcDentalCategoryNode = { id?: string; values?: DcDentalCategoryNode[] }
+type DcDentalFacetValue = { id?: string; url?: string; label?: string }
 type DcDentalApiResponse = {
   total?: number
   items?: DcDentalCatalogItem[]
-  facets?: Array<{ id?: string; values?: DcDentalCategoryNode[] }>
+  facets?: Array<{ id?: string; values?: DcDentalFacetValue[] }>
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -134,46 +134,36 @@ async function fetchJson(url: string, timeoutMs?: number): Promise<DcDentalApiRe
   throw new Error(`DC Dental API fetch failed: ${url}`)
 }
 
-function flattenCategoryPaths(nodes: DcDentalCategoryNode[] | undefined, acc: string[]) {
-  for (const node of nodes ?? []) {
-    if (typeof node.id === "string" && node.id !== "Home") {
-      acc.push("/" + node.id.replace(/^Home\//, ""))
-    }
-    flattenCategoryPaths(node.values, acc)
-  }
-}
-
-async function fetchCategoryPaths(origin: string, timeoutMs?: number): Promise<string[]> {
+// Read every brand value from the `custitem_brand_facet` facet; these partition
+// the whole catalog (every item carries a brand) into chunks each under the cap.
+async function fetchBrandValues(origin: string, timeoutMs?: number): Promise<string[]> {
   const json = await fetchJson(
     apiUrl(origin, { include: "facets", fields: "internalid", limit: "1", offset: "0" }),
     timeoutMs
   )
-  const categoryFacet = (json.facets ?? []).find((facet) => facet.id === "category")
-  const paths: string[] = []
-  flattenCategoryPaths(categoryFacet?.values, paths)
-  return [...new Set(paths)]
+  const brandFacet = (json.facets ?? []).find((facet) => facet.id === BRAND_FACET)
+  const values = (brandFacet?.values ?? [])
+    .map((value) => value.url)
+    .filter((url): url is string => typeof url === "string" && url.length > 0)
+  return [...new Set(values)]
 }
 
-// Page a single category. Skips inclusive parents at/above the offset cap (their
-// products are reached via child categories); every other category is fully read.
-async function fetchCategoryItems(
+// Page a single brand fully (each brand is under the offset cap).
+async function fetchBrandItems(
   origin: string,
-  categoryUrl: string,
+  brand: string,
   fields: string,
   timeoutMs?: number
 ): Promise<DcDentalCatalogItem[]> {
   const first = await fetchJson(
-    apiUrl(origin, { commercecategoryurl: categoryUrl, fields, limit: String(CATALOG_PAGE_SIZE), offset: "0" }),
+    apiUrl(origin, { [BRAND_FACET]: brand, fields, limit: String(CATALOG_PAGE_SIZE), offset: "0" }),
     timeoutMs
   )
   const total = typeof first.total === "number" ? first.total : 0
   const items = [...(first.items ?? [])]
-  if (total >= CATEGORY_SKIP_AT) {
-    return items
-  }
   for (let offset = CATALOG_PAGE_SIZE; offset < total && offset < MAX_OFFSET; offset += CATALOG_PAGE_SIZE) {
     const page = await fetchJson(
-      apiUrl(origin, { commercecategoryurl: categoryUrl, fields, limit: String(CATALOG_PAGE_SIZE), offset: String(offset) }),
+      apiUrl(origin, { [BRAND_FACET]: brand, fields, limit: String(CATALOG_PAGE_SIZE), offset: String(offset) }),
       timeoutMs
     )
     items.push(...(page.items ?? []))
@@ -189,7 +179,7 @@ async function fetchCategoryItems(
 export function assertDcDentalCatalogComplete(
   collected: number,
   total: number,
-  categories: number
+  partitions: number
 ) {
   if (total <= 0) {
     throw new Error(
@@ -198,12 +188,12 @@ export function assertDcDentalCatalogComplete(
   }
   if (collected < total * MIN_COMPLETE_RATIO) {
     throw new Error(
-      `DC Dental catalog incomplete: collected ${collected} of ${total} items across ${categories} categories; aborting to avoid a partial replace`
+      `DC Dental catalog incomplete: collected ${collected} of ${total} items across ${partitions} brand partitions; aborting to avoid a partial replace`
     )
   }
 }
 
-// Walk every category and dedupe by SKU. All-or-nothing: any unrecoverable page
+// Walk every brand and dedupe by SKU. All-or-nothing: any unrecoverable page
 // fetch throws, and an unknown/short collected count throws, so the commit never
 // replaces the supplier with a partial catalog.
 async function fetchCatalogItems(
@@ -213,15 +203,15 @@ async function fetchCatalogItems(
 ): Promise<DcDentalCatalogItem[]> {
   const head = await fetchJson(apiUrl(origin, { fields: "internalid", limit: "1", offset: "0" }), options.timeoutMs)
   const total = typeof head.total === "number" ? head.total : 0
-  // Fail before the (expensive) category walk when the catalog size is unknown.
+  // Fail before the (expensive) brand walk when the catalog size is unknown.
   if (total <= 0) {
     assertDcDentalCatalogComplete(0, total, 0)
   }
-  const paths = await fetchCategoryPaths(origin, options.timeoutMs)
+  const brands = await fetchBrandValues(origin, options.timeoutMs)
 
   const bySku = new Map<string, DcDentalCatalogItem>()
-  for (const path of paths) {
-    const items = await fetchCategoryItems(origin, path, fields, options.timeoutMs)
+  for (const brand of brands) {
+    const items = await fetchBrandItems(origin, brand, fields, options.timeoutMs)
     for (const item of items) {
       const sku = item.itemid?.trim()
       if (sku && !bySku.has(sku)) {
@@ -231,7 +221,7 @@ async function fetchCatalogItems(
   }
 
   const collected = [...bySku.values()]
-  assertDcDentalCatalogComplete(collected.length, total, paths.length)
+  assertDcDentalCatalogComplete(collected.length, total, brands.length)
   return collected
 }
 

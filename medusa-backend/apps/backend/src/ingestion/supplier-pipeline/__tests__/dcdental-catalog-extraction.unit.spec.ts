@@ -65,10 +65,10 @@ describe("dcDentalItemToRow (flat catalog mapping)", () => {
 })
 
 describe("assertDcDentalCatalogComplete (partial-replace guard)", () => {
-  it("passes when the collected set covers the whole catalog", () => {
-    expect(() => assertDcDentalCatalogComplete(39669, 39669, 3229)).not.toThrow()
+  it("passes when the brand walk covers the whole catalog", () => {
+    expect(() => assertDcDentalCatalogComplete(39669, 39669, 261)).not.toThrow()
     // 97% recall is acceptable (cross-listed items dedupe imperfectly).
-    expect(() => assertDcDentalCatalogComplete(38600, 39669, 3229)).not.toThrow()
+    expect(() => assertDcDentalCatalogComplete(38600, 39669, 261)).not.toThrow()
   })
 
   it("throws on an unknown catalog size (total<=0) instead of treating it as complete", () => {
@@ -79,6 +79,8 @@ describe("assertDcDentalCatalogComplete (partial-replace guard)", () => {
   })
 
   it("throws when the collected set is well short of the catalog total", () => {
-    expect(() => assertDcDentalCatalogComplete(1002, 39669, 3229)).toThrow(/incomplete/i)
+    // e.g. the category walk's structural 84% ceiling, or the 1,002-row partial.
+    expect(() => assertDcDentalCatalogComplete(33404, 39669, 261)).toThrow(/incomplete/i)
+    expect(() => assertDcDentalCatalogComplete(1002, 39669, 261)).toThrow(/incomplete/i)
   })
 })
