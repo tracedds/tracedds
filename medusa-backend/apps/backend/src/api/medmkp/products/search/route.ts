@@ -3,6 +3,7 @@ import { MEDMKP_MODULE } from "../../../../modules/medmkp"
 import type MedMKPModuleService from "../../../../modules/medmkp/service"
 import { tokenizeName } from "../../../../matching/normalize"
 import { jaccard } from "../../../../matching/score"
+import { gtinVariants } from "../../../../matching/gtin"
 
 // Live product lookup for the search box (fuzzy text) and the scanner
 // (exact SKU). Reuses the offline matching engine's tokenizer + jaccard so
@@ -64,6 +65,7 @@ function dedupeById<T extends { id: string }>(rows: T[]): T[] {
 }
 
 type CanonicalRow = Awaited<ReturnType<MedMKPModuleService["listCanonicalProducts"]>>[number]
+type SupplierProductHit = Awaited<ReturnType<MedMKPModuleService["listSupplierProducts"]>>[number]
 
 async function enrichWithOffers(medmkp: MedMKPModuleService, canonicals: CanonicalRow[]) {
   if (!canonicals.length) return []
@@ -140,14 +142,111 @@ async function enrichWithOffers(medmkp: MedMKPModuleService, canonicals: Canonic
   })
 }
 
+// Shared tail of the exact-match scan paths (SKU and barcode): resolve the
+// matched supplier products to their canonical products and enrich with
+// cross-supplier offers. When a hit has no canonical match yet, surface the
+// supplier product directly so the scan still returns something useful.
+async function resolveHitsToProducts(
+  medmkp: MedMKPModuleService,
+  hits: SupplierProductHit[],
+  matchKind: "sku" | "barcode"
+): Promise<any[]> {
+  const matches = await medmkp.listCanonicalProductMatches({
+    supplier_product_id: hits.map((hit) => hit.id),
+  })
+  const canonicalIds = [...new Set(matches.map((match) => match.canonical_product_id))]
+
+  let products: any[] = []
+  if (canonicalIds.length) {
+    const canonicals = await medmkp.listCanonicalProducts({ id: canonicalIds })
+    products = (await enrichWithOffers(medmkp, canonicals)).map((product) => ({
+      ...product,
+      match: { kind: matchKind, score: 1 },
+    }))
+  }
+
+  if (!products.length) {
+    // Supplier product exists but has no canonical match; surface it directly.
+    const snapshots = await medmkp.listSupplierPriceSnapshots({
+      supplier_product_id: hits.map((hit) => hit.id),
+    })
+    const latest = latestSnapshotsByProduct(snapshots)
+    const suppliers = await medmkp.listSuppliers()
+    const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]))
+    products = hits.map((hit) => {
+      const latestPrice = latest.get(hit.id)
+      const supplier = supplierById.get(hit.supplier_id)
+      const offer = latestPrice
+        ? {
+            supplier_product_id: hit.id,
+            supplier_id: hit.supplier_id,
+            supplier_name: supplier?.name ?? "Unknown supplier",
+            sku: hit.sku,
+            name: hit.name,
+            brand: hit.brand,
+            image_url: hit.image_url || "",
+            price_cents: latestPrice.price_cents,
+            unit_price_cents: latestPrice.unit_price_cents ?? null,
+            pack_quantity: hit.pack_quantity ?? null,
+            base_unit: hit.base_unit ?? null,
+            pack_size: hit.pack_size || "",
+            availability: latestPrice.availability,
+            match_status: "exact",
+          }
+        : null
+      return {
+        id: hit.id,
+        handle: "",
+        name: hit.name,
+        category: hit.category,
+        offer_count: offer ? 1 : 0,
+        best_offer: offer,
+        offers: offer ? [offer] : [],
+        image_url: hit.image_url || "",
+        price_range_cents: latestPrice
+          ? { lowest: latestPrice.price_cents, highest: latestPrice.price_cents }
+          : null,
+        unit_price_range_cents: offer?.unit_price_cents != null
+          ? { lowest: offer.unit_price_cents, highest: offer.unit_price_cents }
+          : null,
+        base_unit: offer?.base_unit ?? null,
+        match: { kind: matchKind, score: 1 },
+      }
+    })
+  }
+
+  return products
+}
+
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const medmkp = req.scope.resolve<MedMKPModuleService>(MEDMKP_MODULE)
   const url = new URL(req.url, "http://localhost")
+  const barcode = url.searchParams.get("barcode")?.trim()
   const code = url.searchParams.get("code")?.trim()
   const q = url.searchParams.get("q")?.trim()
   const limit = clamp(Number(url.searchParams.get("limit")) || 8, 1, 25)
 
-  // Scan path: resolve an exact SKU / manufacturer SKU to its canonical product.
+  // Scan path (barcode): resolve a scanned GTIN/UPC to its canonical product,
+  // tolerating the leading-zero width differences a reader introduces (UPC-A vs
+  // EAN-13 vs GTIN-14). gtinVariants() returns [] for a non-GTIN / misread, so a
+  // garbage code short-circuits to "none" without querying.
+  if (barcode) {
+    const variants = gtinVariants(barcode)
+    const hits = variants.length
+      ? dedupeById(await medmkp.listSupplierProducts({ barcode: variants }))
+      : []
+
+    if (!hits.length) {
+      res.json({ query: barcode, kind: "none", count: 0, products: [] })
+      return
+    }
+
+    const products = await resolveHitsToProducts(medmkp, hits, "barcode")
+    res.json({ query: barcode, kind: "barcode", count: products.length, products: products.slice(0, limit) })
+    return
+  }
+
+  // Scan path (SKU): resolve an exact SKU / manufacturer SKU to its canonical product.
   if (code) {
     const variants = [...new Set([code, code.toUpperCase()])]
     const [bySku, byMfrSku] = await Promise.all([
@@ -161,70 +260,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       return
     }
 
-    const matches = await medmkp.listCanonicalProductMatches({
-      supplier_product_id: hits.map((hit) => hit.id),
-    })
-    const canonicalIds = [...new Set(matches.map((match) => match.canonical_product_id))]
-
-    let products: any[] = []
-    if (canonicalIds.length) {
-      const canonicals = await medmkp.listCanonicalProducts({ id: canonicalIds })
-      products = (await enrichWithOffers(medmkp, canonicals)).map((product) => ({
-        ...product,
-        match: { kind: "sku", score: 1 },
-      }))
-    }
-
-    if (!products.length) {
-      // Supplier product exists but has no canonical match; surface it directly.
-      const snapshots = await medmkp.listSupplierPriceSnapshots({
-        supplier_product_id: hits.map((hit) => hit.id),
-      })
-      const latest = latestSnapshotsByProduct(snapshots)
-      const suppliers = await medmkp.listSuppliers()
-      const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]))
-      products = hits.map((hit) => {
-        const latestPrice = latest.get(hit.id)
-        const supplier = supplierById.get(hit.supplier_id)
-        const offer = latestPrice
-          ? {
-              supplier_product_id: hit.id,
-              supplier_id: hit.supplier_id,
-              supplier_name: supplier?.name ?? "Unknown supplier",
-              sku: hit.sku,
-              name: hit.name,
-              brand: hit.brand,
-              image_url: hit.image_url || "",
-              price_cents: latestPrice.price_cents,
-              unit_price_cents: latestPrice.unit_price_cents ?? null,
-              pack_quantity: hit.pack_quantity ?? null,
-              base_unit: hit.base_unit ?? null,
-              pack_size: hit.pack_size || "",
-              availability: latestPrice.availability,
-              match_status: "exact",
-            }
-          : null
-        return {
-          id: hit.id,
-          handle: "",
-          name: hit.name,
-          category: hit.category,
-          offer_count: offer ? 1 : 0,
-          best_offer: offer,
-          offers: offer ? [offer] : [],
-          image_url: hit.image_url || "",
-          price_range_cents: latestPrice
-            ? { lowest: latestPrice.price_cents, highest: latestPrice.price_cents }
-            : null,
-          unit_price_range_cents: offer?.unit_price_cents != null
-            ? { lowest: offer.unit_price_cents, highest: offer.unit_price_cents }
-            : null,
-          base_unit: offer?.base_unit ?? null,
-          match: { kind: "sku", score: 1 },
-        }
-      })
-    }
-
+    const products = await resolveHitsToProducts(medmkp, hits, "sku")
     res.json({ query: code, kind: "sku", count: products.length, products: products.slice(0, limit) })
     return
   }
