@@ -656,7 +656,8 @@ function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResult, sca
   );
 }
 
-function MobileBottomNav({ view, onNavigate, onScan }) {
+function MobileBottomNav({ view, onNavigate, onScan, buyerName, practiceName, buyerInitials, email, onLogout }) {
+  const [accountOpen, setAccountOpen] = useState(false);
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
       <div className="m-nav-group">
@@ -674,10 +675,35 @@ function MobileBottomNav({ view, onNavigate, onScan }) {
         <button className={view === "history" ? "active" : ""} type="button" onClick={() => onNavigate("history")}>
           <span><Icon name="icon-clock" className="mobile-bottom-icon" /></span>History
         </button>
-        <button className={view === "settings" ? "active" : ""} type="button" onClick={() => onNavigate("settings")}>
-          <span><Icon name="icon-settings" className="mobile-bottom-icon" /></span>Settings
+        <button
+          className={`m-nav-account ${view === "settings" || accountOpen ? "active" : ""}`}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={accountOpen}
+          onClick={() => setAccountOpen((open) => !open)}
+        >
+          <span className="m-nav-avatar">{buyerInitials || "··"}</span>Account
         </button>
       </div>
+      {accountOpen && (
+        <>
+          <div className="m-nav-menu-backdrop" onClick={() => setAccountOpen(false)} />
+          <div className="m-nav-menu" role="menu">
+            <div className="m-nav-menu-head">
+              <strong>{buyerName || "Your account"}</strong>
+              <small>{email || practiceName || "Buyer"}</small>
+            </div>
+            <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate("settings"); }}>
+              <Icon name="icon-settings" className="button-icon" />
+              Settings
+            </button>
+            <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onLogout?.(); }}>
+              <Icon name="icon-logout" className="button-icon" />
+              Sign out
+            </button>
+          </div>
+        </>
+      )}
     </nav>
   );
 }
@@ -2171,7 +2197,16 @@ export default function Home() {
             />
           )}
         </main>
-        <MobileBottomNav view={view} onNavigate={setView} onScan={openMobileScan} />
+        <MobileBottomNav
+          view={view}
+          onNavigate={setView}
+          onScan={openMobileScan}
+          buyerName={buyerName}
+          practiceName={practiceName}
+          buyerInitials={buyerInitials}
+          email={me?.customer?.email}
+          onLogout={handleLogout}
+        />
         </div>
       </div>
 
@@ -4510,7 +4545,6 @@ function CurrentReorderList({
   onLinkProduct,
   onRemoveItem,
   onVerifyItems,
-  onNavigate,
 }) {
   const realRows = deriveMatchRows(items, buyingPrefs);
   const usingReal = realRows.length > 0;
