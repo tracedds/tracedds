@@ -1,4 +1,5 @@
 import { Client } from "pg"
+import { refreshMatchIndex } from "../matching/match-index"
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL
@@ -16,6 +17,8 @@ async function main() {
     await client.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY medmkp_supplier_current_price`)
     await client.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY medmkp_supplier_category_summary`)
     await client.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY medmkp_supplier_product_current_offer`)
+    const indexed = await refreshMatchIndex(client)
+    console.log(`Refreshed match index: ${indexed} products`)
   } finally {
     await client.end()
   }

@@ -1,51 +1,22 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
-import { Client } from "pg"
-import {
-  loadCatalogIndex,
-  matchLineItem,
-  resolveVendorSupplier,
-  type CatalogIndex,
-  type LineItemInput,
-} from "../../../../../matching/line-items"
+import { Pool } from "pg"
+import { matchInvoice, type LineItemInput } from "../../../../../matching/line-items"
 
-// The catalog index is expensive to build, so keep it warm for a while — the
-// underlying catalog only changes on re-ingestion. Longer TTL means far fewer
-// users hit the slow cold-build path between uploads.
-const INDEX_TTL_MS = 30 * 60 * 1000
+let pool: Pool | null = null
 
-let indexPromise: Promise<CatalogIndex> | null = null
-
-async function buildIndex(): Promise<CatalogIndex> {
-  const databaseUrl = process.env.DATABASE_URL
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not set")
-  }
-  const client = new Client({
-    connectionString: databaseUrl,
-    ssl: /localhost|127\.0\.0\.1/.test(databaseUrl) ? undefined : { rejectUnauthorized: false },
-  })
-  await client.connect()
-  try {
-    return await loadCatalogIndex(client)
-  } finally {
-    await client.end()
-  }
-}
-
-async function getIndex(): Promise<CatalogIndex> {
-  if (indexPromise) {
-    const index = await indexPromise.catch(() => null)
-    if (index && Date.now() - index.loadedAt < INDEX_TTL_MS) {
-      return index
+function getPool(): Pool {
+  if (!pool) {
+    const databaseUrl = process.env.DATABASE_URL
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL is not set")
     }
+    pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: /localhost|127\.0\.0\.1/.test(databaseUrl) ? undefined : { rejectUnauthorized: false },
+      max: 10,
+    })
   }
-  indexPromise = buildIndex()
-  try {
-    return await indexPromise
-  } catch (error) {
-    indexPromise = null
-    throw error
-  }
+  return pool
 }
 
 export async function POST(req: MedusaRequest, res: MedusaResponse) {
@@ -64,11 +35,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     return
   }
 
-  const index = await getIndex()
-  const vendorSupplierId = resolveVendorSupplier(index, body.vendor_name)
-  const matches = lineItems
-    .slice(0, 200)
-    .map((item) => matchLineItem(index, item, vendorSupplierId))
+  const result = await matchInvoice(getPool(), body.vendor_name, lineItems.slice(0, 200))
+  const matches = result.line_items
 
   const totals = matches.reduce(
     (acc, match) => {
@@ -91,8 +59,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   )
 
   res.json({
-    vendor_supplier_id: vendorSupplierId,
-    catalog_products: index.products.length,
+    vendor_supplier_id: result.vendor_supplier_id,
+    catalog_products: result.catalog_products,
     line_items: matches,
     summary: {
       ...totals,
