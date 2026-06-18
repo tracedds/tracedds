@@ -4545,7 +4545,6 @@ function CurrentReorderList({
   onLinkProduct,
   onRemoveItem,
   onVerifyItems,
-  onNavigate,
 }) {
   const realRows = deriveMatchRows(items, buyingPrefs);
   const usingReal = realRows.length > 0;
