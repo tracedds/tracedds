@@ -439,6 +439,37 @@ It reports, per provider: supplier provisioned, product count, products with an
 image, distinct canonical products matched, match-status breakdown, price
 snapshot count, and the last crawl timestamp.
 
+Every ingest also logs ScraperAPI credits remaining before and after the run
+(and `credits_used` in the JSON summary) for cost auditing, e.g.:
+
+```text
+[marketplace-ingestion] scraperapi credits before run: 3920 / 5000
+[marketplace-ingestion] scraperapi credits remaining: 3900 / 5000 (used 20 this run)
+```
+
+The key is read from `SCRAPERAPI_API_KEY` or the `api_key` of
+`MARKETPLACE_SCRAPER_URL`; the audit is a no-op when neither is a ScraperAPI key.
+
+### Scheduled / re-running (Airflow)
+
+`airflow/dags/marketplace_ingestion.py` defines one DAG per marketplace
+(`marketplace_amazon`, `marketplace_alibaba`). Each is a two-task chain:
+`ingest` (logs credits + summary) then `status` (logs persisted counts). Trigger
+a re-run any time from the Airflow UI.
+
+Because the marketplace fetch costs ScraperAPI credits, the DAGs default to
+**manual trigger** (`schedule=None`). Set a cron to refresh prices periodically:
+
+```text
+airflow variables set medmkp_marketplace_amazon_schedule "0 9 * * 1"   # weekly Mon
+```
+
+The host's env file (`medmkp_env_file`) must define `MARKETPLACE_SCRAPER_URL`
+(keep the key there, not in the DAG). Other knobs are Airflow Variables:
+`medmkp_marketplace_commit`, `medmkp_marketplace_concurrency`,
+`medmkp_marketplace_seeds_file`, `medmkp_marketplace_<name>_results`,
+`medmkp_marketplace_<name>_anchor_min`. See the DAG docstring for the full list.
+
 ### Official APIs vs scraping
 
 Neither marketplace offers an open keyword→price API: Amazon's Product

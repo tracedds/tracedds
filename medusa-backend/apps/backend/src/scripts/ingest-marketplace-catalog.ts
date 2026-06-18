@@ -4,6 +4,10 @@ import { createMarketplaceFetcher } from "../ingestion/marketplace/fetch"
 import { buildMarketplaceIngestion } from "../ingestion/marketplace/persist"
 import { getMarketplaceProvider } from "../ingestion/marketplace/providers"
 import {
+  fetchScraperApiCredits,
+  resolveScraperApiKey,
+} from "../ingestion/marketplace/scraperapi"
+import {
   readSeedQueries,
   resolveSeeds,
   type CanonicalRecord,
@@ -306,6 +310,18 @@ export default async function ingestMarketplaceCatalog({
     )
   }
 
+  // Audit ScraperAPI credit consumption around the run (metered/paid service).
+  const scraperApiKey = resolveScraperApiKey()
+  const creditsBefore = scraperApiKey
+    ? await fetchScraperApiCredits(scraperApiKey)
+    : undefined
+  if (creditsBefore?.credits_left !== undefined) {
+    console.log(
+      `[marketplace-ingestion] scraperapi credits before run: ${creditsBefore.credits_left}` +
+        ` / ${creditsBefore.request_limit ?? "?"}`
+    )
+  }
+
   const fetcher = createMarketplaceFetcher()
   const startedAt = Date.now()
   const progress = { done: 0, listings: 0, blocked: 0, errored: 0, withResults: 0 }
@@ -397,9 +413,33 @@ export default async function ingestMarketplaceCatalog({
     )
   }
 
+  const creditsAfter = scraperApiKey
+    ? await fetchScraperApiCredits(scraperApiKey)
+    : undefined
+  const creditsUsed =
+    creditsBefore?.credits_left !== undefined && creditsAfter?.credits_left !== undefined
+      ? creditsBefore.credits_left - creditsAfter.credits_left
+      : undefined
+  if (creditsAfter?.credits_left !== undefined) {
+    console.log(
+      `[marketplace-ingestion] scraperapi credits remaining: ${creditsAfter.credits_left}` +
+        ` / ${creditsAfter.request_limit ?? "?"}` +
+        (creditsUsed !== undefined ? ` (used ${creditsUsed} this run)` : "")
+    )
+  }
+
+  const scraperapi = scraperApiKey
+    ? {
+        credits_before: creditsBefore?.credits_left,
+        credits_after: creditsAfter?.credits_left,
+        credits_used: creditsUsed,
+        request_limit: creditsAfter?.request_limit ?? creditsBefore?.request_limit,
+      }
+    : undefined
+
   console.log(
     JSON.stringify(
-      { ...summary, commit: options.commit, import: importResult, sample },
+      { ...summary, commit: options.commit, scraperapi, import: importResult, sample },
       null,
       2
     )
