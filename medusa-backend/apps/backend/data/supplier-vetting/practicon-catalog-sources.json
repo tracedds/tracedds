@@ -1,0 +1,15 @@
+[
+  {
+    "supplier_id": "msup_practicon_com",
+    "supplier_name": "Practicon",
+    "slug": "practicon",
+    "website_url": "https://www.practicon.com",
+    "source_catalog": "practicon-website-public",
+    "source_type": "website",
+    "source_url": "https://www.practicon.com",
+    "classification": "catalog_candidate",
+    "confidence_score": 0.95,
+    "source_company_name": "Practicon",
+    "notes": "BigCommerce store. Supplier-specific adapter (adapters/practicon.ts) reads the var BCData product_attributes data layer (sku/mpn/upc/gtin/price); the only ld+json on the page is a BreadcrumbList. Catalog discovered via practicon-catalog-discovery.ts (/xmlsitemap.php product feed, ~4,200 products); not /sitemap.xml. Captures gtin/upc barcode slot (usually null). Verified live 2026-06-18: 8/8 sample rows extracted, 0 failures."
+  }
+]
