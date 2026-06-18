@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import { MEDUSA_URL } from "../../../lib/medusaAuth";
 
 export async function GET() {
-  const medusaUrl = process.env.MEDUSA_BACKEND_URL || "http://127.0.0.1:9000";
 
   try {
-    const response = await fetch(`${medusaUrl}/medmkp/categories`, {
+    const response = await fetch(`${MEDUSA_URL}/medmkp/categories`, {
       cache: "no-store",
     });
 

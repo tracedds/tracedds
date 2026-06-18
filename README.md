@@ -293,7 +293,7 @@ Build command: npm run build
 Set this Vercel environment variable after the Render backend exists:
 
 ```text
-MEDUSA_BACKEND_URL=https://medmkp.com
+MEDUSA_BACKEND_URL=https://medmkp.vercel.com
 ```
 
 The frontend does not call Medusa directly from browser code. It calls the local

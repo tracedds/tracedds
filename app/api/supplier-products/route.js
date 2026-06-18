@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
+import { MEDUSA_URL } from "../../../lib/medusaAuth";
 
 export async function GET(request) {
-  const medusaUrl = process.env.MEDUSA_BACKEND_URL || "http://127.0.0.1:9000";
   const url = new URL(request.url);
   const query = url.search || "";
 
   try {
-    const response = await fetch(`${medusaUrl}/medmkp/supplier-products${query}`, {
+    const response = await fetch(`${MEDUSA_URL}/medmkp/supplier-products${query}`, {
       cache: "no-store",
     });
 

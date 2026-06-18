@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { MEDUSA_URL } from "../../../lib/medusaAuth";
 import { createRequest, listRequests } from "../../../lib/requestStore";
 import { parseInvoicePdf } from "../../../lib/invoiceParser";
 import { parseInvoiceCsv } from "../../../lib/csvParser";
@@ -14,10 +15,8 @@ export async function GET() {
 const MATCH_TIMEOUT_MS = 150000;
 
 async function matchLineItems(vendor, lineItems) {
-  const medusaUrl = process.env.MEDUSA_BACKEND_URL || "http://127.0.0.1:9000";
-
   try {
-    const response = await fetch(`${medusaUrl}/medmkp/invoices/match`, {
+    const response = await fetch(`${MEDUSA_URL}/medmkp/invoices/match`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
