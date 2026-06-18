@@ -397,9 +397,63 @@ function useBarcodeScanner({ active, onScan }) {
   return { videoRef, cameraStatus, autoDetect, capture };
 }
 
-function MobileScanItemView({ onBack, onScan, tray }) {
+// The verify moment: after each scan/lookup, surface what matched so the buyer
+// can confirm it at a glance before scanning the next item. Matched/review
+// cards auto-dismiss so they don't block the next scan; a no-match card sticks
+// around and offers a way to key the code in by hand.
+function ScanResultCard({ result, className = "", onClear, onEnterManually }) {
+  useEffect(() => {
+    if (!result || result.status === "Not found") return undefined;
+    const timer = window.setTimeout(() => onClear?.(), 3500);
+    return () => window.clearTimeout(timer);
+  }, [result, onClear]);
+
+  if (!result) return null;
+  const { item, status, isDuplicate, qty } = result;
+  const notFound = status === "Not found";
+  const offer = item.bestOffer;
+  const price = offer?.price ?? (item.oldUnitPrice || null);
+  const meta = CRL_STATUS[status] || CRL_STATUS.Review;
+
+  return (
+    <div
+      className={`scan-result-card ${notFound ? "nomatch" : "match"} ${className}`}
+      role="status"
+      aria-live="polite"
+      onClick={notFound ? undefined : onClear}
+    >
+      <span className="src-thumb">
+        {item.imageUrl
+          ? <img src={item.imageUrl} alt="" loading="lazy" />
+          : <Icon name={notFound ? "icon-x-circle" : "icon-check-circle"} className="button-icon" />}
+      </span>
+      <div className="src-body">
+        <strong>{notFound ? "No catalog match" : item.product}</strong>
+        <small>
+          {notFound
+            ? (item.barcode ? `Code ${item.barcode} — key it in or search` : "No code read — enter it manually")
+            : `${offer?.supplier || item.oldVendor || "Supplier pending"}${item.unit ? ` · ${item.unit}` : ""}`}
+        </small>
+      </div>
+      <div className="src-right">
+        {!notFound && price != null && <strong>{mrMoney(price)}</strong>}
+        {!notFound && offer?.perUnit != null && <small>${mrEa(offer.perUnit)} / ea</small>}
+        {isDuplicate
+          ? <em className="src-qty">×{qty}</em>
+          : <em className={`src-pill ${meta.cls}`}>{meta.label}</em>}
+      </div>
+      {notFound && (
+        <button className="src-action" type="button" onClick={onEnterManually}>Enter code</button>
+      )}
+    </div>
+  );
+}
+
+function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResult, tray }) {
   const [isMobile, setIsMobile] = useState(false);
+  const [mode, setMode] = useState("scan");
   const [captured, setCaptured] = useState(false);
+  const [manualCode, setManualCode] = useState("");
   const flashTimer = useRef();
 
   useEffect(() => {
@@ -407,7 +461,7 @@ function MobileScanItemView({ onBack, onScan, tray }) {
   }, []);
 
   const { videoRef, cameraStatus, autoDetect, capture } = useBarcodeScanner({
-    active: isMobile,
+    active: isMobile && mode === "scan",
     onScan: (code) => {
       onScan?.(code);
       setCaptured(true);
@@ -416,10 +470,18 @@ function MobileScanItemView({ onBack, onScan, tray }) {
     },
   });
 
+  function submitManual(event) {
+    event.preventDefault();
+    const value = manualCode.trim();
+    if (!value) return;
+    onScan?.(value);
+    setManualCode("");
+  }
+
   return (
     <section className="mobile-scan-screen" aria-labelledby="mobileScanHeading">
       <header className="mobile-scan-header">
-        <button className="mobile-scan-icon-button back" type="button" onClick={onBack} aria-label="Back to add items">
+        <button className="mobile-scan-icon-button back" type="button" onClick={onBack} aria-label="Back to reorder list">
           <Icon name="icon-chevron-right" className="mobile-scan-icon" />
         </button>
         <h1 id="mobileScanHeading">Scan Item</h1>
@@ -428,58 +490,84 @@ function MobileScanItemView({ onBack, onScan, tray }) {
         </button>
       </header>
 
-      <nav className="mobile-scan-tabs" aria-label="Add item method">
-        <button className="active" type="button">
+      <nav className="mobile-scan-tabs two-up" aria-label="Add item method">
+        <button className={mode === "scan" ? "active" : ""} type="button" onClick={() => setMode("scan")}>
           <Icon name="icon-scan" className="mobile-tab-icon" />
           Scan Barcode
         </button>
-        <button type="button">
-          <Icon name="icon-image" className="mobile-tab-icon" />
-          Photo
-        </button>
-        <button type="button">
+        <button className={mode === "manual" ? "active" : ""} type="button" onClick={() => setMode("manual")}>
           <Icon name="icon-plus-circle" className="mobile-tab-icon" />
-          Manual Add
+          Enter Code
         </button>
       </nav>
 
-      <div className={`mobile-camera-stage ${captured ? "scan-captured" : ""}`}>
-        <video ref={videoRef} className="mobile-camera-video" playsInline muted autoPlay aria-label="Live camera preview"></video>
-        {cameraStatus !== "ready" && (
-          <div className="camera-permission-state">
-            <Icon name="icon-scan" className="mobile-control-icon" />
-            <strong>{cameraStatus === "requesting" ? "Camera access needed" : "Camera unavailable"}</strong>
-            <p>
-              {cameraStatus === "requesting"
-                ? "Allow camera access to scan item barcodes."
-                : "Enable camera permissions for this site, or use Photo or Manual Add."}
-            </p>
+      {mode === "scan" ? (
+        <div className={`mobile-camera-stage ${captured ? "scan-captured" : ""}`}>
+          <video ref={videoRef} className="mobile-camera-video" playsInline muted autoPlay aria-label="Live camera preview"></video>
+          {cameraStatus !== "ready" && (
+            <div className="camera-permission-state">
+              <Icon name="icon-scan" className="mobile-control-icon" />
+              <strong>{cameraStatus === "requesting" ? "Camera access needed" : "Camera unavailable"}</strong>
+              <p>
+                {cameraStatus === "requesting"
+                  ? "Allow camera access to scan item barcodes."
+                  : "Enable camera permissions for this site, or tap Enter Code to key it in."}
+              </p>
+            </div>
+          )}
+          <div className="scan-instruction">
+            {captured
+              ? "Barcode captured"
+              : autoDetect
+                ? "Point at a barcode — we capture it automatically"
+                : "Live scanning isn’t supported here — tap to enter the code"}
           </div>
-        )}
-        <div className="scan-instruction">
-          {captured
-            ? "Barcode captured"
-            : autoDetect
-              ? "Point at a barcode — we capture it automatically"
-              : "Align barcode in the frame, then tap to scan"}
+          <div className="scan-frame" aria-hidden="true">
+            <span className="corner top-left"></span>
+            <span className="corner top-right"></span>
+            <span className="corner bottom-left"></span>
+            <span className="corner bottom-right"></span>
+            <span className="scan-line"></span>
+          </div>
+          <ScanResultCard result={scanResult} className="floating" onClear={onClearScanResult} onEnterManually={() => setMode("manual")} />
+          <div className="camera-actions" aria-label="Camera controls">
+            <button className="camera-aux" type="button" onClick={() => setMode("manual")} aria-label="Enter code manually">
+              <Icon name="icon-plus-circle" className="mobile-control-icon" />
+            </button>
+            <button
+              className="shutter"
+              type="button"
+              aria-label={autoDetect ? "Scan item" : "Enter code"}
+              onClick={autoDetect ? capture : () => setMode("manual")}
+              disabled={cameraStatus !== "ready" && autoDetect}
+            ></button>
+            <span className="camera-aux-spacer" aria-hidden="true" />
+          </div>
         </div>
-        <div className="scan-frame" aria-hidden="true">
-          <span className="corner top-left"></span>
-          <span className="corner top-right"></span>
-          <span className="corner bottom-left"></span>
-          <span className="corner bottom-right"></span>
-          <span className="scan-line"></span>
+      ) : (
+        <div className="mobile-manual-panel">
+          <form onSubmit={submitManual}>
+            <label className="mobile-manual-field">
+              <Icon name="icon-scan" className="button-icon" />
+              <input
+                type="text"
+                autoComplete="off"
+                autoCapitalize="characters"
+                placeholder="Enter barcode or SKU"
+                aria-label="Barcode or SKU"
+                value={manualCode}
+                onChange={(event) => setManualCode(event.target.value)}
+              />
+            </label>
+            <button className="primary-action" type="submit" disabled={!manualCode.trim()}>
+              <Icon name="icon-search" className="button-icon" />
+              Look up
+            </button>
+          </form>
+          <p className="mobile-manual-hint">Type the number printed under the barcode if the camera can’t read it.</p>
+          <ScanResultCard result={scanResult} onClear={onClearScanResult} onEnterManually={() => setMode("manual")} />
         </div>
-        <div className="camera-actions" aria-label="Camera controls">
-          <button type="button" aria-label="Toggle flashlight">
-            <Icon name="icon-bolt" className="mobile-control-icon" />
-          </button>
-          <button className="shutter" type="button" aria-label="Scan item" onClick={capture} disabled={cameraStatus !== "ready"}></button>
-          <button type="button" aria-label="Open photo library">
-            <Icon name="icon-image" className="mobile-control-icon" />
-          </button>
-        </div>
-      </div>
+      )}
 
       <section className="recognized-sheet" aria-label="Scanned items">
         {tray}
@@ -488,7 +576,7 @@ function MobileScanItemView({ onBack, onScan, tray }) {
   );
 }
 
-function MobileBottomNav({ view, onNavigate, onAdd }) {
+function MobileBottomNav({ view, onNavigate, onScan }) {
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
       <div className="m-nav-group">
@@ -496,8 +584,8 @@ function MobileBottomNav({ view, onNavigate, onAdd }) {
           <span><Icon name="icon-home" className="mobile-bottom-icon" /></span>Home
         </button>
       </div>
-      <button className="m-nav-fab" type="button" aria-label="Add items" onClick={onAdd}>
-        <Icon name="icon-plus" className="m-nav-fab-icon" />
+      <button className="m-nav-fab" type="button" aria-label="Scan barcode" onClick={onScan}>
+        <Icon name="icon-scan" className="m-nav-fab-icon" />
       </button>
       <div className="m-nav-group">
         <button className={view === "history" ? "active" : ""} type="button" onClick={() => onNavigate("history")}>
@@ -1021,8 +1109,8 @@ export default function Home() {
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
   const [mobileAddItemRoute, setMobileAddItemRoute] = useState(false);
-  const [mobileAddOpen, setMobileAddOpen] = useState(false);
   const [addMode, setAddMode] = useState("");
+  const [scanResult, setScanResult] = useState(null);
   const [lastUpload, setLastUpload] = useState(null);
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [draftItems, setDraftItems] = useState([]);
@@ -1045,7 +1133,9 @@ export default function Home() {
       const saved = JSON.parse(window.localStorage.getItem(APP_STATE_KEY) || "null");
       if (saved) {
         const savedDefaults = { ...DEFAULT_BUYING_PREFS, ...(saved.defaultBuyingPrefs || {}) };
-        setDraftItems(saved.draftItems || []);
+        // Backfill ids on lists saved before stable ids existed, so verification
+        // decisions have a row to write back to.
+        setDraftItems((saved.draftItems || []).map((item) => (item.id ? item : { ...item, id: newItemId() })));
         setUploadedDocs(saved.uploadedDocs || []);
         setArchivedLists(saved.archivedLists || []);
         setListTouched(Boolean(saved.listTouched));
@@ -1267,6 +1357,7 @@ export default function Home() {
   }
 
   function openMobileScan() {
+    setScanResult(null);
     navigate("/app/scan");
   }
 
@@ -1367,6 +1458,7 @@ export default function Home() {
 
           byProduct.set(key, {
             ...item,
+            id: newItemId(),
             draftQty: item.qty,
             included: true,
             documentQuantities: { [documentId]: item.qty },
@@ -1411,45 +1503,92 @@ export default function Home() {
       ? docs
       : [...docs, { id: "scan", name: "Barcode scans", itemCount: 0 }]);
 
-    // Already scanned this code → just bump the quantity.
-    if (code && draftItems.some((item) => item.barcode === code)) {
+    // Already scanned this code → bump the quantity and re-surface it to verify.
+    const existing = code ? draftItems.find((item) => item.barcode === code) : null;
+    if (existing) {
+      const nextQty = (existing.draftQty || 1) + 1;
       setDraftItems((items) => items.map((item) => item.barcode === code
         ? {
             ...item,
-            draftQty: (item.draftQty || 1) + 1,
+            draftQty: nextQty,
             qty: (item.qty || 1) + 1,
             included: true,
             documentQuantities: { ...(item.documentQuantities || {}), scan: ((item.documentQuantities || {}).scan || 0) + 1 },
           }
         : item));
+      setScanResult({ status: statusFromItem(existing), item: existing, isDuplicate: true, qty: nextQty });
       showToast("Quantity updated");
       return;
     }
 
-    // Look the scanned code up against the real supplier catalog.
-    let product = null;
-    if (code) {
-      try {
-        const response = await fetch(`/api/products/search?code=${encodeURIComponent(code)}&limit=1`);
-        const data = await response.json();
-        product = data.canonical_products?.[0] || null;
-      } catch {
-        product = null;
-      }
-    }
+    // Resolve against the real catalog: GTIN/UPC barcode first, then exact SKU.
+    const product = await lookupScannedProduct(code);
+    const item = makeScanDraftItem(code, product);
 
     setDraftItems((items) => {
-      if (code && items.some((item) => item.barcode === code)) return items; // race guard
-      return [...items, makeScanDraftItem(code, product)];
+      if (code && items.some((it) => it.barcode === code)) return items; // race guard
+      return [...items, item];
     });
+    setScanResult({ status: statusFromItem(item), item, isDuplicate: false, qty: item.draftQty || 1 });
     showToast(product ? `Added ${product.name}` : code ? `Scanned ${code} — needs review` : "Item added");
   }
 
   function removeDraftItem(target) {
-    const sameItem = (item) =>
-      item === target ||
-      (item.extractedFrom === target.extractedFrom && item.barcode === target.barcode && item.sku === target.sku);
-    setDraftItems((items) => items.map((item) => (sameItem(item) ? { ...item, included: false } : item)));
+    const id = typeof target === "string" ? target : target?.id;
+    if (!id) return;
+    setDraftItems((items) => items.map((item) => (item.id === id ? { ...item, included: false } : item)));
+  }
+
+  // Persist a buyer's per-item verification decision: chosen offer, quantity,
+  // note, and whether it's confirmed. Patch keys are optional.
+  function applyMatchDecision(itemId, patch = {}) {
+    if (!itemId) return;
+    setListTouched(true);
+    setDraftItems((items) => items.map((item) => {
+      if (item.id !== itemId) return item;
+      const next = { ...item };
+      if (patch.selectedOfferKey !== undefined) next.selectedOfferKey = patch.selectedOfferKey;
+      if (patch.qty !== undefined) next.draftQty = patch.qty;
+      if (patch.note !== undefined) next.note = patch.note;
+      if (patch.verified !== undefined) next.verified = patch.verified;
+      return next;
+    }));
+  }
+
+  // Bulk-confirm a set of items, accepting whatever offer is currently best.
+  function verifyItems(itemIds) {
+    const ids = new Set(itemIds);
+    if (!ids.size) return;
+    setListTouched(true);
+    setDraftItems((items) => items.map((item) => (ids.has(item.id) ? { ...item, verified: true } : item)));
+  }
+
+  // Resolve a No-Match (or re-link any item) by attaching a catalog product and
+  // its supplier offers, then marking it verified.
+  function linkProductToItem(itemId, product, options = {}) {
+    if (!itemId || !product) return;
+    setListTouched(true);
+    const offers = (product.offers || []).map(mapSearchOffer);
+    const best = offers[0] || (product.best_offer ? mapSearchOffer(product.best_offer) : null);
+    setDraftItems((items) => items.map((item) => {
+      if (item.id !== itemId) return item;
+      return {
+        ...item,
+        product: product.name,
+        canonicalName: product.name,
+        imageUrl: product.image_url || best?.imageUrl || item.imageUrl || "",
+        unit: product.base_unit || item.unit || "ea",
+        offers,
+        bestOffer: best,
+        selectedOfferKey: null,
+        matchStatus: "exact",
+        confidence: product.match?.score ?? 0.95,
+        verified: true,
+        linked: true,
+        draftQty: options.qty ?? item.draftQty ?? item.qty ?? 1,
+        note: options.note ?? item.note ?? "",
+      };
+    }));
   }
 
   // Snapshot the current list into History, then clear it. Rows are stored so
@@ -1581,14 +1720,16 @@ export default function Home() {
           {view === "home" && (
             mobileAddItemRoute ? (
               <MobileScanItemView
-                onBack={() => setMobileAddItemRoute(false)}
+                onBack={() => { setScanResult(null); setMobileAddItemRoute(false); }}
                 onScan={handleScanComplete}
+                scanResult={scanResult}
+                onClearScanResult={() => setScanResult(null)}
                 tray={
                   <CaptureTray
                     items={activeDraftItems}
                     compact
-                    onReview={() => setMobileAddItemRoute(false)}
-                    onRemove={(item) => removeDraftItem(item.product)}
+                    onReview={() => { setScanResult(null); setMobileAddItemRoute(false); }}
+                    onRemove={(item) => removeDraftItem(item)}
                   />
                 }
               />
@@ -1625,6 +1766,10 @@ export default function Home() {
                 onBuyingPrefs={setBuyingPrefs}
                 onArchiveList={archiveCurrentList}
                 onClearList={clearCurrentList}
+                onConfirmMatch={applyMatchDecision}
+                onLinkProduct={linkProductToItem}
+                onRemoveItem={removeDraftItem}
+                onVerifyItems={verifyItems}
               />
             )
           )}
@@ -1647,23 +1792,7 @@ export default function Home() {
             />
           )}
         </main>
-        <MobileBottomNav view={view} onNavigate={setView} onAdd={() => setMobileAddOpen(true)} />
-        {mobileAddOpen && (
-          <div className="m-sheet-backdrop" onClick={() => setMobileAddOpen(false)}>
-            <div className="m-sheet" role="dialog" aria-label="Add items" onClick={(event) => event.stopPropagation()}>
-              <span className="m-sheet-grip" aria-hidden="true" />
-              <h3>Add items</h3>
-              <button type="button" onClick={() => { setMobileAddOpen(false); setView("home"); setAddMode("upload"); }}>
-                <Icon name="icon-cloud-upload" className="button-icon" />
-                <span><strong>Upload invoice</strong><small>PDF, CSV, or photo</small></span>
-              </button>
-              <button type="button" onClick={() => { setMobileAddOpen(false); openMobileScan(); }}>
-                <Icon name="icon-scan" className="button-icon" />
-                <span><strong>Scan barcode</strong><small>Use your camera</small></span>
-              </button>
-            </div>
-          </div>
-        )}
+        <MobileBottomNav view={view} onNavigate={setView} onScan={openMobileScan} />
         </div>
       </div>
 
@@ -2224,6 +2353,16 @@ const MR_STATUS = {
 function mrMoney(n) { return `$${Number(n).toFixed(2)}`; }
 function mrEa(n) { return Number(n) >= 1 ? Number(n).toFixed(2) : Number(n).toFixed(3); }
 function mrConfTone(n) { return n >= 80 ? "high" : n >= 50 ? "med" : "low"; }
+
+// Stable id for a draft item so a buyer's verification decision can be written
+// back to the right row even as the list is filtered, re-sorted, or re-derived.
+let itemIdSeq = 0;
+function newItemId() { return `li_${Date.now().toString(36)}_${(itemIdSeq++).toString(36)}`; }
+
+// Identity for a supplier offer within an item's offer list. Mirrors the
+// supplier|sku|price dedupe key used when offers are built in
+// app/api/requests/route.js, so a chosen offer survives re-derivation.
+function offerKey(offer) { return `${offer?.supplier || ""}|${offer?.sku || ""}|${offer?.price ?? ""}`; }
 function MatchSupplier({ name }) {
   if (!name || name === "—") return <span className="mr-supplier-none">—</span>;
   const key = name.toLowerCase();
@@ -2262,8 +2401,26 @@ function mapSearchOffer(offer) {
   };
 }
 
+// Resolve a scanned value to a catalog product: try the GTIN/UPC barcode path
+// first (the scanner's main case), then fall back to an exact SKU lookup so
+// SKU-encoded labels and manually keyed codes still resolve.
+async function lookupScannedProduct(code) {
+  if (!code) return null;
+  const tryLookup = async (param) => {
+    try {
+      const response = await fetch(`/api/products/search?${param}=${encodeURIComponent(code)}&limit=1`);
+      const data = await response.json();
+      return data.canonical_products?.[0] || null;
+    } catch {
+      return null;
+    }
+  };
+  return (await tryLookup("barcode")) || (await tryLookup("code"));
+}
+
 function makeScanDraftItem(code, product) {
   const base = {
+    id: newItemId(),
     source: "scan",
     draftQty: 1,
     qty: 1,
@@ -2376,7 +2533,12 @@ function CaptureTray({ items, onReview, onRemove, compact }) {
 
 function statusFromItem(item) {
   if (item.matchStatus) {
-    return item.matchStatus === "unmatched" ? "Not found" : item.matchStatus === "needs_review" ? "Review" : "Matched";
+    // An unmatched line stays "Not found" until the buyer links a product to it.
+    if (item.matchStatus === "unmatched" && !item.linked) return "Not found";
+    // A buyer-confirmed (or linked) item counts as verified regardless of the
+    // original auto confidence; otherwise needs_review is the work queue.
+    if (item.verified) return "Matched";
+    return item.matchStatus === "needs_review" ? "Review" : "Matched";
   }
   // Legacy/scan fallback by status string.
   return item.status === "Parsed" ? "Matched" : item.status === "No match" ? "Not found" : "Review";
@@ -2410,18 +2572,30 @@ function deriveMatchRows(items, prefs) {
     const conf = Math.round((item.confidence ?? item.recommendation?.confidence ?? 0) * 100);
     const status = statusFromItem(item);
     const notFound = status === "Not found";
-    const offers = item.offers || [];
-    const best = notFound ? null : (pickBestOffer(offers, prefs, item) || item.bestOffer || null);
+    // Tag every offer with a stable key + display sub so the verify drawer can
+    // list them as selectable candidates and remember the buyer's choice.
+    const offers = (item.offers || []).map((offer) => ({
+      ...offer,
+      key: offerKey(offer),
+      sub: [offer.sku, offer.packSize].filter(Boolean).join(" · "),
+    }));
+    // "Recommended" is what our preferences pick — it never moves when the buyer
+    // overrides their selection. "Selected" is the offer actually in the plan
+    // (the buyer's choice, defaulting to our recommendation).
+    const fallback = item.bestOffer ? { ...item.bestOffer, key: offerKey(item.bestOffer), sub: [item.bestOffer.sku, item.bestOffer.packSize].filter(Boolean).join(" · ") } : null;
+    const recommended = notFound ? null : (pickBestOffer(offers, prefs, item) || fallback);
+    const chosen = item.selectedOfferKey ? offers.find((offer) => offer.key === item.selectedOfferKey) : null;
+    const best = notFound ? null : (chosen || recommended);
     const supplier = notFound ? "—" : (best?.supplier || item.oldVendor || "—");
     const price = best ? best.price : (item.oldUnitPrice ?? 0);
     const perEa = best ? (best.perUnit ?? null) : null;
     const qty = item.draftQty ?? item.qty ?? 1;
     const others = offers
-      .filter((offer) => offer !== best)
+      .filter((offer) => offer.key !== best?.key)
       .slice(0, 3)
       .map((offer) => ({
         name: offer.name,
-        sub: [offer.sku, offer.packSize].filter(Boolean).join(" · "),
+        sub: offer.sub,
         supplier: offer.supplier,
         price: offer.price,
         perEa: offer.perUnit ?? null,
@@ -2429,6 +2603,7 @@ function deriveMatchRows(items, prefs) {
       }));
     return {
       id: index + 1,
+      itemId: item.id || null,
       image: best?.imageUrl || item.imageUrl || "",
       source: item.source || ((item.documentIds || []).includes("scan") ? "scan" : "pdf"),
       canonicalName: notFound ? null : (item.canonicalName || item.product || null),
@@ -2441,6 +2616,12 @@ function deriveMatchRows(items, prefs) {
       price: notFound ? null : price,
       perEa: notFound ? null : perEa,
       status,
+      verified: Boolean(item.verified),
+      linked: Boolean(item.linked),
+      note: item.note || "",
+      offers,
+      selectedOfferKey: best?.key || null,
+      recommendedOfferKey: recommended?.key || null,
       qty,
       uom: item.unit || "ea",
       lineTotal: notFound ? null : (best ? best.price * qty : price * qty),
@@ -2545,10 +2726,14 @@ function DesktopBarcodeScan({ onScan }) {
 }
 
 
+// Status pills. "Matched" is our auto match (honest: we found it, the buyer
+// hasn't necessarily checked it); once the buyer confirms it reads "Verified"
+// (see the table cell, which swaps the label when row.verified).
 const CRL_STATUS = {
-  Matched: { cls: "confirmed", label: "Verified Match", icon: "icon-check-circle" },
-  Review: { cls: "possible", label: "Verify Match", icon: "icon-alert-triangle" },
-  "Not found": { cls: "nomatch", label: "No Match", icon: "icon-x-circle" },
+  Matched: { cls: "confirmed", label: "Matched", icon: "icon-check-circle" },
+  Review: { cls: "possible", label: "Needs review", icon: "icon-alert-triangle" },
+  "Not found": { cls: "nomatch", label: "No match", icon: "icon-x-circle" },
+  Verified: { cls: "verified", label: "Verified", icon: "icon-shield-check" },
 };
 
 // Sample rows (used before any real items are added) get a plausible source icon
@@ -2579,21 +2764,101 @@ function candidateSub(supplier, sub) {
   return [supplier, sub].filter(Boolean).join(" · ");
 }
 
+// Build the selectable candidate list for an item's verify drawer from its real
+// supplier offers. "recommended" flags our preference-based pick (a fixed badge
+// that never moves); the radio/active state tracks what the buyer has selected.
+// Falls back to a single candidate when an item carries no offer list.
+function offerCandidates(row) {
+  const fromOffers = (row.offers || []).map((offer) => ({
+    key: offer.key,
+    name: offer.name,
+    supplier: offer.supplier,
+    sub: offer.sub,
+    price: offer.price,
+    perEa: offer.perUnit ?? null,
+    image: offer.imageUrl || "",
+    recommended: offer.key === row.recommendedOfferKey,
+  }));
+  if (fromOffers.length) return fromOffers;
+  if (row.matchName) {
+    return [{ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true }];
+  }
+  return [];
+}
+
+// Debounced catalog search for the verify drawer's resolve / re-link flow.
+// Reuses the same /api/products/search endpoint the global search uses.
+function useProductSearch(active) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!active) return undefined;
+    const q = query.trim();
+    if (!q) { setResults([]); setLoading(false); return undefined; }
+    setLoading(true);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=8`, { signal: controller.signal })
+        .then((response) => response.json())
+        .then(({ canonical_products }) => { setResults(canonical_products || []); setLoading(false); })
+        .catch((error) => { if (error.name !== "AbortError") { setResults([]); setLoading(false); } });
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [query, active]);
+  return { query, setQuery, results, loading };
+}
+
+// Catalog search results rendered as link buttons inside the verify drawer.
+function ProductSearchResults({ query, results, loading, onPick, emptyHint }) {
+  const q = query.trim();
+  if (!q) return <p className="crl-drawer-empty">{emptyHint}</p>;
+  if (loading && !results.length) return <p className="crl-drawer-empty">Searching…</p>;
+  if (!results.length) return <p className="crl-drawer-empty">No products found for “{q}”.</p>;
+  return (
+    <div className="crl-cand-list">
+      {results.map((product) => {
+        const offer = product.best_offer;
+        const price = offer?.price_cents != null ? offer.price_cents / 100 : null;
+        return (
+          <button type="button" key={product.id || product.handle || product.name} className="crl-cand crl-cand-result" onClick={() => onPick(product)}>
+            <ProductThumb image={product.image_url} alt={product.name} />
+            <span className="crl-cand-info">
+              <strong>{product.name}</strong>
+              <small>{candidateSub(offer?.supplier_name, offer?.sku)}</small>
+            </span>
+            <span className="crl-cand-right">
+              <strong>{price != null ? mrMoney(price) : "—"}</strong>
+              {product.offer_count > 1 && <span className="crl-cand-rec">{product.offer_count} offers</span>}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Right-docked detail panel for a reorder-list row. Adapts by mode:
 //  - view: an already-matched item (Verified) — confirm or change the match
 //  - review: a low-confidence match (Verify Match) — pick the best match
 //  - resolve: no catalog match — search to link a product
-function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
+// Confirming, picking a different offer, editing qty, adding a note, linking a
+// product, or removing the item all persist back to the draft list via the
+// callbacks (keyed by row.itemId). Sample rows (no itemId) stay demo-only.
+function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirmMatch, onLinkProduct, onRemoveItem }) {
   const isResolve = mode === "resolve";
   const isView = mode === "view";
-  const candidates = isResolve ? [] : [
-    { name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, image: row.image, recommended: true },
-    ...(row.others || []).map((offer) => ({ name: offer.name, supplier: offer.supplier, sub: offer.sub, price: offer.price, image: "", recommended: false })),
-  ];
-  const [selected, setSelected] = useState(0);
+  const candidates = isResolve ? [] : offerCandidates(row);
+  // Start on the buyer's current selection (falls back to our recommendation).
+  const selectedIndex = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
+  const recommendedIndex = candidates.findIndex((candidate) => candidate.recommended);
+  const [selected, setSelected] = useState(selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex));
   const [qty, setQty] = useState(row.qty || 1);
-  const [notes, setNotes] = useState("");
-  const status = CRL_STATUS[row.status];
+  const [notes, setNotes] = useState(row.note || "");
+  // Resolve opens straight into search; review/view can toggle in to re-link.
+  const [searching, setSearching] = useState(isResolve);
+  const search = useProductSearch(searching);
+  const status = row.verified ? CRL_STATUS.Verified : CRL_STATUS[row.status];
   const sourceLabel = row.source === "scan" ? "From Barcode Scan" : row.source === "csv" ? "From Reorder Sheet" : "From Invoice";
   const title = isResolve ? "Resolve item" : isView ? "Product match" : "Verify product match";
   const subtitle = isResolve
@@ -2603,8 +2868,30 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
       : "Please confirm the best match for this imported item.";
 
   function confirm() {
+    if (row.itemId) {
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty, note: notes, verified: true });
+      onToast("Match confirmed");
+    } else {
+      onToast("Match confirmed");
+    }
     onClose();
-    onToast(isResolve ? "Product linked to item" : "Match confirmed");
+  }
+
+  function linkResult(product) {
+    if (row.itemId) {
+      onLinkProduct?.(row.itemId, product, { qty, note: notes });
+      onToast("Product linked to item");
+      onClose();
+    } else {
+      onToast("Product linked to item");
+      onClose();
+    }
+  }
+
+  function removeItem() {
+    if (row.itemId) onRemoveItem?.(row.itemId);
+    onToast("Item removed from list");
+    onClose();
   }
 
   return (
@@ -2633,7 +2920,7 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
             <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
             <div className="crl-imported-info">
               <strong>{row.matchName || row.importedName}</strong>
-              <small>Imported on Jun 2, 2025</small>
+              <small>{row.importedName}</small>
               <div className="crl-qty-step">
                 <span>Qty:</span>
                 <button type="button" aria-label="Decrease quantity" onClick={() => setQty((value) => Math.max(1, value - 1))}>−</button>
@@ -2645,22 +2932,31 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
           </div>
         </section>
 
-        {isResolve ? (
+        {searching ? (
           <section className="crl-drawer-section">
-            <span className="crl-drawer-label">Find a match</span>
+            <span className="crl-drawer-label">{isResolve ? "Find a match" : "Search for another product"}</span>
             <label className="crl-search crl-drawer-search">
               <Icon name="icon-search" className="button-icon" />
-              <input type="search" placeholder="Search products, suppliers…" />
+              <input type="search" placeholder="Search products, suppliers…" value={search.query} onChange={(event) => search.setQuery(event.target.value)} autoFocus />
             </label>
-            <p className="crl-drawer-empty">No catalog match found yet. Search above to link this item to a product.</p>
+            <ProductSearchResults
+              query={search.query}
+              results={search.results}
+              loading={search.loading}
+              onPick={linkResult}
+              emptyHint={isResolve ? "No catalog match found yet. Search above to link this item to a product." : "Search the catalog to link a different product to this item."}
+            />
+            {!isResolve && (
+              <button className="crl-drawer-link" type="button" onClick={() => setSearching(false)}><Icon name="icon-chevron-left" className="button-icon" />Back to suggested matches</button>
+            )}
           </section>
         ) : (
           <section className="crl-drawer-section">
-            <strong className="crl-drawer-subhead">Possible matches</strong>
-            <p className="crl-drawer-hint">Select the best match for this item.</p>
+            <strong className="crl-drawer-subhead">Choose the match</strong>
+            <p className="crl-drawer-hint">We recommend one offer from your buying preferences — pick a different one any time.</p>
             <div className="crl-cand-list">
               {candidates.map((candidate, index) => (
-                <label key={index} className={`crl-cand ${selected === index ? "active" : ""}`}>
+                <label key={candidate.key ?? index} className={`crl-cand ${selected === index ? "active" : ""}`}>
                   <input type="radio" name="crl-cand" checked={selected === index} onChange={() => setSelected(index)} />
                   <ProductThumb image={candidate.image} alt={candidate.name} />
                   <span className="crl-cand-info">
@@ -2669,12 +2965,15 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
                   </span>
                   <span className="crl-cand-right">
                     <strong>{candidate.price != null ? mrMoney(candidate.price) : "—"}</strong>
-                    {candidate.recommended && <span className="crl-cand-rec">Recommended</span>}
+                    <span className="crl-cand-tags">
+                      {candidate.recommended && <span className="crl-cand-rec">Recommended</span>}
+                      {selected === index && !candidate.recommended && <span className="crl-cand-sel">Selected</span>}
+                    </span>
                   </span>
                 </label>
               ))}
             </div>
-            <button className="crl-drawer-link" type="button"><Icon name="icon-search" className="button-icon" />Search for another product</button>
+            <button className="crl-drawer-link" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
           </section>
         )}
 
@@ -2683,11 +2982,19 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast }) {
           <textarea className="crl-drawer-notes" maxLength={500} placeholder="Add a note about this item…" value={notes} onChange={(event) => setNotes(event.target.value)} />
           <div className="crl-drawer-notes-count">{notes.length} / 500</div>
         </section>
+
+        {row.itemId && (
+          <section className="crl-drawer-section">
+            <button className="crl-drawer-remove" type="button" onClick={removeItem}><Icon name="icon-trash" className="button-icon" />Remove item from list</button>
+          </section>
+        )}
       </div>
 
       <footer className="crl-drawer-foot">
         <button className="crl-ghost-btn" type="button" onClick={onClose}>{isView ? "Close" : "Cancel"}</button>
-        <button className="primary-action compact" type="button" onClick={confirm}>{isResolve ? "Confirm Match" : isView ? "Update Match" : "Confirm Selected Match"}</button>
+        {!searching && (
+          <button className="primary-action compact" type="button" onClick={confirm}>{isView ? "Update Match" : "Confirm Selected Match"}</button>
+        )}
       </footer>
     </aside>
   );
@@ -2797,25 +3104,59 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
 
 // Full-screen mobile detail page. Layout follows the mobile mockup; the footer
 // actions mirror the desktop MatchPanel (Cancel / Confirm by mode).
-function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
+function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConfirmMatch, onLinkProduct, onRemoveItem }) {
   const idx = rows.findIndex((r) => r.id === row.id);
   const total = rows.length;
   const isResolve = mode === "resolve";
   const isView = mode === "view";
-  const candidates = isResolve ? [] : [
-    { name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence },
-    ...(row.others || []).map((offer) => ({ name: offer.name, supplier: offer.supplier, sub: offer.sub, price: offer.price, perEa: offer.perEa, image: "", recommended: false, confidence: offer.confidence })),
-  ];
-  const [selected, setSelected] = useState(0);
-  const [notes, setNotes] = useState("");
-  const confLabel = row.confidence == null ? "No catalog match"
+  // Candidates come from the item's real offers; our recommended (preference-
+  // based) pick is floated to the front so it shows in the "Recommended" slot.
+  // The radio tracks the buyer's actual selection, which may differ.
+  const candidates = isResolve ? [] : (row.offers || []).map((offer) => ({
+    key: offer.key,
+    name: offer.name,
+    supplier: offer.supplier,
+    sub: offer.sub,
+    price: offer.price,
+    perEa: offer.perUnit ?? null,
+    image: offer.imageUrl || "",
+    recommended: offer.key === row.recommendedOfferKey,
+    confidence: offer.key === row.recommendedOfferKey ? row.confidence : Math.max((row.confidence ?? 50) - 10, 40),
+  }));
+  if (!isResolve && !candidates.length && row.matchName) {
+    candidates.push({ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence });
+  }
+  const recIdx = candidates.findIndex((candidate) => candidate.recommended);
+  if (recIdx > 0) candidates.unshift(...candidates.splice(recIdx, 1));
+  const initialSel = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
+  const [selected, setSelected] = useState(initialSel < 0 ? 0 : initialSel);
+  const [notes, setNotes] = useState(row.note || "");
+  const [searching, setSearching] = useState(isResolve);
+  const search = useProductSearch(searching);
+  const confLabel = row.verified ? "Confirmed by you"
+    : row.confidence == null ? "No catalog match"
     : row.confidence >= 80 ? "High match confidence"
     : row.confidence >= 50 ? "Medium match confidence"
     : "Low match confidence";
 
   function confirm() {
+    if (row.itemId) {
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty: row.qty, note: notes, verified: true });
+    }
+    onToast("Match confirmed");
     onClose();
-    onToast(isResolve ? "Product linked to item" : "Match confirmed");
+  }
+
+  function linkResult(product) {
+    if (row.itemId) onLinkProduct?.(row.itemId, product, { note: notes });
+    onToast("Product linked to item");
+    onClose();
+  }
+
+  function removeItem() {
+    if (row.itemId) onRemoveItem?.(row.itemId);
+    onToast("Item removed from list");
+    onClose();
   }
 
   return (
@@ -2831,9 +3172,9 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
       </header>
 
       <div className="m-detail-body">
-        <div className={`m-conf-banner ${row.confidence == null ? "nomatch" : mrConfTone(row.confidence)}`}>
+        <div className={`m-conf-banner ${row.verified ? "verified" : row.confidence == null ? "nomatch" : mrConfTone(row.confidence)}`}>
           <span>{confLabel}</span>
-          {row.confidence != null && <strong>{row.confidence}%</strong>}
+          {!row.verified && row.confidence != null && <strong>{row.confidence}%</strong>}
         </div>
 
         <section className="m-detail-sec">
@@ -2843,16 +3184,25 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
           {row.supplier && row.supplier !== "—" && <small>Imported by {row.supplier}</small>}
         </section>
 
-        {isResolve ? (
+        {searching ? (
           <section className="m-detail-sec">
-            <span className="m-detail-label">Find a match</span>
-            <label className="crl-search"><Icon name="icon-search" className="button-icon" /><input type="search" placeholder="Search products, suppliers…" /></label>
-            <p className="m-detail-empty">No catalog match found yet. Search above to link this item to a product.</p>
+            <span className="m-detail-label">{isResolve ? "Find a match" : "Search for another product"}</span>
+            <label className="crl-search"><Icon name="icon-search" className="button-icon" /><input type="search" placeholder="Search products, suppliers…" value={search.query} onChange={(event) => search.setQuery(event.target.value)} autoFocus /></label>
+            <ProductSearchResults
+              query={search.query}
+              results={search.results}
+              loading={search.loading}
+              onPick={linkResult}
+              emptyHint={isResolve ? "No catalog match found yet. Search above to link this item to a product." : "Search the catalog to link a different product to this item."}
+            />
+            {!isResolve && (
+              <button className="crl-drawer-link" type="button" onClick={() => setSearching(false)}><Icon name="icon-chevron-left" className="button-icon" />Back to suggested matches</button>
+            )}
           </section>
-        ) : (
+        ) : candidates.length ? (
           <>
             <section className="m-detail-sec">
-              <span className="m-detail-label">Best match</span>
+              <span className="m-detail-label">Recommended</span>
               <label className={`m-match best ${selected === 0 ? "active" : ""}`}>
                 <input type="radio" name="m-cand" checked={selected === 0} onChange={() => setSelected(0)} />
                 <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
@@ -2864,7 +3214,7 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
               <section className="m-detail-sec">
                 <span className="m-detail-label">Other possible matches</span>
                 {candidates.slice(1).map((candidate, index) => (
-                  <label className={`m-match ${selected === index + 1 ? "active" : ""}`} key={index + 1}>
+                  <label className={`m-match ${selected === index + 1 ? "active" : ""}`} key={candidate.key ?? index + 1}>
                     <input type="radio" name="m-cand" checked={selected === index + 1} onChange={() => setSelected(index + 1)} />
                     <span className="m-match-info"><strong>{candidate.name}</strong><small>{candidateSub(candidate.supplier, candidate.sub)}</small></span>
                     <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrMoney(candidate.price)}</strong>{candidate.perEa != null && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
@@ -2872,8 +3222,9 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
                 ))}
               </section>
             )}
+            <button className="crl-drawer-link m-detail-relink" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
           </>
-        )}
+        ) : null}
 
         <section className="m-detail-sec">
           <span className="m-detail-label">Item details</span>
@@ -2883,12 +3234,17 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast }) {
             <div><small>Line total</small><strong>{row.lineTotal != null ? mrMoney(row.lineTotal) : "—"}</strong></div>
           </div>
           <textarea className="m-notes" placeholder="Add a note…" maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} />
+          {row.itemId && (
+            <button className="crl-drawer-remove m-detail-remove" type="button" onClick={removeItem}><Icon name="icon-trash" className="button-icon" />Remove item from list</button>
+          )}
         </section>
       </div>
 
       <footer className="m-detail-foot">
         <button className="crl-ghost-btn" type="button" onClick={onClose}>{isView ? "Close" : "Cancel"}</button>
-        <button className="primary-action compact" type="button" onClick={confirm}>{isResolve ? "Confirm Match" : isView ? "Update Match" : "Confirm Selected Match"}</button>
+        {!searching && (
+          <button className="primary-action compact" type="button" onClick={confirm}>{isView ? "Update Match" : "Confirm Selected Match"}</button>
+        )}
       </footer>
     </div>
   );
@@ -3033,6 +3389,10 @@ function CurrentReorderList({
   onBuyingPrefs,
   onArchiveList,
   onClearList,
+  onConfirmMatch,
+  onLinkProduct,
+  onRemoveItem,
+  onVerifyItems,
 }) {
   const realRows = deriveMatchRows(items, buyingPrefs);
   const usingReal = realRows.length > 0;
@@ -3088,6 +3448,39 @@ function CurrentReorderList({
   const filtered = rows.filter(tabFilter[tab] || tabFilter.all);
   const openRow = (row) => setDetail({ row, mode: rowMode(row) });
 
+  // Bulk selection — keyed by stable item id so it survives tab/sort changes.
+  // Only real (persisted) rows are selectable; sample rows have no itemId.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const selectableIds = filtered.filter((row) => row.itemId).map((row) => row.itemId);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+  const selectedCount = selectedIds.size;
+  const toggleSelect = (itemId) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+    return next;
+  });
+  const toggleSelectAll = () => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    if (allSelected) selectableIds.forEach((id) => next.delete(id));
+    else selectableIds.forEach((id) => next.add(id));
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+  const [rowMenu, setRowMenu] = useState(null);
+  function bulkVerify() {
+    // Only matched/review rows can be verified — skip selected No-Match items.
+    const ids = rows.filter((row) => row.itemId && selectedIds.has(row.itemId) && row.status !== "Not found").map((row) => row.itemId);
+    onVerifyItems?.(ids);
+    onToast(ids.length ? `${ids.length} match${ids.length === 1 ? "" : "es"} verified` : "Nothing to verify in your selection");
+    clearSelection();
+  }
+  function bulkRemove() {
+    const n = selectedCount;
+    selectedIds.forEach((id) => onRemoveItem?.(id));
+    onToast(`${n} item${n === 1 ? "" : "s"} removed`);
+    clearSelection();
+  }
+
   if (isMobile) {
     return (
       <>
@@ -3116,6 +3509,9 @@ function CurrentReorderList({
             onClose={() => setDetail(null)}
             onOpenRow={openRow}
             onToast={onToast}
+            onConfirmMatch={onConfirmMatch}
+            onLinkProduct={onLinkProduct}
+            onRemoveItem={onRemoveItem}
           />
         )}
         {addMode === "upload" && (
@@ -3225,8 +3621,8 @@ function CurrentReorderList({
               <nav className="crl-tabs" aria-label="Item list filters">
                 {[
                   ["all", `All Items (${totalItems})`],
-                  ["confirmed", `Verified Matches (${stats.matched})`],
-                  ["possible", `Verify Match (${stats.review})`],
+                  ["confirmed", `Matched (${stats.matched})`],
+                  ["possible", `Needs Review (${stats.review})`],
                   ["nomatch", `No Match (${stats.notFound})`],
                 ].map(([id, label]) => (
                   <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
@@ -3238,15 +3634,26 @@ function CurrentReorderList({
               </div>
             </div>
 
+            {selectedCount > 0 && (
+              <div className="crl-bulk-bar" role="region" aria-label="Bulk actions">
+                <span className="crl-bulk-count">{selectedCount} selected</span>
+                <span className="crl-bulk-actions">
+                  <button type="button" className="crl-bulk-btn" onClick={bulkVerify}><Icon name="icon-check-circle" className="button-icon" />Verify</button>
+                  <button type="button" className="crl-bulk-btn danger" onClick={bulkRemove}><Icon name="icon-trash" className="button-icon" />Remove from list</button>
+                </span>
+                <button type="button" className="crl-bulk-dismiss" aria-label="Clear selection" onClick={clearSelection}><Icon name="icon-x" className="button-icon" /></button>
+              </div>
+            )}
+
             <div className="crl-table">
               <div className="crl-row crl-row-head">
-                <span><input type="checkbox" aria-label="Select all" /></span>
+                <span><input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleSelectAll} disabled={!selectableIds.length} /></span>
                 <span>Item</span>
                 <span>Source</span>
                 <span>Status</span>
                 <span>Qty</span>
-                <span>Best matched product</span>
-                <span className="crl-price-h">Best price <Icon name="icon-info" className="button-icon" /></span>
+                <span>Matched product</span>
+                <span className="crl-price-h">Price <Icon name="icon-info" className="button-icon" /></span>
                 <span>Actions</span>
               </div>
               {isEmpty && (
@@ -3260,13 +3667,13 @@ function CurrentReorderList({
                 </div>
               )}
               {filtered.map((row) => {
-                const status = CRL_STATUS[row.status];
+                const status = row.verified ? CRL_STATUS.Verified : CRL_STATUS[row.status];
                 const notFound = row.status === "Not found";
                 const mode = notFound ? "resolve" : row.status === "Review" ? "review" : "view";
                 const actionLabel = notFound ? "Resolve" : row.status === "Review" ? "Verify" : "View";
                 return (
                   <div className={`crl-row crl-row-click ${detail?.row.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setDetail({ row, mode })}>
-                    <span><input type="checkbox" aria-label={`Select ${row.importedName}`} onClick={(event) => event.stopPropagation()} /></span>
+                    <span><input type="checkbox" aria-label={`Select ${row.importedName}`} checked={row.itemId ? selectedIds.has(row.itemId) : false} disabled={!row.itemId} onChange={() => row.itemId && toggleSelect(row.itemId)} onClick={(event) => event.stopPropagation()} /></span>
                     <span className="crl-item">
                       <ProductThumb image={row.image} alt={row.canonicalName || row.importedName} />
                       <span className="crl-item-id">
@@ -3277,7 +3684,9 @@ function CurrentReorderList({
                     <span className="crl-source" title={`Imported from ${row.source.toUpperCase()}`}><Icon name={CRL_SOURCE_ICON[row.source] || "icon-file-text"} className="button-icon" /></span>
                     <span className="crl-status-cell">
                       <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
-                      {row.confidence != null && <small className={`crl-conf ${mrConfTone(row.confidence)}`}>{row.confidence}% confidence</small>}
+                      {row.verified
+                        ? <small className="crl-conf verified">Confirmed by you</small>
+                        : row.confidence != null && <small className={`crl-conf ${mrConfTone(row.confidence)}`}>{row.confidence}% confidence</small>}
                     </span>
                     <span className="crl-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
                     <span className="crl-match">
@@ -3304,7 +3713,27 @@ function CurrentReorderList({
                     </span>
                     <span className="crl-actions">
                       <button className={`crl-action-btn ${notFound ? "danger" : row.status === "Review" ? "warn" : ""}`} type="button" onClick={() => setDetail({ row, mode })}>{actionLabel}</button>
-                      <button className="crl-kebab" type="button" aria-label="Row actions" onClick={(event) => event.stopPropagation()}><Icon name="icon-list" className="button-icon" /></button>
+                      <span className="crl-rowmenu-wrap">
+                        <button className="crl-kebab" type="button" aria-label="Row actions" aria-haspopup="menu" aria-expanded={rowMenu === row.id} onClick={(event) => { event.stopPropagation(); setRowMenu(rowMenu === row.id ? null : row.id); }}><Icon name="icon-list" className="button-icon" /></button>
+                        {rowMenu === row.id && row.itemId && (
+                          <>
+                            <div className="crl-add-menu-backdrop" onClick={(event) => { event.stopPropagation(); setRowMenu(null); }} />
+                            <div className="crl-add-menu crl-rowmenu" role="menu" onClick={(event) => event.stopPropagation()}>
+                              {notFound ? (
+                                <button type="button" role="menuitem" onClick={() => { setRowMenu(null); setDetail({ row, mode }); }}><Icon name="icon-search" className="button-icon" /><span>Resolve match</span></button>
+                              ) : (
+                                <>
+                                  {!row.verified && (
+                                    <button type="button" role="menuitem" onClick={() => { setRowMenu(null); onConfirmMatch?.(row.itemId, { verified: true }); onToast("Match verified"); }}><Icon name="icon-check-circle" className="button-icon" /><span>Verify match</span></button>
+                                  )}
+                                  <button type="button" role="menuitem" onClick={() => { setRowMenu(null); setDetail({ row, mode }); }}><Icon name="icon-edit" className="button-icon" /><span>Change match</span></button>
+                                </>
+                              )}
+                              <button type="button" role="menuitem" className="crl-rowmenu-danger" onClick={() => { setRowMenu(null); onRemoveItem?.(row.itemId); onToast("Item removed from list"); }}><Icon name="icon-trash" className="button-icon" /><span>Remove from list</span></button>
+                            </div>
+                          </>
+                        )}
+                      </span>
                     </span>
                   </div>
                 );
@@ -3320,12 +3749,16 @@ function CurrentReorderList({
 
         {detail ? (
           <MatchPanel
+            key={detail.row.itemId || detail.row.id}
             row={detail.row}
             mode={detail.mode}
             wide={detailWide}
             onToggleWide={() => setDetailWide((value) => !value)}
             onClose={() => { setDetail(null); setDetailWide(false); }}
             onToast={onToast}
+            onConfirmMatch={onConfirmMatch}
+            onLinkProduct={onLinkProduct}
+            onRemoveItem={onRemoveItem}
           />
         ) : (
         <aside className="crl-rail">
@@ -3579,8 +4012,8 @@ function HistoryDetail({ id, onBack, archivedLists = [] }) {
             <span>Item</span>
             <span>Status</span>
             <span>Qty</span>
-            <span>Best matched product</span>
-            <span className="crl-price-h">Best price</span>
+            <span>Matched product</span>
+            <span className="crl-price-h">Price</span>
           </div>
           {rows.map((row) => {
             const status = CRL_STATUS[row.status];

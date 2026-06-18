@@ -5,14 +5,16 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q") || "";
   const code = searchParams.get("code") || "";
+  const barcode = searchParams.get("barcode") || "";
   const limit = searchParams.get("limit") || "8";
 
-  if (!q.trim() && !code.trim()) {
+  if (!q.trim() && !code.trim() && !barcode.trim()) {
     return NextResponse.json({ canonical_products: [], source: "medusa", kind: "none" });
   }
 
   const params = new URLSearchParams({ limit });
-  if (code.trim()) params.set("code", code.trim());
+  if (barcode.trim()) params.set("barcode", barcode.trim());
+  else if (code.trim()) params.set("code", code.trim());
   else params.set("q", q.trim());
 
   try {
