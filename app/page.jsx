@@ -38,6 +38,7 @@ const routeByView = {
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
   home: "/app",
+  plan: "/app/plan",
   catalog: "/app/catalog",
   history: "/app/history",
   settings: "/app/settings",
@@ -62,6 +63,8 @@ function viewFromPath(pathname = "/") {
   // Authenticated app
   if (path === "/app") return { view: "home", isLoggedIn: true };
   if (path === "/app/scan") return { view: "home", isLoggedIn: true, mobileAddItemRoute: true };
+  if (path === "/app/plan") return { view: "plan", isLoggedIn: true };
+  if (path === "/app/plan/handoff") return { view: "handoff", isLoggedIn: true };
   if (path === "/app/history") return { view: "history", isLoggedIn: true };
   if (path.startsWith("/app/history/")) return { view: "historyDetail", isLoggedIn: true, historyId: path.split("/")[3] || "" };
   if (path === "/app/catalog") return { view: "catalog", isLoggedIn: true };
@@ -1364,6 +1367,7 @@ export default function Home() {
   const [canonicalSource, setCanonicalSource] = useState("idle");
   const [searchLoading, setSearchLoading] = useState(false);
   const [archivedLists, setArchivedLists] = useState([]);
+  const [handoffs, setHandoffs] = useState([]);
   const [listTouched, setListTouched] = useState(false);
   const [listName, setListName] = useState("June Restock");
   const [buyingPrefs, setBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
@@ -1385,6 +1389,7 @@ export default function Home() {
     setDraftItems(items);
     setUploadedDocs(saved.uploadedDocs || []);
     setArchivedLists(saved.archivedLists || []);
+    setHandoffs(saved.handoffs || []);
     setListTouched(Boolean(saved.listTouched));
     if (saved.listName) setListName(saved.listName);
     setDefaultBuyingPrefs(savedDefaults);
@@ -1461,7 +1466,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!stateLoaded) return;
-    const blob = { draftItems, uploadedDocs, archivedLists, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
+    const blob = { draftItems, uploadedDocs, archivedLists, handoffs, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
     try {
       window.localStorage.setItem(APP_STATE_KEY, JSON.stringify(blob));
     } catch {
@@ -1482,7 +1487,7 @@ export default function Home() {
       }, 800);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
+  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, handoffs, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
 
   // Supplier names for the preferred-supplier picker in default preferences.
   useEffect(() => {
@@ -1988,6 +1993,44 @@ export default function Home() {
     showToast("List cleared");
   }
 
+  // Freeze the current plan into a read-only supplier handoff. Captures the
+  // best-offer-per-line snapshot (grouped by supplier) so the order details
+  // don't drift if prices/preferences change after the buyer commits.
+  function prepareHandoff() {
+    const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
+    const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
+    if (!included.length) {
+      showToast("Add matched items before preparing a handoff");
+      return;
+    }
+    const groups = groupRowsBySupplier(included.map(slimHandoffRow));
+    const total = included.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+    const now = new Date();
+    const snapshot = {
+      id: `ho_${now.getTime()}`,
+      listName,
+      createdAt: now.toISOString(),
+      createdLabel: now.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+      buyer: buyerName,
+      practice: practiceName,
+      prefs: buyingPrefs,
+      groups,
+      total,
+      itemCount: included.length,
+      supplierCount: groups.length,
+    };
+    setHandoffs((list) => [snapshot, ...list]);
+    showToast("Supplier handoff prepared");
+    navigate("/app/plan/handoff");
+  }
+
+  // Archive the live list and return to a fresh Home — the frozen handoff lives
+  // on in History, so archiving here doesn't lose the order details.
+  function archiveFromHandoff() {
+    archiveCurrentList();
+    navigate("/app");
+  }
+
   const navItems = [
     ["home", "icon-home", "Home"],
     ["catalog", "icon-grid", "Catalog"],
@@ -2189,6 +2232,27 @@ export default function Home() {
                 onNavigate={navigate}
               />
             )
+          )}
+
+          {view === "plan" && (
+            <ProcurementPlanView
+              items={activeDraftItems}
+              listName={listName}
+              buyingPrefs={buyingPrefs}
+              onBuyingPrefs={setBuyingPrefs}
+              onPrepareHandoff={prepareHandoff}
+              onNavigate={navigate}
+              onToast={showToast}
+            />
+          )}
+
+          {view === "handoff" && (
+            <SupplierHandoffView
+              handoff={handoffs[0] || null}
+              onArchive={archiveFromHandoff}
+              onNavigate={navigate}
+              onToast={showToast}
+            />
           )}
 
           {view === "history" && <HistoryView archivedLists={archivedLists} onOpen={(id) => navigate(`/app/history/${id}`)} />}
@@ -4466,6 +4530,14 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
           );
         })}
       </div>
+
+      {stats.matched + stats.review > 0 && (
+        <div className="m-plan-cta">
+          <button type="button" className="primary-action" onClick={() => onNavigate?.("/app/plan")}>
+            <Icon name="icon-handshake" className="button-icon" />View procurement plan
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -5246,7 +5318,7 @@ function CurrentReorderList({
                 <div><span>Potential savings</span><strong className="green">$842.15</strong></div>
               </div>
             )}
-            <button className="crl-plan-btn" type="button" onClick={() => onToast("Procurement plan coming next")}>Open procurement plan <Icon name="icon-arrow-right" className="button-icon" /></button>
+            <button className="crl-plan-btn" type="button" onClick={() => onNavigate?.("/app/plan")}>Open procurement plan <Icon name="icon-arrow-right" className="button-icon" /></button>
           </section>
         </aside>
         )}
@@ -5417,6 +5489,356 @@ function UploadModal({
           )}
         </footer>
       </div>
+    </div>
+  );
+}
+
+// ── Procurement Plan + Supplier Handoff ──────────────────────────────────────
+
+// Group derived match rows into per-supplier buckets (heaviest spend first) so
+// the plan and the frozen handoff both present orders supplier-by-supplier.
+function groupRowsBySupplier(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const supplier = row.supplier || "—";
+    if (!map.has(supplier)) map.set(supplier, { supplier, rows: [], subtotal: 0, count: 0 });
+    const group = map.get(supplier);
+    group.rows.push(row);
+    group.subtotal += row.lineTotal || 0;
+    group.count += 1;
+  }
+  return [...map.values()].sort((a, b) => b.subtotal - a.subtotal);
+}
+
+// Trim a live match row down to the fields a frozen handoff needs, pinning the
+// supplier SKU from the offer the buyer actually selected.
+function slimHandoffRow(row) {
+  const selected = (row.offers || []).find((offer) => offer.key === row.selectedOfferKey);
+  return {
+    id: row.id,
+    image: row.image || "",
+    canonicalName: row.canonicalName || null,
+    canonicalHandle: row.canonicalHandle || null,
+    matchName: row.matchName || row.canonicalName || "",
+    matchSub: row.matchSub || "",
+    supplier: row.supplier,
+    sku: selected?.sku || "",
+    qty: row.qty,
+    uom: row.uom,
+    price: row.price,
+    perEa: row.perEa ?? null,
+    lineTotal: row.lineTotal || 0,
+  };
+}
+
+// Best-known order page per supplier; unknown suppliers fall back to a search so
+// "Open website" always lands the buyer somewhere useful.
+const SUPPLIER_SITES = [
+  { match: "dc dental", url: "https://www.dcdental.com" },
+  { match: "carolina", url: "https://carolinadentalsupply.com" },
+  { match: "dental city", url: "https://www.dentalcity.com" },
+  { match: "schein", url: "https://www.henryschein.com" },
+  { match: "pearson", url: "https://www.pearsondental.com" },
+  { match: "patterson", url: "https://www.pattersondental.com" },
+  { match: "amazon", url: "https://www.amazon.com" },
+  { match: "unimed", url: "https://unimedusa.com" },
+  { match: "young", url: "https://www.youngspecialties.com" },
+  { match: "practicon", url: "https://www.practicon.com" },
+  { match: "net32", url: "https://www.net32.com" },
+];
+
+function supplierSiteUrl(name) {
+  const key = (name || "").toLowerCase();
+  const known = SUPPLIER_SITES.find((site) => key.includes(site.match));
+  return known ? known.url : `https://www.google.com/search?q=${encodeURIComponent(`${name} dental supply`)}`;
+}
+
+function planSlug(value) {
+  return String(value || "list").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "list";
+}
+
+function downloadTextFile(name, content, type) {
+  const blob = new Blob([content], { type: `${type};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Plain-text order summary for one supplier — what the buyer pastes into the
+// supplier's site, an email, or a phone order.
+function buildSupplierOrderText(group, handoff) {
+  const lines = [`${handoff.listName} — ${group.supplier}`];
+  if (handoff.practice) lines.push(`Practice: ${handoff.practice}`);
+  if (handoff.buyer) lines.push(`Buyer: ${handoff.buyer}`);
+  lines.push("");
+  for (const row of group.rows) {
+    const sku = row.sku ? ` [${row.sku}]` : "";
+    const unit = row.price != null ? ` @ ${mrMoney(row.price)}` : "";
+    lines.push(`${row.qty} ${row.uom} — ${row.matchName || row.canonicalName}${sku}${unit} = ${mrMoney(row.lineTotal || 0)}`);
+  }
+  lines.push("");
+  lines.push(`Subtotal: ${mrMoney(group.subtotal)}`);
+  return lines.join("\n");
+}
+
+function buildHandoffCsv(handoff) {
+  const esc = (value) => {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const rows = [["Supplier", "Item", "SKU", "Qty", "UOM", "Unit price", "Line total"]];
+  for (const group of handoff.groups) {
+    for (const row of group.rows) {
+      rows.push([
+        group.supplier,
+        row.matchName || row.canonicalName || "",
+        row.sku || "",
+        row.qty,
+        row.uom,
+        row.price != null ? Number(row.price).toFixed(2) : "",
+        Number(row.lineTotal || 0).toFixed(2),
+      ]);
+    }
+  }
+  return rows.map((cells) => cells.map(esc).join(",")).join("\n");
+}
+
+// One supplier's order block — shared by the live plan (full rows) and the
+// frozen handoff (slim rows). `actions` injects the handoff's copy/open buttons.
+function SupplierGroupCard({ group, onNavigate, actions = null }) {
+  return (
+    <section className="crl-card pp-group">
+      <div className="pp-group-head">
+        <MatchSupplier name={group.supplier} />
+        <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
+      </div>
+      {actions}
+      <div className="pp-group-lines">
+        {group.rows.map((row) => {
+          const clickable = Boolean(row.canonicalHandle);
+          return (
+            <div
+              className={`pp-line ${clickable ? "clickable" : ""}`}
+              key={row.id}
+              onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
+            >
+              <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+              <span className="pp-line-name">
+                <strong>{row.matchName || row.canonicalName}</strong>
+                {row.matchSub && <small>{row.matchSub}</small>}
+              </span>
+              <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+              <span className="pp-line-ea">{row.perEa != null ? `$${mrEa(row.perEa)} / ea` : ""}</span>
+              <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onNavigate, onToast }) {
+  const rows = deriveMatchRows(items || [], buyingPrefs);
+  const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
+  const unresolved = rows.filter((row) => row.status === "Not found" || !row.supplier || row.supplier === "—");
+  const groups = groupRowsBySupplier(included);
+  const total = included.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+  const coverage = rows.length ? Math.round((included.length / rows.length) * 100) : 0;
+
+  const supplierOptions = useMemo(() => {
+    const names = new Set();
+    for (const item of items || []) {
+      for (const offer of item.offers || []) {
+        if (offer.supplier) names.add(offer.supplier);
+      }
+    }
+    return [...names].sort();
+  }, [items]);
+
+  return (
+    <div className="crl pp">
+      <header className="crl-header pp-header">
+        <div className="crl-title crl-title-main">
+          <button className="history-back" type="button" onClick={() => onNavigate("/app")}><Icon name="icon-chevron-left" className="button-icon" />Current Reorder List</button>
+          <h2>Procurement Plan</h2>
+          <p className="crl-subtitle">
+            <span className="crl-listname">{listName}</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span>{included.length} item{included.length === 1 ? "" : "s"} · {groups.length} supplier{groups.length === 1 ? "" : "s"}</span>
+          </p>
+        </div>
+        <div className="crl-header-actions">
+          <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app")}>Back to list</button>
+          <button className="primary-action compact" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
+            <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
+          </button>
+        </div>
+      </header>
+
+      <div className="pp-layout">
+        <div className="pp-main">
+          {groups.length === 0 ? (
+            <div className="crl-card pp-empty">
+              <Icon name="icon-package" className="button-icon" />
+              <strong>No matched items yet</strong>
+              <p>Match items on your reorder list to build a procurement plan grouped by supplier.</p>
+              <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app")}>Go to reorder list</button>
+            </div>
+          ) : (
+            <>
+              <div className="pp-section-head">
+                <h3>Included items</h3>
+                <small>Grouped by supplier · best offer per line</small>
+              </div>
+              {groups.map((group) => (
+                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} />
+              ))}
+            </>
+          )}
+
+          {unresolved.length > 0 && (
+            <section className="crl-card pp-unresolved">
+              <div className="crl-card-head">
+                <h3>Unresolved items ({unresolved.length})</h3>
+                <button className="crl-edit-link" type="button" onClick={() => onNavigate("/app")}>Resolve on list</button>
+              </div>
+              <p className="pp-unresolved-note">These items have no confirmed supplier match and won&rsquo;t be included in the supplier handoff.</p>
+              <ul className="pp-unresolved-list">
+                {unresolved.map((row) => (
+                  <li key={row.id}>
+                    <ProductThumb image={row.image} alt={row.importedName} />
+                    <span className="pp-unresolved-name">
+                      <strong>{row.canonicalName || row.importedName}</strong>
+                      <small>Qty {row.qty} {row.uom}</small>
+                    </span>
+                    <span className="pp-unresolved-tag">No match</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        <aside className="pp-rail">
+          <BuyingPreferencesCard
+            prefs={buyingPrefs}
+            supplierOptions={supplierOptions}
+            onSave={onBuyingPrefs}
+            onToast={onToast}
+          />
+          <section className="crl-card">
+            <h3>Plan Summary</h3>
+            <div className="crl-plan">
+              <div><span>Estimated total</span><strong>{money.format(total)}</strong></div>
+              <div><span>Suppliers</span><strong>{groups.length}</strong></div>
+              <div><span>Coverage</span><strong>{coverage}%</strong></div>
+              <div><span>Included items</span><strong>{included.length}</strong></div>
+            </div>
+            <button className="primary-action compact pp-handoff-btn" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
+              <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
+            </button>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function SupplierHandoffView({ handoff, onArchive, onNavigate, onToast }) {
+  if (!handoff) {
+    return (
+      <div className="crl ho">
+        <header className="crl-header"><div className="crl-title crl-title-main"><h2>Supplier Handoff</h2></div></header>
+        <div className="crl-card pp-empty">
+          <Icon name="icon-handshake" className="button-icon" />
+          <strong>No handoff prepared yet</strong>
+          <p>Open your procurement plan and prepare a supplier handoff to see frozen order details here.</p>
+          <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app/plan")}>Open procurement plan</button>
+        </div>
+      </div>
+    );
+  }
+
+  function copyGroup(group) {
+    const text = buildSupplierOrderText(group, handoff);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => onToast(`${group.supplier} order details copied`))
+        .catch(() => onToast("Couldn’t copy — try again"));
+    } else {
+      onToast("Clipboard unavailable in this browser");
+    }
+  }
+
+  function exportCsv() {
+    downloadTextFile(`${planSlug(handoff.listName)}-handoff.csv`, buildHandoffCsv(handoff), "text/csv");
+    onToast("CSV exported");
+  }
+
+  function exportPdf() {
+    onToast("Opening print dialog — choose “Save as PDF”");
+    setTimeout(() => window.print(), 350);
+  }
+
+  return (
+    <div className="crl ho">
+      <header className="crl-header ho-header">
+        <div className="crl-title crl-title-main">
+          <button className="history-back" type="button" onClick={() => onNavigate("/app/plan")}><Icon name="icon-chevron-left" className="button-icon" />Procurement Plan</button>
+          <h2>Supplier Handoff</h2>
+          <p className="crl-subtitle">
+            <span className="ho-frozen-pill"><Icon name="icon-lock" className="button-icon" />Frozen snapshot</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span>{handoff.createdLabel}</span>
+          </p>
+        </div>
+        <div className="crl-header-actions ho-export">
+          <button className="secondary-action compact" type="button" onClick={exportCsv}><Icon name="icon-table" className="button-icon" />Export CSV</button>
+          <button className="secondary-action compact" type="button" onClick={exportPdf}><Icon name="icon-file-text" className="button-icon" />Export PDF</button>
+        </div>
+      </header>
+
+      <div className="ho-banner">
+        <Icon name="icon-lock" className="button-icon" />
+        <span>Frozen snapshot of <strong>{handoff.listName}</strong>, captured {handoff.createdLabel}. Prices and selections are locked so your order details won&rsquo;t drift.</span>
+      </div>
+
+      <div className="ho-summary">
+        <div><small>Suppliers</small><strong>{handoff.supplierCount}</strong></div>
+        <div><small>Items</small><strong>{handoff.itemCount}</strong></div>
+        <div><small>Estimated total</small><strong>{money.format(handoff.total)}</strong></div>
+        <div><small>Strategy</small><strong>{STRATEGY_LABELS[handoff.prefs?.strategy] || "Best price"}</strong></div>
+      </div>
+
+      <div className="ho-groups">
+        {handoff.groups.map((group) => (
+          <SupplierGroupCard
+            key={group.supplier}
+            group={group}
+            onNavigate={onNavigate}
+            actions={(
+              <div className="ho-group-actions">
+                <button className="crl-ghost-btn" type="button" onClick={() => copyGroup(group)}><Icon name="icon-clipboard" className="button-icon" />Copy order details</button>
+                <a className="crl-ghost-btn" href={supplierSiteUrl(group.supplier)} target="_blank" rel="noreferrer"><Icon name="icon-store" className="button-icon" />Open website</a>
+              </div>
+            )}
+          />
+        ))}
+      </div>
+
+      <footer className="ho-footer">
+        <div className="ho-footer-copy">
+          <strong>Order placed?</strong>
+          <small>Archive this list to move it to History and start a fresh reorder list. This frozen handoff stays available.</small>
+        </div>
+        <button className="primary-action compact" type="button" onClick={onArchive}><Icon name="icon-clipboard" className="button-icon" />Archive list &amp; start new</button>
+      </footer>
     </div>
   );
 }
