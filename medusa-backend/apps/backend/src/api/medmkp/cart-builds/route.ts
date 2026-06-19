@@ -2,6 +2,7 @@ import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/frame
 import { MEDMKP_MODULE } from "../../../modules/medmkp"
 import type MedMKPModuleService from "../../../modules/medmkp/service"
 import { resolvePracticeId } from "../../../utils/practice"
+import { encryptSecret, maskHint } from "../../../utils/secret-vault"
 
 const MAX_LINES = 60
 
@@ -44,11 +45,17 @@ export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) 
 type EnqueueBody = {
   supplier_id?: string
   lines?: { name?: string; qty?: number; productUrl?: string; sku?: string }[]
+  // On-the-fly login: used for this build only. When `save` is true the login is
+  // also persisted to the vault for next time; otherwise it rides the job
+  // encrypted and is discarded when the build finishes.
+  username?: string
+  password?: string
+  save?: boolean
 }
 
-// Enqueues a cart-build for one supplier. Requires that the practice has stored
-// a login for it (the agent can't shop without one). The NUC runner picks the
-// job up via the agent claim endpoint.
+// Enqueues a cart-build for one supplier. The agent needs a login: either one
+// stored in the vault, or supplied inline on this request. The NUC runner picks
+// the job up via the agent claim endpoint.
 export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
   if (!req.auth_context?.actor_id) {
     res.status(401).json({ error: "Not authenticated." })
@@ -79,31 +86,57 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
 
   const medmkp = req.scope.resolve<MedMKPModuleService>(MEDMKP_MODULE)
 
-  const [credential] = await medmkp.listSupplierCredentials({
-    practice_id: practiceId,
-    supplier_id: supplierId,
-  })
-  if (!credential) {
-    // The frontend should route the buyer to Settings to add a login first.
-    res.status(409).json({ error: "needs_credentials", supplier_id: supplierId })
-    return
-  }
-
   const [supplier] = await medmkp.listSuppliers({ id: supplierId })
   if (!supplier) {
     res.status(404).json({ error: "Unknown supplier." })
     return
   }
 
-  const [job] = await medmkp.createCartBuildJobs([
-    {
-      practice_id: practiceId,
-      supplier_id: supplierId,
-      supplier_slug: supplier.slug ?? "",
-      status: "queued",
-      lines,
-    },
-  ])
+  const [stored] = await medmkp.listSupplierCredentials({
+    practice_id: practiceId,
+    supplier_id: supplierId,
+  })
+
+  const inlineUser = (body.username ?? "").trim()
+  const inlinePass = body.password ?? ""
+
+  // Decide where the login comes from. Inline creds win (the buyer just typed
+  // them); otherwise fall back to a stored vault login.
+  const jobData: Record<string, unknown> = {
+    practice_id: practiceId,
+    supplier_id: supplierId,
+    supplier_slug: supplier.slug ?? "",
+    status: "queued",
+    lines,
+  }
+
+  if (inlineUser && inlinePass) {
+    if (body.save) {
+      // Persist to the vault for next time, then build from it like normal.
+      const data = {
+        practice_id: practiceId,
+        supplier_id: supplierId,
+        username: inlineUser,
+        username_hint: maskHint(inlineUser),
+        password_encrypted: encryptSecret(inlinePass),
+        last_status: "unverified",
+        last_verified_at: null,
+        last_error: null,
+      }
+      if (stored) await medmkp.updateSupplierCredentials({ id: stored.id, ...data })
+      else await medmkp.createSupplierCredentials(data)
+    } else {
+      // Ephemeral: seal onto the job, zeroed when the build finishes.
+      jobData.credentials_encrypted = encryptSecret(inlinePass)
+      jobData.credentials_username = inlineUser
+    }
+  } else if (!stored) {
+    // No inline creds and nothing saved — the frontend should prompt for a login.
+    res.status(409).json({ error: "needs_credentials", supplier_id: supplierId })
+    return
+  }
+
+  const [job] = await medmkp.createCartBuildJobs([jobData])
 
   res.status(202).json({ job: serialize(job) })
 }
