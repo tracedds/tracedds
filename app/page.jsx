@@ -2377,7 +2377,7 @@ export default function Home() {
             {navItems.map(([target, icon, label]) => (
               <button
                 key={target}
-                className={`nav-tab ${view === target ? "active" : ""}`}
+                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target ? "active" : ""}`}
                 type="button"
                 onClick={() => setView(target)}
                 title={navCollapsed ? label : undefined}

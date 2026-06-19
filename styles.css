@@ -152,8 +152,14 @@ p {
 }
 
 .nav-tabs {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   gap: 12px;
+}
+
+.nav-tab-bottom {
+  margin-top: auto;
 }
 
 .nav-tab {
@@ -5857,7 +5863,13 @@ th {
   }
 
   .nav-tabs {
+    display: grid;
+    flex: none;
     grid-template-columns: repeat(4, 1fr);
+  }
+
+  .nav-tab-bottom {
+    margin-top: 0;
   }
 
   .upload-button {
