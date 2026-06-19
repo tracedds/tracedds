@@ -1,6 +1,8 @@
 import {
   extractHenryScheinCategoryLinks,
   extractHenryScheinProducts,
+  extractHenryScheinWebPricedProductIds,
+  extractHenryScheinWebPrices,
   henryScheinAdapter,
 } from "../henryschein"
 
@@ -90,5 +92,33 @@ describe("extractHenryScheinProducts", () => {
       henryScheinAdapter.matches({ url: "https://www.henryschein.com/us-en/x/1.aspx" } as any)
     ).toBe(true)
     expect(henryScheinAdapter.matches({ url: "https://dcdental.com/x" } as any)).toBe(false)
+  })
+
+  it("discovers the explicit item IDs linked by the public web-pricing campaign", () => {
+    const html = `
+      <a href="/us-en/Shopping/Products.aspx?productid=6400012,6402805&amp;dp=true">A</a>
+      <a href="/us-en/shopping/products.aspx?ProductId=6400012,1234847&dp=true">B</a>
+      <a href="/other?productid=not-a-sku">ignore</a>`
+
+    expect(extractHenryScheinWebPricedProductIds(html)).toEqual([
+      "6400012",
+      "6402805",
+      "1234847",
+    ])
+  })
+
+  it("extracts public web prices in cents by HS item number", () => {
+    const html = `
+      <div class="product-price single-amount">
+        <span class="price-mod hs-strike x-small 6400012">$50.79</span>
+        <span class="amount x-small 6400012 first last">1 @ $46.79 <br></span>
+      </div>
+      <span class="amount x-small 1234847">1 @ $1,115.79<BR></span>
+      <span class="amount x-small 9999999">Price Unavailable</span>`
+
+    expect([...extractHenryScheinWebPrices(html)]).toEqual([
+      ["6400012", 4679],
+      ["1234847", 111579],
+    ])
   })
 })

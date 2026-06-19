@@ -13,11 +13,11 @@ import type {
 
 /**
  * Henry Schein (henryschein.com) is a distributor on Microsoft Commerce Server.
- * Prices are login-gated (the public `offers.price` is $0.00), but the catalog
- * is otherwise open: every search / category listing page embeds one
+ * Most prices are login-gated (the public `offers.price` is $0.00), but the
+ * catalog is otherwise open: every search / category listing page embeds one
  * `application/ld+json` Product block per item with name, brand, mpn and sku.
- * We ingest those as **identity only** (no price) so a scanned HS item resolves
- * to a real product, then surface priced substitutes from other suppliers.
+ * A separate public Web Priced Products campaign exposes prices for a bounded
+ * subset; helpers below discover those item IDs and parse their public prices.
  *
  * The JSON-LD `sku` is the Henry Schein item number (e.g. "1014583"), which is
  * exactly the REF printed on the box and the Product/Catalog Number encoded in
@@ -29,6 +29,62 @@ import type {
  */
 
 type HsProduct = Record<string, unknown>
+
+export const HS_WEB_PRICING_URL =
+  "https://www.henryschein.com/us-en/dental/supplies/shop-web-pricing.aspx"
+
+/**
+ * The public Web Priced Products campaign links to Products.aspx with explicit
+ * comma-separated Henry Schein item numbers. Keep discovery tied to those
+ * links: `dp=true` on an arbitrary product is not proof that HS advertises a
+ * public web price for it.
+ */
+export function extractHenryScheinWebPricedProductIds(html: string): string[] {
+  const ids = new Set<string>()
+
+  for (const match of html.matchAll(/(?:productid|ProductId)=([^&"'<>]+)/gi)) {
+    let value = match[1]
+    try {
+      value = decodeURIComponent(value)
+    } catch {
+      // A malformed campaign link should not prevent the other IDs loading.
+    }
+
+    for (const id of value.split(",")) {
+      const normalized = id.trim()
+      if (/^\d{6,10}$/.test(normalized)) ids.add(normalized)
+    }
+  }
+
+  return [...ids]
+}
+
+/**
+ * Products.aspx renders public campaign prices server-side. Each amount span
+ * carries the HS item number as a CSS class, for example:
+ *   <span class="amount x-small 6400012">1 @ $46.79<br></span>
+ *
+ * Return cents by SKU so the full JSON-LD catalog crawl can be enriched without
+ * replacing its better product identity and taxonomy fields.
+ */
+export function extractHenryScheinWebPrices(html: string): Map<string, number> {
+  const prices = new Map<string, number>()
+  const amountSpan =
+    /<span\b[^>]*class=["'][^"']*\bamount\b[^"']*\b(\d{6,10})\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi
+
+  for (const match of html.matchAll(amountSpan)) {
+    const sku = match[1]
+    const text = decodeHtml(match[2].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ")
+    const price = text.match(/(?:\d+\s*@\s*)?\$\s*([\d,]+(?:\.\d{2})?)/)
+    if (!price) continue
+
+    const dollars = Number(price[1].replace(/,/g, ""))
+    if (!Number.isFinite(dollars) || dollars < 0) continue
+    prices.set(sku, Math.round(dollars * 100))
+  }
+
+  return prices
+}
 
 // Turn a URL path slug ("elements-biodeg-nitrile-glv") into a display label.
 function humanize(slug: string) {
