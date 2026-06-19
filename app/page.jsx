@@ -2547,7 +2547,7 @@ function CatalogView({ onNavigate }) {
   useEffect(() => {
     let active = true;
     Promise.all([
-      fetch("/api/catalog").then((r) => r.json()).catch(() => ({ categories: [] })),
+      fetch("/api/catalog?all=1").then((r) => r.json()).catch(() => ({ categories: [] })),
       fetch("/api/suppliers").then((r) => r.json()).catch(() => ({ suppliers: [] })),
     ]).then(([catRes, supRes]) => {
       if (!active) return;
@@ -2873,7 +2873,7 @@ function CatalogCategoryView({ slug, onNavigate }) {
     if (!category) return undefined;
     let active = true;
     Promise.all([
-      fetch("/api/catalog").then((r) => r.json()).catch(() => ({ categories: [] })),
+      fetch("/api/catalog?all=1").then((r) => r.json()).catch(() => ({ categories: [] })),
       fetch("/api/suppliers").then((r) => r.json()).catch(() => ({ suppliers: [] })),
     ]).then(([catRes, supRes]) => {
       if (!active) return;

@@ -9,7 +9,6 @@ const CATEGORY_CACHE_TTL_MS = 60 * 1000
 
 type CategoryRow = {
   category: string
-  product_count: string
   supplier_count: string
 }
 
@@ -43,13 +42,52 @@ const categoriesPromise = new Map<number, Promise<CategoriesResponse>>()
 async function loadCategories(limit: number): Promise<CategoriesResponse> {
   const pool = getPostgresPool()
 
+  // Supplier-named categories (the matview already drops supplier-name and
+  // "dental supplies" buckets) with their distinct supplier coverage.
   const categories = await pool.query<CategoryRow>(
-    `SELECT category, product_count, supplier_count
-     FROM medmkp_supplier_category_summary
-     ORDER BY product_count DESC
-     LIMIT $1`,
-    [limit]
+    `SELECT category, supplier_count
+     FROM medmkp_supplier_category_summary`
   )
+
+  // The matview's product_count counts raw supplier SKUs (priced or not), which
+  // massively overstates what a buyer can actually open: the drill-down
+  // (/medmkp/canonical-products?category=) lists deduped, family-grouped
+  // canonical products that have at least one priced offer. Showing the SKU
+  // count on the landing made the two pages disagree wildly (Laboratory read
+  // 1,577 SKUs but only 84 browsable products). Count those priced canonical
+  // families per category here — the same set, counted the same way as the
+  // drill-down query — so the landing and the drill-down always agree.
+  const pricedCounts = await pool.query<{ category: string; product_count: number }>(
+    `WITH cat AS (
+       SELECT id, lower(btrim(category)) AS catkey, COALESCE(family_id, id) AS grp
+       FROM medmkp_canonical_product
+       WHERE category <> '' AND deleted_at IS NULL
+     ),
+     priced AS (
+       SELECT DISTINCT cat.catkey, cat.grp
+       FROM medmkp_canonical_product_match m
+       JOIN medmkp_supplier_current_price cp
+         ON cp.supplier_product_id = m.supplier_product_id
+       JOIN cat ON cat.id = m.canonical_product_id
+       WHERE m.match_status <> 'unmatched' AND m.deleted_at IS NULL
+     )
+     SELECT catkey AS category, COUNT(*)::int AS product_count
+     FROM priced
+     GROUP BY catkey`
+  )
+  const pricedByCategory = new Map(
+    pricedCounts.rows.map((row) => [row.category, Number(row.product_count)])
+  )
+
+  // Rank by browsable (priced) product count and keep the requested page.
+  const ranked = categories.rows
+    .map((row) => ({
+      category: row.category,
+      supplier_count: Number(row.supplier_count),
+      product_count: pricedByCategory.get(row.category.trim().toLowerCase()) ?? 0,
+    }))
+    .sort((a, b) => b.product_count - a.product_count)
+    .slice(0, limit)
 
   const bestValue = await pool.query<BestValueRow>(
     `SELECT DISTINCT ON (p.category)
@@ -59,18 +97,18 @@ async function loadCategories(limit: number): Promise<CategoriesResponse> {
      LEFT JOIN medmkp_supplier sup ON sup.id = p.supplier_id AND sup.deleted_at IS NULL
      WHERE p.category = ANY($1)
      ORDER BY p.category, p.price_cents ASC`,
-    [categories.rows.map((row) => row.category)]
+    [ranked.map((row) => row.category)]
   )
   const bestByCategory = new Map(bestValue.rows.map((row) => [row.category, row]))
 
   return {
-    categories: categories.rows.map((row) => {
+    categories: ranked.map((row) => {
       const best = bestByCategory.get(row.category)
       return {
         id: row.category.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
         name: row.category,
-        product_count: Number(row.product_count),
-        supplier_count: Number(row.supplier_count),
+        product_count: row.product_count,
+        supplier_count: row.supplier_count,
         best_value_item: best
           ? {
               name: best.name,
