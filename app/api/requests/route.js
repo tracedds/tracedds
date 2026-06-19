@@ -94,6 +94,9 @@ function toUiLineItem(match, vendor, source) {
     unit: item.unit || "each",
     oldVendor: vendor || "",
     oldUnitPrice: (item.unit_price_cents ?? 0) / 100,
+    // The practice's current per-pack price (the savings anchor). Null when the
+    // invoice didn't carry a price, so the UI can prompt for it.
+    paidUnitPrice: item.unit_price_cents != null ? item.unit_price_cents / 100 : null,
     matchStatus: match.match_status,
     confidence: (match.confidence || 0) / 100,
     matchReason: match.match_reason || "",

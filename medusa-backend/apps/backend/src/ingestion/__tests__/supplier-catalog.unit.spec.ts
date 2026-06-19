@@ -36,6 +36,30 @@ describe("buildSupplierCatalogIngestion", () => {
     expect(ids.every((id) => id.length <= 96)).toBe(true)
   })
 
+  it("cleans weird characters out of the persisted product name", () => {
+    const ingestion = buildSupplierCatalogIngestion(
+      {
+        supplier_id: "msup_test",
+        source_type: "website",
+        source_catalog: "test-catalog",
+        rows: [
+          {
+            sku: "ABC-1",
+            // U+FFFD from a bad-charset ingest, a leftover entity, a smart
+            // quote and a non-breaking hyphen — plus a legit ™ that must stay.
+            name: "Calset� Quik‑Tip&#8482; 5.5” Tray",
+            price_cents: 100,
+          },
+        ],
+        captured_at: "2026-06-18T00:00:00.000Z",
+      },
+      []
+    )
+
+    const name = (ingestion.supplierProducts[0] as { name: string }).name
+    expect(name).toBe('Calset Quik-Tip™ 5.5" Tray')
+  })
+
   const baseInput = (rows: { sku?: string; name?: string; price_cents?: number }[]) => ({
     supplier_id: "msup_pearson",
     source_type: "website" as const,
