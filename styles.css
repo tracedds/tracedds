@@ -8641,6 +8641,24 @@ th {
 .crl-plan-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--blue); font-weight: 700; font-size: 13px; }
 .crl-plan-btn .button-icon { width: 16px; height: 16px; }
 
+/* Savings hero + per-line savings */
+.crl-savings-hero { display: grid; gap: 2px; margin: 4px 0 14px; padding: 14px 16px; border: 1px solid #cdeede; border-radius: 11px; background: #e3f6ed; }
+.crl-savings-hero-label { color: var(--green); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.crl-savings-hero-amt { color: var(--green); font-size: 28px; font-weight: 800; line-height: 1.1; }
+.crl-savings-hero-sub { color: var(--muted); font-size: 12px; }
+.crl-plan-note { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.crl-price small.crl-save { color: var(--green); font-weight: 700; }
+
+/* "What you pay now" entry (detail panels) */
+.crl-paid-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px; }
+.crl-paid-field { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-weight: 600; }
+.crl-paid-field span { color: var(--muted); }
+.crl-paid-field input { width: 84px; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; }
+.crl-paid-field em { color: var(--muted); font-style: normal; font-size: 12px; }
+.crl-paid-savings { color: var(--green); font-size: 13px; }
+.crl-paid-savings strong { color: var(--green); font-weight: 800; }
+.m-card-save { color: var(--green); font-weight: 700; }
+
 /* Placeholder (History) */
 .crl-placeholder { display: grid; justify-items: center; gap: 8px; padding: 64px 24px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface); text-align: center; }
 .crl-placeholder-icon { width: 34px; height: 34px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.8; }

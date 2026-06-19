@@ -1927,6 +1927,10 @@ export default function Home() {
       if (patch.qty !== undefined) next.draftQty = patch.qty;
       if (patch.note !== undefined) next.note = patch.note;
       if (patch.verified !== undefined) next.verified = patch.verified;
+      if (patch.paidUnitPrice !== undefined) {
+        const n = patch.paidUnitPrice === null || patch.paidUnitPrice === "" ? null : Number(patch.paidUnitPrice);
+        next.paidUnitPrice = Number.isFinite(n) && n > 0 ? n : null;
+      }
       return next;
     }));
   }
@@ -3673,6 +3677,9 @@ function makeScanDraftItem(code, product) {
     documentQuantities: { scan: 1 },
     barcode: code || "",
     extractedFrom: `Scanned · ${code || "no code"}`,
+    // A barcode carries no price, so there's no savings anchor until the buyer
+    // tells us what they currently pay (captured in the item detail panel).
+    paidUnitPrice: null,
   };
   // Real catalog match from the lookup endpoint.
   if (product) {
@@ -3801,6 +3808,15 @@ function deriveMatchRows(items, prefs) {
         perEa: offer.perUnit ?? null,
         confidence: Math.max(conf - 10, 40),
       }));
+    // Savings against what the practice currently pays. We compare on the
+    // pack-normalized "comparable" price (same basis the backend matcher uses:
+    // max(0, (paid - comparable) * qty)) so per-pack-size differences are fair.
+    const paidUnitPrice = item.paidUnitPrice != null ? Number(item.paidUnitPrice) : null;
+    const hasPaidPrice = paidUnitPrice != null && Number.isFinite(paidUnitPrice) && paidUnitPrice > 0;
+    const compareUnitPrice = best ? (best.comparablePrice ?? best.price) : null;
+    const lineSavings = !notFound && hasPaidPrice && compareUnitPrice != null && paidUnitPrice > compareUnitPrice
+      ? (paidUnitPrice - compareUnitPrice) * qty
+      : 0;
     return {
       id: index + 1,
       itemId: item.id || null,
@@ -3826,6 +3842,10 @@ function deriveMatchRows(items, prefs) {
       qty,
       uom: item.unit || "ea",
       lineTotal: notFound ? null : (best ? best.price * qty : price * qty),
+      paidUnitPrice: hasPaidPrice ? paidUnitPrice : null,
+      hasPaidPrice,
+      currentLineTotal: hasPaidPrice ? paidUnitPrice * qty : null,
+      lineSavings,
       others,
     };
   });
@@ -4071,6 +4091,10 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
   const [selected, setSelected] = useState(selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex));
   const [qty, setQty] = useState(row.qty || 1);
   const [notes, setNotes] = useState(row.note || "");
+  // What the practice currently pays per pack — the savings anchor. Editable
+  // here so scanned items (which carry no price) and price-less invoice lines
+  // can still show savings. Persists immediately on blur.
+  const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
   // Resolve opens straight into search; review/view can toggle in to re-link.
   const [searching, setSearching] = useState(isResolve);
   const search = useProductSearch(searching);
@@ -4083,9 +4107,25 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
       ? "Confirm or change the product matched to this item."
       : "Please confirm the best match for this imported item.";
 
+  // Live savings preview from the entered price vs. the selected offer.
+  const selPrice = candidates[selected]?.price ?? row.price ?? null;
+  const paidNum = paid === "" ? null : Number(paid);
+  const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
+    ? (paidNum - selPrice) * qty
+    : 0;
+
+  // Persist the entered price on blur, but only when it actually changed, so we
+  // don't churn the draft list (or fire a toast) on every focus out.
+  function savePaid() {
+    if (!row.itemId) return;
+    const current = row.paidUnitPrice != null ? String(row.paidUnitPrice) : "";
+    if (paid === current) return;
+    onConfirmMatch?.(row.itemId, { paidUnitPrice: paid });
+  }
+
   function confirm() {
     if (row.itemId) {
-      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty, note: notes, verified: true });
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty, note: notes, paidUnitPrice: paid, verified: true });
       onToast("Match confirmed");
     } else {
       onToast("Match confirmed");
@@ -4197,6 +4237,32 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
               ))}
             </div>
             <button className="crl-drawer-link" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
+          </section>
+        )}
+
+        {!isResolve && selPrice != null && (
+          <section className="crl-drawer-section">
+            <span className="crl-drawer-label">What you pay now</span>
+            <p className="crl-drawer-hint">Enter your current price per {row.uom} to see your savings — scanned items don&rsquo;t carry a price.</p>
+            <div className="crl-paid-row">
+              <label className="crl-paid-field">
+                <span>$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={paid}
+                  onChange={(event) => setPaid(event.target.value)}
+                  onBlur={savePaid}
+                />
+                <em>/ {row.uom}</em>
+              </label>
+              {drawerSavings > 0 && (
+                <span className="crl-paid-savings">You save <strong>{mrMoney(drawerSavings)}</strong></span>
+              )}
+            </div>
           </section>
         )}
 
@@ -4342,6 +4408,7 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
                   : <em className={`m-conf ${mrConfTone(row.confidence)}`}>{row.confidence}%</em>}
                 {row.price != null && <strong>{mrMoney(row.price)}</strong>}
                 {row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}
+                {row.lineSavings > 0 && <small className="m-card-save">Save {mrMoney(row.lineSavings)}</small>}
               </span>
               <Icon name="icon-chevron-right" className="button-icon m-card-chev" />
             </button>
@@ -4381,6 +4448,7 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
   const initialSel = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
   const [selected, setSelected] = useState(initialSel < 0 ? 0 : initialSel);
   const [notes, setNotes] = useState(row.note || "");
+  const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
   const [searching, setSearching] = useState(isResolve);
   const search = useProductSearch(searching);
   const confLabel = row.verified ? "Confirmed by you"
@@ -4389,9 +4457,23 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
     : row.confidence >= 50 ? "Medium match confidence"
     : "Low match confidence";
 
+  // Live savings from the entered price vs. the selected offer.
+  const selPrice = candidates[selected]?.price ?? row.price ?? null;
+  const paidNum = paid === "" ? null : Number(paid);
+  const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
+    ? (paidNum - selPrice) * (row.qty || 1)
+    : 0;
+
+  function savePaid() {
+    if (!row.itemId) return;
+    const current = row.paidUnitPrice != null ? String(row.paidUnitPrice) : "";
+    if (paid === current) return;
+    onConfirmMatch?.(row.itemId, { paidUnitPrice: paid });
+  }
+
   function confirm() {
     if (row.itemId) {
-      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty: row.qty, note: notes, verified: true });
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty: row.qty, note: notes, paidUnitPrice: paid, verified: true });
     }
     onToast("Match confirmed");
     onClose();
@@ -4488,6 +4570,19 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
             <div><small>UOM</small><strong>{row.uom}</strong></div>
             <div><small>Line total</small><strong>{row.lineTotal != null ? mrMoney(row.lineTotal) : "—"}</strong></div>
           </div>
+          {!isResolve && selPrice != null && (
+            <>
+              <span className="m-detail-label">What you pay now</span>
+              <div className="crl-paid-row">
+                <label className="crl-paid-field">
+                  <span>$</span>
+                  <input type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={paid} onChange={(event) => setPaid(event.target.value)} onBlur={savePaid} />
+                  <em>/ {row.uom}</em>
+                </label>
+                {drawerSavings > 0 && <span className="crl-paid-savings">You save <strong>{mrMoney(drawerSavings)}</strong></span>}
+              </div>
+            </>
+          )}
           <textarea className="m-notes" placeholder="Add a note…" maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} />
           {row.itemId && (
             <button className="crl-drawer-remove m-detail-remove" type="button" onClick={removeItem}><Icon name="icon-trash" className="button-icon" />Remove item from list</button>
@@ -4703,7 +4798,12 @@ function CurrentReorderList({
     const total = rows.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
     const suppliers = new Set(rows.map((row) => row.supplier).filter((name) => name && name !== "—"));
     const coverage = rows.length ? Math.round((stats.matched / rows.length) * 100) : 0;
-    return { total, suppliers: suppliers.size, coverage };
+    const savings = rows.reduce((sum, row) => sum + (row.lineSavings || 0), 0);
+    const currentSpend = rows.reduce((sum, row) => sum + (row.currentLineTotal || 0), 0);
+    // Matched lines we could price-compare but don't have the buyer's price for
+    // yet — drives the "add your prices" nudge so scanned items count too.
+    const missingPrice = rows.filter((row) => row.status !== "Not found" && !row.hasPaidPrice).length;
+    return { total, suppliers: suppliers.size, coverage, savings, currentSpend, missingPrice };
   }, [rows, stats]);
 
   const tabFilter = {
@@ -4987,6 +5087,7 @@ function CurrentReorderList({
                         <>
                           <strong>{mrMoney(row.price)}</strong>
                           {row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}
+                          {row.lineSavings > 0 && <small className="crl-save">Save {mrMoney(row.lineSavings)}</small>}
                         </>
                       )}
                     </span>
@@ -5058,12 +5159,26 @@ function CurrentReorderList({
           <section className="crl-card">
             <h3>Plan Preview</h3>
             {usingReal ? (
-              <div className="crl-plan">
-                <div><span>Estimated total</span><strong>{money.format(planSummary.total)}</strong></div>
-                <div><span>Suppliers</span><strong>{planSummary.suppliers}</strong></div>
-                <div><span>Coverage</span><strong>{planSummary.coverage}%</strong></div>
-                <div><span>Items</span><strong>{totalItems}</strong></div>
-              </div>
+              <>
+                {planSummary.savings > 0 && (
+                  <div className="crl-savings-hero">
+                    <span className="crl-savings-hero-label">You save</span>
+                    <strong className="crl-savings-hero-amt">{money.format(planSummary.savings)}</strong>
+                    <span className="crl-savings-hero-sub">vs. {money.format(planSummary.currentSpend)} you pay now</span>
+                  </div>
+                )}
+                <div className="crl-plan">
+                  <div><span>Estimated total</span><strong>{money.format(planSummary.total)}</strong></div>
+                  <div><span>Suppliers</span><strong>{planSummary.suppliers}</strong></div>
+                  <div><span>Coverage</span><strong>{planSummary.coverage}%</strong></div>
+                  <div><span>Items</span><strong>{totalItems}</strong></div>
+                </div>
+                {planSummary.missingPrice > 0 && (
+                  <p className="crl-plan-note">
+                    Add what you pay to {planSummary.missingPrice} item{planSummary.missingPrice === 1 ? "" : "s"} to see your full savings.
+                  </p>
+                )}
+              </>
             ) : (
               <div className="crl-plan">
                 <div><span>Estimated total</span><strong>$5,842.16</strong></div>
