@@ -1,5 +1,6 @@
 import { createHash } from "crypto"
 import { parsePack, unitPriceCents } from "./pack"
+import { cleanProductName } from "./supplier-pipeline/html"
 
 type MatchStatus = "exact" | "variant" | "substitute" | "needs_review" | "unmatched"
 type SourceType = "website" | "pdf" | "csv" | "manual" | "api" | "email" | "agent"
@@ -226,7 +227,10 @@ export function buildSupplierCatalogIngestion(
     if (seenSkus.has(sku)) return
     seenSkus.add(sku)
     const supplierProductId = boundedId("msp", idKey(sku), 96)
-    const name = row.name?.trim() || row.description?.trim() || sku
+    // Clean here, at the one boundary every ingestion path funnels through, so
+    // weird characters (leftover HTML entities, smart punctuation, U+FFFD from
+    // bad-charset pages) never reach the DB no matter which adapter produced it.
+    const name = cleanProductName(row.name?.trim() || row.description?.trim() || sku)
     const description = row.description?.trim() || name
     const category = row.category?.trim() || "Dental supplies"
     const match = scoreCanonicalMatch(row, canonicalProducts)

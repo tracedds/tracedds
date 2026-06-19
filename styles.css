@@ -7768,57 +7768,6 @@ th {
     color: #0f62ff;
   }
 
-  /* Account avatar replaces the Settings icon: tap to open a menu with
-     Settings + Sign out, mirroring the desktop topbar account menu. */
-  .m-nav-avatar {
-    display: grid;
-    place-items: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 999px;
-    background: var(--blue);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 1;
-  }
-  .m-nav-account.active .m-nav-avatar { box-shadow: 0 0 0 2px rgba(15, 98, 255, 0.35); }
-
-  .m-nav-menu-backdrop { position: fixed; inset: 0; z-index: 7; }
-  .m-nav-menu {
-    position: fixed;
-    right: 12px;
-    bottom: calc(84px + env(safe-area-inset-bottom));
-    z-index: 8;
-    display: grid;
-    gap: 2px;
-    min-width: 220px;
-    padding: 6px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface);
-    box-shadow: 0 16px 42px rgba(23, 44, 92, 0.18);
-  }
-  .m-nav-menu-head { display: grid; gap: 2px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
-  .m-nav-menu-head strong { color: var(--ink); font-size: 14px; }
-  .m-nav-menu-head small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .m-nav-menu button {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    padding: 12px 10px;
-    border: 0;
-    border-radius: 8px;
-    background: none;
-    color: var(--ink);
-    font-size: 15px;
-    font-weight: 600;
-    text-align: left;
-  }
-  .m-nav-menu button .button-icon { width: 18px; height: 18px; color: var(--muted); }
-
   .mobile-bottom-nav span {
     position: relative;
     display: grid;
@@ -8642,6 +8591,24 @@ th {
 .crl-plan-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--blue); font-weight: 700; font-size: 13px; }
 .crl-plan-btn .button-icon { width: 16px; height: 16px; }
 
+/* Savings hero + per-line savings */
+.crl-savings-hero { display: grid; gap: 2px; margin: 4px 0 14px; padding: 14px 16px; border: 1px solid #cdeede; border-radius: 11px; background: #e3f6ed; }
+.crl-savings-hero-label { color: var(--green); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.crl-savings-hero-amt { color: var(--green); font-size: 28px; font-weight: 800; line-height: 1.1; }
+.crl-savings-hero-sub { color: var(--muted); font-size: 12px; }
+.crl-plan-note { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.crl-price small.crl-save { color: var(--green); font-weight: 700; }
+
+/* "What you pay now" entry (detail panels) */
+.crl-paid-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-top: 8px; }
+.crl-paid-field { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-weight: 600; }
+.crl-paid-field span { color: var(--muted); }
+.crl-paid-field input { width: 84px; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; }
+.crl-paid-field em { color: var(--muted); font-style: normal; font-size: 12px; }
+.crl-paid-savings { color: var(--green); font-size: 13px; }
+.crl-paid-savings strong { color: var(--green); font-weight: 800; }
+.m-card-save { color: var(--green); font-weight: 700; }
+
 /* Placeholder (History) */
 .crl-placeholder { display: grid; justify-items: center; gap: 8px; padding: 64px 24px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface); text-align: center; }
 .crl-placeholder-icon { width: 34px; height: 34px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.8; }
@@ -8847,6 +8814,20 @@ th {
 .m-search-wrap .search-results { position: absolute; top: calc(100% + 8px); left: 0; right: 0; width: auto; max-width: none; z-index: 30; }
 .m-brandbar .brand-mark { width: 112px; }
 .m-iconbtn .m-brand-badge { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid var(--surface); border-radius: 999px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
+
+/* Account avatar sits to the right of the alerts bell in the mobile top bar:
+   tap to open a menu with Settings + Sign out, mirroring the desktop topbar. */
+.m-brand-actions { display: flex; align-items: center; gap: 10px; }
+.m-brand-account { position: relative; }
+.m-brand-avatar-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 999px; background: var(--blue); color: #fff; font-size: 13px; font-weight: 800; line-height: 1; }
+.m-brand-avatar-btn.active { box-shadow: 0 0 0 3px rgba(15, 98, 255, 0.28); }
+.m-brand-menu-backdrop { position: fixed; inset: 0; z-index: 30; }
+.m-brand-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 31; display: grid; gap: 2px; min-width: 220px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 16px 42px rgba(23, 44, 92, 0.18); }
+.m-brand-menu-head { display: grid; gap: 2px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.m-brand-menu-head strong { color: var(--ink); font-size: 14px; }
+.m-brand-menu-head small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-brand-menu button { display: flex; flex-direction: row; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink); font-size: 15px; font-weight: 600; text-align: left; }
+.m-brand-menu button .button-icon { width: 18px; height: 18px; color: var(--muted); }
 
 .m-tabs { display: flex; gap: 18px; overflow-x: auto; border-bottom: 1px solid var(--line); }
 .m-tabs button { padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
@@ -9071,7 +9052,11 @@ th {
 .pdp-row-sku { font-size: 13px; color: var(--ink); }
 .pdp-row-unit strong { font-size: 15px; color: var(--ink); }
 .pdp-row-unit span { color: var(--muted); font-size: 12px; }
+.pdp-unit-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.pdp-unit-sub.muted { font-style: italic; opacity: 0.85; }
 .pdp-row-unit .pdp-tag-best { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 999px; background: var(--green); color: #fff; font-size: 11px; font-weight: 700; }
+.pdp-compare-note { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: var(--amber-2, #fef3c7); color: var(--amber, #92600a); font-size: 11px; font-weight: 700; }
+.pdp-compare-note .button-icon { width: 13px; height: 13px; }
 .pdp-row-ext { font-size: 14px; font-weight: 700; color: var(--ink); }
 .pdp-row-avail { display: grid; gap: 2px; font-size: 13px; }
 .pdp-row-avail > span { display: inline-flex; align-items: center; }

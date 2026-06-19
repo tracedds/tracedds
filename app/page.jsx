@@ -663,8 +663,7 @@ function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResult, sca
   );
 }
 
-function MobileBottomNav({ view, onNavigate, onScan, buyerName, practiceName, buyerInitials, email, onLogout }) {
-  const [accountOpen, setAccountOpen] = useState(false);
+function MobileBottomNav({ view, onNavigate, onScan }) {
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
       <div className="m-nav-group">
@@ -682,35 +681,10 @@ function MobileBottomNav({ view, onNavigate, onScan, buyerName, practiceName, bu
         <button className={view === "history" ? "active" : ""} type="button" onClick={() => onNavigate("history")}>
           <span><Icon name="icon-clock" className="mobile-bottom-icon" /></span>History
         </button>
-        <button
-          className={`m-nav-account ${view === "settings" || accountOpen ? "active" : ""}`}
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={accountOpen}
-          onClick={() => setAccountOpen((open) => !open)}
-        >
-          <span className="m-nav-avatar">{buyerInitials || "··"}</span>Account
+        <button className={view === "settings" ? "active" : ""} type="button" onClick={() => onNavigate("settings")}>
+          <span><Icon name="icon-settings" className="mobile-bottom-icon" /></span>Settings
         </button>
       </div>
-      {accountOpen && (
-        <>
-          <div className="m-nav-menu-backdrop" onClick={() => setAccountOpen(false)} />
-          <div className="m-nav-menu" role="menu">
-            <div className="m-nav-menu-head">
-              <strong>{buyerName || "Your account"}</strong>
-              <small>{email || practiceName || "Buyer"}</small>
-            </div>
-            <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate("settings"); }}>
-              <Icon name="icon-settings" className="button-icon" />
-              Settings
-            </button>
-            <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onLogout?.(); }}>
-              <Icon name="icon-logout" className="button-icon" />
-              Sign out
-            </button>
-          </div>
-        </>
-      )}
     </nav>
   );
 }
@@ -1938,6 +1912,10 @@ export default function Home() {
       if (patch.qty !== undefined) next.draftQty = patch.qty;
       if (patch.note !== undefined) next.note = patch.note;
       if (patch.verified !== undefined) next.verified = patch.verified;
+      if (patch.paidUnitPrice !== undefined) {
+        const n = patch.paidUnitPrice === null || patch.paidUnitPrice === "" ? null : Number(patch.paidUnitPrice);
+        next.paidUnitPrice = Number.isFinite(n) && n > 0 ? n : null;
+      }
       return next;
     }));
   }
@@ -2182,6 +2160,9 @@ export default function Home() {
                 onRenameList={setListName}
                 buyerName={buyerName}
                 practiceName={practiceName}
+                buyerInitials={buyerInitials}
+                email={me?.customer?.email}
+                onLogout={handleLogout}
                 addMode={addMode}
                 onAddMode={setAddMode}
                 lastUpload={lastUpload}
@@ -2256,11 +2237,6 @@ export default function Home() {
           view={view}
           onNavigate={setView}
           onScan={openMobileScan}
-          buyerName={buyerName}
-          practiceName={practiceName}
-          buyerInitials={buyerInitials}
-          email={me?.customer?.email}
-          onLogout={handleLogout}
         />
         </div>
       </div>
@@ -3209,7 +3185,19 @@ function ProductDetail({ handle, onNavigate, onToast }) {
   // The API returns one offer per supplier variant; collapse to the lowest-priced
   // offer per supplier so the comparison reads as a supplier comparison (one row
   // each) and the "N suppliers" counts stay consistent with the hero badge.
-  const sortedOffers = [...(product.offers || [])].sort((a, b) => a.price_cents - b.price_cents);
+  // Rank suppliers by comparable per-unit price (F1). Offers whose pack is
+  // unknown — or whose unit isn't comparable to the rest of the group (F2) —
+  // have no trustworthy per-unit price and fall last, ordered by sticker price.
+  const offerUnitCost = (offer) =>
+    offer.unit_comparable && offer.unit_price_cents != null
+      ? offer.unit_price_cents
+      : Number.MAX_SAFE_INTEGER;
+  const sortedOffers = [...(product.offers || [])].sort((a, b) => {
+    const ua = offerUnitCost(a);
+    const ub = offerUnitCost(b);
+    if (ua !== ub) return ua - ub;
+    return (a.price_cents ?? 0) - (b.price_cents ?? 0);
+  });
   const seenSuppliers = new Set();
   const offers = sortedOffers.filter((offer) => {
     const key = offer.supplier_id || offer.supplier_name;
@@ -3223,6 +3211,13 @@ function ProductDetail({ handle, onNavigate, onToast }) {
   const brand = best?.brand || attrs.brands?.[0] || "";
   const packSize = attrs.pack_sizes?.[0] || best?.name?.match(/(\d+\s*\/\s*[A-Za-z.]+)/)?.[1] || "—";
   const uomLabel = (uom || "unit").toLowerCase();
+  // Whether the group's per-unit prices are comparable (same base unit), and the
+  // unit they compare in — drives the "/ ea" labels and the mixed-units note.
+  const unitComparable = !!product.unit_comparable;
+  const unitBasis = product.unit_comparison_basis || best?.base_unit || "ea";
+  const bestPerUnit = best && best.unit_comparable && best.unit_price_cents != null
+    ? best.unit_price_cents / 100
+    : null;
   const bestUnit = best ? best.price_cents / 100 : null;
   const prices = offers.map((offer) => offer.price_cents);
   const range = prices.length ? { lowest: Math.min(...prices), highest: Math.max(...prices) } : null;
@@ -3331,6 +3326,12 @@ function ProductDetail({ handle, onNavigate, onToast }) {
               <div className="pdp-compare-title">
                 <h2>Supplier pricing comparison</h2>
                 <span className="pdp-count-badge">{offers.length} supplier{offers.length === 1 ? "" : "s"}</span>
+                {offers.length > 1 && !unitComparable && (
+                  <span className="pdp-compare-note" title="These offers use different pack units, so per-unit prices can't be compared directly. Ranked by pack price instead.">
+                    <Icon name="icon-alert-triangle" className="button-icon" />
+                    Mixed pack units — ranked by pack price
+                  </span>
+                )}
               </div>
               <div className="pdp-qty-inline">
                 <span>Quantity</span>
@@ -3350,7 +3351,15 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                   <span>Actions</span>
                 </div>
                 {offers.map((offer, index) => {
-                  const unit = offer.price_cents / 100;
+                  const packPrice = offer.price_cents / 100;
+                  // The comparable figure is the per-unit price; show it as the
+                  // headline and the pack price/size as context. When the offer
+                  // has no comparable unit price, fall back to the pack price.
+                  const perUnit = offer.unit_comparable && offer.unit_price_cents != null
+                    ? offer.unit_price_cents / 100
+                    : null;
+                  const packLabel = offer.pack_size
+                    || (offer.pack_quantity ? `${offer.pack_quantity}/pack` : "");
                   const meta = supplierMeta(offer.supplier_id || offer.supplier_name || index);
                   const avail = availabilityInfo(offer.availability);
                   return (
@@ -3364,10 +3373,20 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                       </div>
                       <div className="pdp-row-sku">{offer.sku || "—"}</div>
                       <div className="pdp-row-unit">
-                        <strong>{money.format(unit)}</strong> <span>/ {uomLabel}</span>
-                        {index === 0 && <span className="pdp-tag-best">Best price</span>}
+                        {perUnit != null ? (
+                          <>
+                            <strong>{money.format(perUnit)}</strong> <span>/ {unitBasis}</span>
+                            <small className="pdp-unit-sub">{money.format(packPrice)}{packLabel ? ` · ${packLabel}` : ""}</small>
+                          </>
+                        ) : (
+                          <>
+                            <strong>{money.format(packPrice)}</strong> <span>/ {packLabel ? "pack" : uomLabel}</span>
+                            <small className="pdp-unit-sub muted">{packLabel || "pack size unknown"}</small>
+                          </>
+                        )}
+                        {index === 0 && <span className="pdp-tag-best">{unitComparable ? "Best per-unit" : "Lowest price"}</span>}
                       </div>
-                      <div className="pdp-row-ext">{money.format(unit * qty)}</div>
+                      <div className="pdp-row-ext">{money.format(packPrice * qty)}</div>
                       <div className={`pdp-row-avail ${avail.tone}`}>
                         <span><span className="pdp-dot" aria-hidden="true" />{avail.label}</span>
                         <small>{avail.sub}</small>
@@ -3483,7 +3502,7 @@ function ProductDetail({ handle, onNavigate, onToast }) {
               <div className="pdp-best-box">
                 <div className="pdp-best-main">
                   <span>Best price ({best.supplier_name})</span>
-                  <strong>{money.format(bestUnit)} <em>/ {uomLabel}</em></strong>
+                  <strong>{money.format(bestPerUnit ?? bestUnit)} <em>/ {bestPerUnit != null ? unitBasis : uomLabel}</em></strong>
                 </div>
                 <div className="pdp-best-side">
                   <span>Est. total</span>
@@ -3686,6 +3705,9 @@ function makeScanDraftItem(code, product) {
     documentQuantities: { scan: 1 },
     barcode: code || "",
     extractedFrom: `Scanned · ${code || "no code"}`,
+    // A barcode carries no price, so there's no savings anchor until the buyer
+    // tells us what they currently pay (captured in the item detail panel).
+    paidUnitPrice: null,
   };
   // Real catalog match from the lookup endpoint.
   if (product) {
@@ -3894,6 +3916,15 @@ function deriveMatchRows(items, prefs) {
         perEa: offer.perUnit ?? null,
         confidence: Math.max(conf - 10, 40),
       }));
+    // Savings against what the practice currently pays. We compare on the
+    // pack-normalized "comparable" price (same basis the backend matcher uses:
+    // max(0, (paid - comparable) * qty)) so per-pack-size differences are fair.
+    const paidUnitPrice = item.paidUnitPrice != null ? Number(item.paidUnitPrice) : null;
+    const hasPaidPrice = paidUnitPrice != null && Number.isFinite(paidUnitPrice) && paidUnitPrice > 0;
+    const compareUnitPrice = best ? (best.comparablePrice ?? best.price) : null;
+    const lineSavings = !notFound && hasPaidPrice && compareUnitPrice != null && paidUnitPrice > compareUnitPrice
+      ? (paidUnitPrice - compareUnitPrice) * qty
+      : 0;
     return {
       id: index + 1,
       itemId: item.id || null,
@@ -3919,6 +3950,10 @@ function deriveMatchRows(items, prefs) {
       qty,
       uom: item.unit || "ea",
       lineTotal: notFound ? null : (best ? best.price * qty : price * qty),
+      paidUnitPrice: hasPaidPrice ? paidUnitPrice : null,
+      hasPaidPrice,
+      currentLineTotal: hasPaidPrice ? paidUnitPrice * qty : null,
+      lineSavings,
       others,
     };
   });
@@ -4164,6 +4199,10 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
   const [selected, setSelected] = useState(selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex));
   const [qty, setQty] = useState(row.qty || 1);
   const [notes, setNotes] = useState(row.note || "");
+  // What the practice currently pays per pack — the savings anchor. Editable
+  // here so scanned items (which carry no price) and price-less invoice lines
+  // can still show savings. Persists immediately on blur.
+  const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
   // Resolve opens straight into search; review/view can toggle in to re-link.
   const [searching, setSearching] = useState(isResolve);
   const search = useProductSearch(searching);
@@ -4176,9 +4215,25 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
       ? "Confirm or change the product matched to this item."
       : "Please confirm the best match for this imported item.";
 
+  // Live savings preview from the entered price vs. the selected offer.
+  const selPrice = candidates[selected]?.price ?? row.price ?? null;
+  const paidNum = paid === "" ? null : Number(paid);
+  const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
+    ? (paidNum - selPrice) * qty
+    : 0;
+
+  // Persist the entered price on blur, but only when it actually changed, so we
+  // don't churn the draft list (or fire a toast) on every focus out.
+  function savePaid() {
+    if (!row.itemId) return;
+    const current = row.paidUnitPrice != null ? String(row.paidUnitPrice) : "";
+    if (paid === current) return;
+    onConfirmMatch?.(row.itemId, { paidUnitPrice: paid });
+  }
+
   function confirm() {
     if (row.itemId) {
-      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty, note: notes, verified: true });
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty, note: notes, paidUnitPrice: paid, verified: true });
       onToast("Match confirmed");
     } else {
       onToast("Match confirmed");
@@ -4293,6 +4348,32 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
           </section>
         )}
 
+        {!isResolve && selPrice != null && (
+          <section className="crl-drawer-section">
+            <span className="crl-drawer-label">What you pay now</span>
+            <p className="crl-drawer-hint">Enter your current price per {row.uom} to see your savings — scanned items don&rsquo;t carry a price.</p>
+            <div className="crl-paid-row">
+              <label className="crl-paid-field">
+                <span>$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={paid}
+                  onChange={(event) => setPaid(event.target.value)}
+                  onBlur={savePaid}
+                />
+                <em>/ {row.uom}</em>
+              </label>
+              {drawerSavings > 0 && (
+                <span className="crl-paid-savings">You save <strong>{mrMoney(drawerSavings)}</strong></span>
+              )}
+            </div>
+          </section>
+        )}
+
         <section className="crl-drawer-section">
           <span className="crl-drawer-label">Notes (optional)</span>
           <textarea className="crl-drawer-notes" maxLength={500} placeholder="Add a note about this item…" value={notes} onChange={(event) => setNotes(event.target.value)} />
@@ -4322,16 +4403,52 @@ function rowMode(row) {
 
 // Mobile card list for the current reorder list (replaces the desktop table on
 // phones). Stats band + status tabs + tappable product cards.
-function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate }) {
+function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate, buyerName = "", practiceName = "", buyerInitials = "", email = "", onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   return (
     <div className="m-list">
       <div className="m-brandbar">
         <BrandMark />
-        <button className="m-iconbtn" type="button" aria-label="Alerts">
-          <Icon name="icon-bell" className="button-icon" />
-          <span className="m-brand-badge">3</span>
-        </button>
+        <div className="m-brand-actions">
+          <button className="m-iconbtn" type="button" aria-label="Alerts">
+            <Icon name="icon-bell" className="button-icon" />
+            <span className="m-brand-badge">3</span>
+          </button>
+          {onLogout && (
+            <div className="m-brand-account">
+              <button
+                className={`m-brand-avatar-btn ${accountOpen ? "active" : ""}`}
+                type="button"
+                aria-label="Account"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen((open) => !open)}
+              >
+                {buyerInitials || "··"}
+              </button>
+              {accountOpen && (
+                <>
+                  <div className="m-brand-menu-backdrop" onClick={() => setAccountOpen(false)} />
+                  <div className="m-brand-menu" role="menu">
+                    <div className="m-brand-menu-head">
+                      <strong>{buyerName || "Your account"}</strong>
+                      <small>{email || practiceName || "Buyer"}</small>
+                    </div>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate?.(pathForView("settings")); }}>
+                      <Icon name="icon-settings" className="button-icon" />
+                      Settings
+                    </button>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onLogout?.(); }}>
+                      <Icon name="icon-logout" className="button-icon" />
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="m-search-wrap">
@@ -4435,6 +4552,7 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
                   : <em className={`m-conf ${mrConfTone(row.confidence)}`}>{row.confidence}%</em>}
                 {row.price != null && <strong>{mrMoney(row.price)}</strong>}
                 {row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}
+                {row.lineSavings > 0 && <small className="m-card-save">Save {mrMoney(row.lineSavings)}</small>}
               </span>
               <Icon name="icon-chevron-right" className="button-icon m-card-chev" />
             </button>
@@ -4474,6 +4592,7 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
   const initialSel = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
   const [selected, setSelected] = useState(initialSel < 0 ? 0 : initialSel);
   const [notes, setNotes] = useState(row.note || "");
+  const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
   const [searching, setSearching] = useState(isResolve);
   const search = useProductSearch(searching);
   const confLabel = row.verified ? "Confirmed by you"
@@ -4482,9 +4601,23 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
     : row.confidence >= 50 ? "Medium match confidence"
     : "Low match confidence";
 
+  // Live savings from the entered price vs. the selected offer.
+  const selPrice = candidates[selected]?.price ?? row.price ?? null;
+  const paidNum = paid === "" ? null : Number(paid);
+  const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
+    ? (paidNum - selPrice) * (row.qty || 1)
+    : 0;
+
+  function savePaid() {
+    if (!row.itemId) return;
+    const current = row.paidUnitPrice != null ? String(row.paidUnitPrice) : "";
+    if (paid === current) return;
+    onConfirmMatch?.(row.itemId, { paidUnitPrice: paid });
+  }
+
   function confirm() {
     if (row.itemId) {
-      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty: row.qty, note: notes, verified: true });
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty: row.qty, note: notes, paidUnitPrice: paid, verified: true });
     }
     onToast("Match confirmed");
     onClose();
@@ -4581,6 +4714,19 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
             <div><small>UOM</small><strong>{row.uom}</strong></div>
             <div><small>Line total</small><strong>{row.lineTotal != null ? mrMoney(row.lineTotal) : "—"}</strong></div>
           </div>
+          {!isResolve && selPrice != null && (
+            <>
+              <span className="m-detail-label">What you pay now</span>
+              <div className="crl-paid-row">
+                <label className="crl-paid-field">
+                  <span>$</span>
+                  <input type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={paid} onChange={(event) => setPaid(event.target.value)} onBlur={savePaid} />
+                  <em>/ {row.uom}</em>
+                </label>
+                {drawerSavings > 0 && <span className="crl-paid-savings">You save <strong>{mrMoney(drawerSavings)}</strong></span>}
+              </div>
+            </>
+          )}
           <textarea className="m-notes" placeholder="Add a note…" maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} />
           {row.itemId && (
             <button className="crl-drawer-remove m-detail-remove" type="button" onClick={removeItem}><Icon name="icon-trash" className="button-icon" />Remove item from list</button>
@@ -4711,6 +4857,9 @@ function CurrentReorderList({
   onRenameList,
   buyerName = "",
   practiceName = "",
+  buyerInitials = "",
+  email = "",
+  onLogout,
   addMode,
   onAddMode,
   lastUpload,
@@ -4796,7 +4945,12 @@ function CurrentReorderList({
   const planSummary = useMemo(() => {
     const totals = computePlanTotals(rows, supplierShipping);
     const coverage = rows.length ? Math.round((stats.matched / rows.length) * 100) : 0;
-    return { ...totals, coverage };
+    const savings = rows.reduce((sum, row) => sum + (row.lineSavings || 0), 0);
+    const currentSpend = rows.reduce((sum, row) => sum + (row.currentLineTotal || 0), 0);
+    // Matched lines we could price-compare but don't have the buyer's price for
+    // yet — drives the "add your prices" nudge so scanned items count too.
+    const missingPrice = rows.filter((row) => row.status !== "Not found" && !row.hasPaidPrice).length;
+    return { ...totals, coverage, savings, currentSpend, missingPrice };
   }, [rows, stats, supplierShipping]);
 
   const tabFilter = {
@@ -4862,6 +5016,11 @@ function CurrentReorderList({
           searchResults={searchResults}
           searchLoading={searchLoading}
           onNavigate={onNavigate}
+          buyerName={buyerName}
+          practiceName={practiceName}
+          buyerInitials={buyerInitials}
+          email={email}
+          onLogout={onLogout}
         />
         {detail && (
           <MobileItemDetail
@@ -5080,6 +5239,7 @@ function CurrentReorderList({
                         <>
                           <strong>{mrMoney(row.price)}</strong>
                           {row.perEa != null && <small>${mrEa(row.perEa)} / ea</small>}
+                          {row.lineSavings > 0 && <small className="crl-save">Save {mrMoney(row.lineSavings)}</small>}
                         </>
                       )}
                     </span>
@@ -5152,6 +5312,13 @@ function CurrentReorderList({
             <h3>Plan Preview</h3>
             {usingReal ? (
               <>
+                {planSummary.savings > 0 && (
+                  <div className="crl-savings-hero">
+                    <span className="crl-savings-hero-label">You save</span>
+                    <strong className="crl-savings-hero-amt">{money.format(planSummary.savings)}</strong>
+                    <span className="crl-savings-hero-sub">vs. {money.format(planSummary.currentSpend)} you pay now</span>
+                  </div>
+                )}
                 <div className="crl-plan">
                   <div><span>Items subtotal</span><strong>{money.format(planSummary.itemsSubtotal)}</strong></div>
                   <div>
@@ -5170,6 +5337,11 @@ function CurrentReorderList({
                   <p className="crl-ship-nudge">
                     Add {money.format(planSummary.nudge.remaining)} from {planSummary.nudge.supplier} to unlock free shipping
                     {planSummary.nudge.saves ? ` (saves ${money.format(planSummary.nudge.saves)})` : ""}.
+                  </p>
+                )}
+                {planSummary.missingPrice > 0 && (
+                  <p className="crl-plan-note">
+                    Add what you pay to {planSummary.missingPrice} item{planSummary.missingPrice === 1 ? "" : "s"} to see your full savings.
                   </p>
                 )}
               </>
