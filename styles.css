@@ -8786,6 +8786,14 @@ th {
 .crl-cand { display: grid; grid-template-columns: 18px 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
 .crl-cand.active { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); background: var(--blue-2); }
 .crl-cand input { accent-color: var(--blue); width: 16px; height: 16px; }
+.crl-cand.oos { cursor: not-allowed; background: var(--bg, #fafafa); }
+.crl-cand.oos .crl-thumb, .crl-cand.oos .crl-cand-info, .crl-cand.oos .crl-cand-right { opacity: 0.55; }
+.crl-cand-name-link { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-size: 13px; font-weight: 700; text-decoration: none; }
+.crl-cand-name-link:hover { color: var(--blue); text-decoration: underline; }
+.crl-cand-name-link .button-icon { width: 12px; height: 12px; flex: none; opacity: 0.6; }
+.m-match-info .crl-cand-name-link { font-size: 14px; }
+.m-match.oos { opacity: 0.55; }
+.m-match.oos .crl-cand-name-link { color: var(--ink); }
 .crl-cand .crl-thumb { width: 40px; height: 40px; }
 .crl-cand-info { min-width: 0; }
 .crl-cand-info strong { display: block; color: var(--ink); font-size: 13px; }

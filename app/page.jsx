@@ -4387,7 +4387,10 @@ function optimizeLandedAssignment(rows, shippingByName, prefs) {
   const lines = (rows || [])
     .filter((row) => row.status !== "Not found" && (row.offers || []).length && row.itemId)
     .map((row) => {
-      const pool = candidatePool(row.offers, prefs);
+      // Only consider offers we can actually order — never consolidate a line
+      // onto an out-of-stock supplier just to save shipping. Lines with no
+      // orderable offer are stranded and drop out of the optimization below.
+      const pool = candidatePool(row.offers, prefs).filter(isOrderable);
       const current = pool.find((offer) => offer.key === row.selectedOfferKey) || pool[0];
       return { itemId: row.itemId, qty: row.qty || 1, pool, current };
     })
@@ -4713,6 +4716,26 @@ function CandidateSub({ supplier, sub }) {
   );
 }
 
+// Candidate product name. When the offer carries a supplier product URL, the
+// name links out to the supplier's store (new tab) so the buyer can inspect the
+// real listing. stopPropagation keeps the click from toggling the radio.
+function CandidateName({ name, productUrl }) {
+  if (!productUrl) return <strong>{name}</strong>;
+  return (
+    <a
+      className="crl-cand-name-link"
+      href={productUrl}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      title="View on supplier store"
+    >
+      {name}
+      <Icon name="icon-link" className="button-icon" />
+    </a>
+  );
+}
+
 // Per-offer stock chip for the candidate list, so the buyer can see which
 // suppliers are out of (or low on) stock when choosing the match.
 function CandidateStock({ availability, liveAvailable }) {
@@ -4744,10 +4767,11 @@ function offerCandidates(row) {
     recommended: offer.key === row.recommendedOfferKey,
     availability: offer.availability,
     liveAvailable: offer.liveAvailable,
+    productUrl: offer.productUrl || "",
   }));
   if (fromOffers.length) return fromOffers;
   if (row.matchName) {
-    return [{ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, availability: row.availability, liveAvailable: row.liveAvailable }];
+    return [{ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" }];
   }
   return [];
 }
@@ -4948,12 +4972,14 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
             <strong className="crl-drawer-subhead">Choose the match</strong>
             <p className="crl-drawer-hint">We recommend one offer from your buying preferences — pick a different one any time.</p>
             <div className="crl-cand-list">
-              {candidates.map((candidate, index) => (
-                <label key={candidate.key ?? index} className={`crl-cand ${selected === index ? "active" : ""}`}>
-                  <input type="radio" name="crl-cand" checked={selected === index} onChange={() => setSelected(index)} />
+              {candidates.map((candidate, index) => {
+                const oos = !isOrderable(candidate);
+                return (
+                <label key={candidate.key ?? index} className={`crl-cand ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos}>
+                  <input type="radio" name="crl-cand" checked={selected === index} disabled={oos} onChange={() => setSelected(index)} />
                   <ProductThumb image={candidate.image} alt={candidate.name} />
                   <span className="crl-cand-info">
-                    <strong>{candidate.name}</strong>
+                    <CandidateName name={candidate.name} productUrl={candidate.productUrl} />
                     <CandidateSub supplier={candidate.supplier} sub={candidate.sub} />
                     <CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} />
                   </span>
@@ -4965,7 +4991,8 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
                     </span>
                   </span>
                 </label>
-              ))}
+                );
+              })}
             </div>
             <button className="crl-drawer-link" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
           </section>
@@ -5216,9 +5243,10 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
     confidence: offer.key === row.recommendedOfferKey ? row.confidence : Math.max((row.confidence ?? 50) - 10, 40),
     availability: offer.availability,
     liveAvailable: offer.liveAvailable,
+    productUrl: offer.productUrl || "",
   }));
   if (!isResolve && !candidates.length && row.matchName) {
-    candidates.push({ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence, availability: row.availability, liveAvailable: row.liveAvailable });
+    candidates.push({ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" });
   }
   const recIdx = candidates.findIndex((candidate) => candidate.recommended);
   if (recIdx > 0) candidates.unshift(...candidates.splice(recIdx, 1));
@@ -5317,23 +5345,26 @@ function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConf
           <>
             <section className="m-detail-sec">
               <span className="m-detail-label">Recommended</span>
-              <label className={`m-match best ${selected === 0 ? "active" : ""}`}>
-                <input type="radio" name="m-cand" checked={selected === 0} onChange={() => setSelected(0)} />
+              <label className={`m-match best ${selected === 0 ? "active" : ""} ${!isOrderable(candidates[0]) ? "oos" : ""}`} aria-disabled={!isOrderable(candidates[0])}>
+                <input type="radio" name="m-cand" checked={selected === 0} disabled={!isOrderable(candidates[0])} onChange={() => setSelected(0)} />
                 <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
-                <span className="m-match-info"><strong>{candidates[0].name}</strong><CandidateSub supplier={candidates[0].supplier} sub={candidates[0].sub} /><CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
+                <span className="m-match-info"><CandidateName name={candidates[0].name} productUrl={candidates[0].productUrl} /><CandidateSub supplier={candidates[0].supplier} sub={candidates[0].sub} /><CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
                 <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrMoney(candidates[0].price)}</strong>{candidates[0].perEa != null && <small>${mrEa(candidates[0].perEa)} / ea</small>}</span>
               </label>
             </section>
             {candidates.length > 1 && (
               <section className="m-detail-sec">
                 <span className="m-detail-label">Other possible matches</span>
-                {candidates.slice(1).map((candidate, index) => (
-                  <label className={`m-match ${selected === index + 1 ? "active" : ""}`} key={candidate.key ?? index + 1}>
-                    <input type="radio" name="m-cand" checked={selected === index + 1} onChange={() => setSelected(index + 1)} />
-                    <span className="m-match-info"><strong>{candidate.name}</strong><CandidateSub supplier={candidate.supplier} sub={candidate.sub} /><CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
+                {candidates.slice(1).map((candidate, index) => {
+                  const oos = !isOrderable(candidate);
+                  return (
+                  <label className={`m-match ${selected === index + 1 ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index + 1}>
+                    <input type="radio" name="m-cand" checked={selected === index + 1} disabled={oos} onChange={() => setSelected(index + 1)} />
+                    <span className="m-match-info"><CandidateName name={candidate.name} productUrl={candidate.productUrl} /><CandidateSub supplier={candidate.supplier} sub={candidate.sub} /><CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
                     <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrMoney(candidate.price)}</strong>{candidate.perEa != null && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
                   </label>
-                ))}
+                  );
+                })}
               </section>
             )}
             <button className="crl-drawer-link m-detail-relink" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
@@ -5590,6 +5621,37 @@ function CurrentReorderList({
     if (!planSummary.shippingComplete || buyingPrefs?.strategy === "brand-match") return null;
     return optimizeLandedAssignment(rows, supplierShipping, buyingPrefs);
   }, [rows, supplierShipping, buyingPrefs, planSummary.shippingComplete]);
+
+  // The per-line supplier moves the optimization would make, for the preview
+  // diff. Only lines whose offer actually changes are shown.
+  const consolidationMoves = useMemo(() => {
+    if (!optimizedPlan) return [];
+    const byId = optimizedPlan.assignmentByItemId;
+    const moves = [];
+    for (const row of rows) {
+      const newKey = byId[row.itemId];
+      if (!newKey || newKey === row.selectedOfferKey) continue;
+      const from = (row.offers || []).find((offer) => offer.key === row.selectedOfferKey);
+      const to = (row.offers || []).find((offer) => offer.key === newKey);
+      if (!from || !to) continue;
+      moves.push({
+        itemId: row.itemId,
+        name: row.matchName || row.canonicalName || row.importedName,
+        qty: row.qty,
+        uom: row.uom,
+        fromSupplier: from.supplier,
+        fromLine: (from.price || 0) * (row.qty || 1),
+        toSupplier: to.supplier,
+        toLine: (to.price || 0) * (row.qty || 1),
+      });
+    }
+    return moves;
+  }, [optimizedPlan, rows]);
+
+  // Consolidation is offered only once the list is settled (every match dealt
+  // with) so we don't optimize a moving target. Apply happens from the preview.
+  const listSettled = listStatus === "verified";
+  const [showConsolidate, setShowConsolidate] = useState(false);
 
   const tabFilter = {
     all: () => true,
@@ -5976,7 +6038,7 @@ function CurrentReorderList({
                     {planSummary.nudge.saves ? ` (saves ${money.format(planSummary.nudge.saves)})` : ""}.
                   </p>
                 )}
-                {optimizedPlan && (
+                {optimizedPlan && listSettled && (
                   <div className="crl-optimize">
                     <div className="crl-optimize-text">
                       Save <strong>{money.format(optimizedPlan.savings)}</strong>{" "}
@@ -5984,10 +6046,15 @@ function CurrentReorderList({
                         ? `by consolidating to ${optimizedPlan.suppliers} supplier${optimizedPlan.suppliers === 1 ? "" : "s"}`
                         : "by optimizing suppliers for shipping"}.
                     </div>
-                    <button className="crl-optimize-btn" type="button" onClick={() => onApplyOptimized?.(optimizedPlan.assignmentByItemId)}>
-                      Apply
+                    <button className="crl-optimize-btn" type="button" onClick={() => setShowConsolidate(true)}>
+                      Review changes
                     </button>
                   </div>
+                )}
+                {optimizedPlan && !listSettled && (
+                  <p className="crl-ship-nudge">
+                    Resolve the remaining items to review consolidating suppliers and save {money.format(optimizedPlan.savings)} on shipping.
+                  </p>
                 )}
                 {planSummary.missingPrice > 0 && (
                   <p className="crl-plan-note">
@@ -6033,6 +6100,66 @@ function CurrentReorderList({
         />
       )}
 
+      {showConsolidate && optimizedPlan && (
+        <ConsolidatePreviewModal
+          moves={consolidationMoves}
+          savings={optimizedPlan.savings}
+          fromSuppliers={planSummary.suppliers}
+          toSuppliers={optimizedPlan.suppliers}
+          landedBefore={planSummary.landedTotal}
+          landedAfter={planSummary.landedTotal - optimizedPlan.savings}
+          onApply={() => { onApplyOptimized?.(optimizedPlan.assignmentByItemId); setShowConsolidate(false); onToast("Suppliers consolidated to save on shipping"); }}
+          onClose={() => setShowConsolidate(false)}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// Consolidation preview: shows exactly which lines the landed-cost optimizer
+// would move to a different supplier (and the before/after landed cost) so the
+// buyer confirms the supplier reassignment rather than having it applied
+// silently. Apply sets the per-line selections via onApplyOptimized.
+function ConsolidatePreviewModal({ moves, savings, fromSuppliers, toSuppliers, landedBefore, landedAfter, onApply, onClose }) {
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="consolidateTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="crl-modal">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="consolidateTitle">Consolidate suppliers</h3>
+            <p>Save {money.format(savings)} on shipping by moving {moves.length} line{moves.length === 1 ? "" : "s"} to a different supplier.</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+        <div className="crl-modal-body">
+          <div className="crl-modal-summary">
+            <span><strong>{fromSuppliers} → {toSuppliers}</strong>Suppliers</span>
+            <span><strong>{money.format(landedBefore)}</strong>Landed now</span>
+            <span className="confirmed"><strong>{money.format(landedAfter)}</strong>Landed after</span>
+          </div>
+          <div className="crl-modal-results">
+            {moves.map((move) => (
+              <div className="crl-modal-result" key={move.itemId}>
+                <div className="crl-modal-result-from">
+                  <strong>{move.fromSupplier}</strong>
+                  <small>{move.name} · Qty {move.qty} {move.uom}</small>
+                </div>
+                <Icon name="icon-arrow-right" className="button-icon crl-modal-arrow" />
+                <div className="crl-modal-result-to">
+                  <strong>{move.toSupplier}</strong>
+                  <small>{money.format(move.toLine)}{move.toLine > move.fromLine ? ` (+${money.format(move.toLine - move.fromLine)} item cost)` : ""}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <footer className="crl-modal-foot">
+          <button className="crl-ghost-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-action compact" type="button" onClick={onApply}>Apply consolidation</button>
+        </footer>
+      </div>
     </div>
   );
 }
