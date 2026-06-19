@@ -321,6 +321,45 @@ describe("name+brand matching (no shared catalog code)", () => {
     )
     expect(["exact", "variant"]).not.toContain(decision.status)
   })
+
+  it("does not merge same-brand burs that differ only on their ISO code", () => {
+    // 856-018C vs 856-016C both reduce to the bare family number 856, so the
+    // size (018 vs 016) hid from the numeric checks and the near-identical names
+    // used to auto-merge — collapsing a whole diamond family into one product.
+    const decision = score(
+      {
+        manufacturer_sku: "135-91070-5",
+        brand: "SS White",
+        name: "Revelation Diamond 856-018C Coarse 5/Pk",
+      },
+      {
+        supplier_id: "msup_other_com",
+        manufacturer_sku: "135-91294-5",
+        brand: "SS White",
+        name: "Revelation Diamond 856-016C Coarse 5/Pk",
+      }
+    )
+    expect(["exact", "variant"]).not.toContain(decision.status)
+  })
+
+  it("still merges products that share a catalog code in the name", () => {
+    // Same ISO code from two distributors — the disjoint-codes guard must not
+    // fire (the codes match), so cross-distributor equivalence still clusters.
+    const decision = score(
+      {
+        manufacturer_sku: "DC1",
+        brand: "SS White",
+        name: "Revelation Diamond 856-016C Coarse 5/Pk",
+      },
+      {
+        supplier_id: "msup_other_com",
+        manufacturer_sku: "CD1",
+        brand: "SS White",
+        name: "Revelation Diamond 856-016C Coarse 5/Pk",
+      }
+    )
+    expect(["exact", "variant"]).toContain(decision.status)
+  })
 })
 
 describe("end-to-end clustering", () => {

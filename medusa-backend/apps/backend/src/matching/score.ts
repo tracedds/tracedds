@@ -138,6 +138,17 @@ export function scorePair(a: NormalizedProduct, b: NormalizedProduct): PairDecis
   const brandRel = brandsAgree(a, b)
   const packRel = packRelation(a, b)
 
+  // Both products carry catalog codes in the name, but they share none. The
+  // discriminating part of a code often hides from the numeric checks (e.g.
+  // diamond bur "856-018C" vs "856-016C" both reduce to the bare family number
+  // 856, while the size 018 vs 016 lives inside the code token) — so disjoint
+  // codes are positive evidence the products differ. Only meaningful when both
+  // sides actually have codes, so single-coded distributor rows are unaffected.
+  const codesDisjoint =
+    a.skuLikeTokens.length > 0 &&
+    b.skuLikeTokens.length > 0 &&
+    !a.skuLikeTokens.some((code) => b.skuLikeTokens.includes(code))
+
   const tokenSim = jaccard(a.nameTokens, b.nameTokens)
   const charSim = trigramDice(a, b)
   let nameSim = 0.45 * tokenSim + 0.55 * charSim
@@ -150,7 +161,7 @@ export function scorePair(a: NormalizedProduct, b: NormalizedProduct): PairDecis
   }
   nameSim = Math.max(0, Math.min(1, nameSim))
 
-  const detail = `sku=${sku.score.toFixed(2)}(${sku.kind}) name=${nameSim.toFixed(2)} brand=${brandRel} pack=${packRel}`
+  const detail = `sku=${sku.score.toFixed(2)}(${sku.kind}) name=${nameSim.toFixed(2)} brand=${brandRel} pack=${packRel}${codesDisjoint ? " codes=disjoint" : ""}`
 
   const reject = (reason: string): PairDecision => ({
     status: "reject",
@@ -190,11 +201,16 @@ export function scorePair(a: NormalizedProduct, b: NormalizedProduct): PairDecis
       review = true
     }
   } else if (brandRel === "match" && !numeric.bareConflict) {
-    // No catalog code at all: rely on brand identity + very high name
-    // similarity. Stricter than the weak-SKU path (nothing corroborates the
-    // name), and a bare-number disagreement vetoes outright. This is what
-    // recovers the pure-distributor catalogs whose only join key is the name.
-    if (nameSim >= 0.92) {
+    // No SKU evidence: rely on brand identity + very high name similarity.
+    // Stricter than the weak-SKU path (nothing corroborates the name), and a
+    // bare-number disagreement vetoes outright. This is what recovers the
+    // pure-distributor catalogs whose only join key is the name. But if both
+    // sides carry catalog codes and the codes are disjoint, the codes are the
+    // discriminator (different shapes/sizes/grits) — review, never auto-merge,
+    // so an entire bur/diamond family doesn't collapse into one product.
+    if (codesDisjoint) {
+      review = nameSim >= 0.8
+    } else if (nameSim >= 0.92) {
       accepted = true
     } else if (nameSim >= 0.8) {
       review = true
