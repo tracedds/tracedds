@@ -113,7 +113,7 @@ async function queryCategoryProducts(
       FROM medmkp_canonical_product_match m
       JOIN medmkp_supplier_current_price cp ON cp.supplier_product_id = m.supplier_product_id
       JOIN cat ON cat.id = m.canonical_product_id
-      WHERE m.match_status <> 'unmatched' AND m.deleted_at IS NULL
+      WHERE m.match_status NOT IN ('unmatched', 'substitute') AND m.deleted_at IS NULL
     ),
     agg AS (
       SELECT grp, COUNT(*)::int AS offer_count, MIN(price_cents) AS best_price
@@ -343,7 +343,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   )
   const matchesByCanonical = new Map<string, typeof matches>()
   for (const match of matches) {
-    if (match.match_status === "unmatched") {
+    // Same-product offers only; substitutes are surfaced separately, not mixed
+    // into the supplier price comparison.
+    if (match.match_status === "unmatched" || match.match_status === "substitute") {
       continue
     }
     const list = matchesByCanonical.get(match.canonical_product_id)

@@ -63,7 +63,14 @@ async function enrichWithOffers(medmkp: MedMKPModuleService, canonicals: Canonic
 
   return canonicals.map((product) => {
     const rawOffers = matches
-      .filter((match) => match.canonical_product_id === product.id && match.match_status !== "unmatched")
+      // Same-product offers only. Substitutes (a different brand/product linked to
+      // this canonical) are surfaced separately, not mixed into the price compare.
+      .filter(
+        (match) =>
+          match.canonical_product_id === product.id &&
+          match.match_status !== "unmatched" &&
+          match.match_status !== "substitute"
+      )
       .map((match) => {
         const supplierProduct = supplierProductById.get(match.supplier_product_id)
         const latestPrice = latest.get(match.supplier_product_id)
