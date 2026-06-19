@@ -1,4 +1,5 @@
 import { runMatching } from "../engine"
+import { buildOffers } from "../line-items"
 import {
   extractSkuLikeTokens,
   normalizeBrand,
@@ -432,5 +433,25 @@ describe("end-to-end clustering", () => {
       cluster.members.map((member) => member.row.name)
     )
     expect(allMemberNames).not.toContain("Oregano Oil Enteric 90 Sgels")
+  })
+})
+
+describe("offer availability", () => {
+  const ctx = { pool: {} as never, supplierNameById: new Map([["msup_test_com", "Test Supplier"]]) }
+
+  it("carries the snapshot availability onto each offer", () => {
+    const item = normalizeProduct(product({ name: "Nitrile Exam Gloves Large", price_cents: 1000 }))
+    const members = [
+      product({ name: "Nitrile Exam Gloves Large", price_cents: 1000, availability: "backordered" }),
+    ]
+    const [offer] = buildOffers(ctx, item, members)
+    expect(offer.availability).toBe("backordered")
+  })
+
+  it("defaults to 'unknown' when the snapshot has no stock signal", () => {
+    const item = normalizeProduct(product({ name: "Nitrile Exam Gloves Large", price_cents: 1000 }))
+    const members = [product({ name: "Nitrile Exam Gloves Large", price_cents: 1200 })]
+    const [offer] = buildOffers(ctx, item, members)
+    expect(offer.availability).toBe("unknown")
   })
 })

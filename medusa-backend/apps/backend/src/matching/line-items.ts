@@ -51,6 +51,8 @@ export type OfferView = {
   pack_size: string
   product_url: string
   image_url: string
+  /** Latest snapshot's stock signal: in_stock | limited | backordered | unknown. */
+  availability: string
 }
 
 export type LineItemMatch = {
@@ -102,8 +104,12 @@ type ProductColumns = {
   image_url: string
 }
 
-function toRow(cols: ProductColumns, priceCents: number | null): SupplierProductRow {
-  return { ...cols, price_cents: priceCents, price_basis: null }
+function toRow(
+  cols: ProductColumns,
+  priceCents: number | null,
+  availability: string | null = null
+): SupplierProductRow {
+  return { ...cols, price_cents: priceCents, price_basis: null, availability }
 }
 
 /** Resolve an invoice vendor name to an ingested supplier id, if any. */
@@ -300,12 +306,15 @@ async function fetchOfferRows(ctx: MatchContext, ids: string[]): Promise<Supplie
   if (!ids.length) {
     return []
   }
-  const { rows } = await ctx.pool.query<ProductColumns & { price_cents: number | null }>(
+  const { rows } = await ctx.pool.query<
+    ProductColumns & { price_cents: number | null; availability: string | null }
+  >(
     `SELECT p.id, p.supplier_id, p.sku, p.manufacturer_sku, p.brand, p.name, p.category,
-            p.pack_size, p.unit_of_measure, p.product_url, p.image_url, price.price_cents
+            p.pack_size, p.unit_of_measure, p.product_url, p.image_url,
+            price.price_cents, price.availability
      FROM medmkp_supplier_product p
      LEFT JOIN (
-       SELECT DISTINCT ON (supplier_product_id) supplier_product_id, price_cents
+       SELECT DISTINCT ON (supplier_product_id) supplier_product_id, price_cents, availability
        FROM medmkp_supplier_price_snapshot
        WHERE deleted_at IS NULL AND supplier_product_id = ANY($1)
        ORDER BY supplier_product_id, captured_at DESC
@@ -313,10 +322,10 @@ async function fetchOfferRows(ctx: MatchContext, ids: string[]): Promise<Supplie
      WHERE p.id = ANY($1) AND p.deleted_at IS NULL`,
     [ids]
   )
-  return rows.map((row) => toRow(row, row.price_cents))
+  return rows.map((row) => toRow(row, row.price_cents, row.availability))
 }
 
-function buildOffers(
+export function buildOffers(
   ctx: MatchContext,
   item: NormalizedProduct,
   members: SupplierProductRow[]
@@ -341,6 +350,7 @@ function buildOffers(
       pack_size: memberRow.pack_size,
       product_url: memberRow.product_url,
       image_url: memberRow.image_url,
+      availability: memberRow.availability ?? "unknown",
     })
   }
   return offers.sort((a, b) => a.comparable_price_cents - b.comparable_price_cents)

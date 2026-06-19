@@ -2574,6 +2574,14 @@ function formatPackLabel(quantity, basis, baseUnit, raw) {
   return raw || (quantity != null ? `${quantity}/pack` : "");
 }
 
+// Plan-row stock badge: in_stock / unknown stay quiet, limited warns (amber),
+// backordered or a live out-of-stock flags red. Returns null when no badge.
+function availabilityBadge(availability, liveAvailable) {
+  if (liveAvailable === false || availability === "backordered") return { label: "Out of stock", tone: "bad" };
+  if (availability === "limited") return { label: "Limited stock", tone: "warn" };
+  return null;
+}
+
 function QtyStepper({ qty, setQty }) {
   return (
     <div className="pdp-stepper">
@@ -4349,6 +4357,8 @@ function deriveMatchRows(items, prefs) {
       matchName: notFound ? null : (best?.name || item.canonicalName || item.product || null),
       matchSub: notFound ? null : (best ? [best.sku, best.packSize].filter(Boolean).join(" · ") : ""),
       productUrl: notFound ? "" : (best?.productUrl || ""),
+      // Stock signal for the selected offer — drives the OOS badge + switch flow.
+      availability: notFound ? "unknown" : (best?.availability ?? "unknown"),
       confidence: notFound ? null : conf,
       price: notFound ? null : price,
       perEa: notFound ? null : perEa,
@@ -6034,6 +6044,7 @@ function slimHandoffRow(row) {
     supplier: row.supplier,
     sku: selected?.sku || "",
     productUrl: selected?.productUrl || row.productUrl || "",
+    availability: selected?.availability ?? row.availability ?? "unknown",
     qty: row.qty,
     uom: row.uom,
     price: row.price,
@@ -6280,7 +6291,15 @@ function SupplierGroupCard({ group, onNavigate, onBuildCart, actions = null }) {
               <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
               <span className="pp-line-name">
                 <strong>{row.matchName || row.canonicalName}</strong>
-                {row.matchSub && <small>{row.matchSub}</small>}
+                <span className="pp-line-sub">
+                  {row.matchSub && <small>{row.matchSub}</small>}
+                  {(() => {
+                    const badge = availabilityBadge(row.availability, row.liveAvailable);
+                    return badge ? (
+                      <span className={`pp-stock-badge stock-${badge.tone}`} title="Stock as of last catalog sync — verify before ordering">{badge.label}</span>
+                    ) : null;
+                  })()}
+                </span>
               </span>
               <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
               <span className="pp-line-ea">{row.perEa != null ? `$${mrEa(row.perEa)} / ea` : ""}</span>

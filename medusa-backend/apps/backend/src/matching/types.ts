@@ -12,6 +12,8 @@ export type SupplierProductRow = {
   image_url: string
   price_cents: number | null
   price_basis: string | null
+  /** Latest snapshot's stock signal: in_stock | limited | backordered | unknown. */
+  availability?: string | null
 }
 
 export type NormalizedProduct = {

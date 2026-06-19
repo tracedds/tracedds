@@ -9719,6 +9719,10 @@ th {
 .pp-line-name { display: grid; gap: 2px; min-width: 0; }
 .pp-line-name strong { color: var(--ink); font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pp-line-name small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-line-sub { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pp-stock-badge { flex: none; font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 7px; border-radius: 999px; white-space: nowrap; }
+.pp-stock-badge.stock-bad { background: #fdeaea; color: var(--red); }
+.pp-stock-badge.stock-warn { background: #fcf0db; color: var(--gold); }
 .pp-line-qty { text-align: center; }
 .pp-line-qty strong { display: block; color: var(--ink); font-weight: 700; font-size: 14px; }
 .pp-line-qty small { color: var(--muted); font-size: 11px; }
