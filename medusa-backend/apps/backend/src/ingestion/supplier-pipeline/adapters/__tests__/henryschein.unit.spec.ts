@@ -22,6 +22,10 @@ const LISTING_HTML = `
  "gtin14":"00616784430225",
  "mpn":"2100-HS"}
 </script>
+<!-- NOTE: the gtin14 above is NOT present in real henryschein.com markup.
+     Live HS Product JSON-LD only publishes @context/@type/brand/description/
+     image/mpn/name/sku/url (verified 2026-06-19). It is kept here solely to
+     exercise the parser; the glove block below uses the real HS shape (no gtin). -->
 <script type="application/ld+json">
 {"@context":"http://schema.org/","@type":"Product",
  "name":"Ocean Pacific Elements Nitrile Exam Gloves Large Blue Non-Sterile 200/Bx",
@@ -68,6 +72,14 @@ describe("extractHenryScheinProducts", () => {
     expect(glove.manufacturer_sku).toBe("OPL-BIO")
     expect(glove.category).toBe("Gloves")
     expect(glove.subcategory).toBe("Nitrile")
+  })
+
+  it("leaves barcode empty for the real HS shape (no gtin published)", () => {
+    // Henry Schein does not emit any gtin* field in its live Product JSON-LD,
+    // so the barcode column stays empty regardless of the parser. HS scan
+    // resolution must go through the REF/HIBC PCN + MPN bridge, not a GTIN.
+    const glove = rows.find((r) => r.sku === "1462858")!
+    expect(glove.barcode).toBe("")
   })
 
   it("dedupes repeated skus within a page", () => {

@@ -14,6 +14,9 @@ const SupplierProduct = model.define("medmkp_supplier_product", {
   manufacturer_sku: model.text().searchable(),
   // GTIN / UPC barcode (e.g. DC Dental's upccode). Nullable: most sources don't expose one.
   barcode: model.text().nullable(),
+  // Where the barcode came from: null/"supplier" for an ingested one, "gudid"
+  // when borrowed from the FDA GUDID reference via a brand+MPN join.
+  barcode_source: model.text().nullable(),
   brand: model.text().searchable(),
   name: model.text().searchable(),
   description: model.text().searchable(),
