@@ -54,11 +54,18 @@ function gs1Gtin(value: string): string | null {
 
 // Reverse GUDID lookup: resolve a scanned GTIN to supplier products via the
 // medmkp_gtin_reference table (FDA GUDID, brand+model -> GTIN). This catches
-// products we couldn't pre-write a barcode for, notably Henry Schein house-brand
-// items whose GTIN sits in a family of pack-level GTINs that share one
-// (non-unique) model number — ambiguous when going model -> GTIN, but exact in
-// the scanned GTIN -> model -> product direction. HS items key on the HS item
-// number (= sku); everything else on brand + manufacturer SKU.
+// products we couldn't pre-write a barcode for. Because the scanned GTIN is
+// exact (it identifies one product family), fuzzier supplier matching is safe.
+// Three resolution paths, all keyed off the exact scanned GTIN:
+//   1. Henry Schein house brand — companyName "HENRY SCHEIN, INC." + HS item
+//      number (= sku).
+//   2. Exact brand + manufacturer SKU.
+//   3. Product-line fallback — for vendors GUDID lists under a product line
+//      (brandName "Filtek", "Cotton Tipped...") with the real maker in
+//      companyName, and where our supplier MPN carries a vendor prefix
+//      ("US-3M-6029A2B" vs GUDID "6029A2B"): match when the supplier MPN ends
+//      with the model number AND the product-line name appears in the product
+//      name. Length guards keep short/generic models from colliding.
 async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: string[]): Promise<string[]> {
   if (!variants.length) return []
   const knex = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
@@ -72,6 +79,11 @@ async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: s
        or
        (lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) = gr.brand_norm
         and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = gr.model_norm)
+       or
+       (length(gr.model_norm) >= 5
+        and length(gr.brand_norm) >= 4
+        and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) like '%' || gr.model_norm
+        and lower(regexp_replace(sp.name, '[^a-z0-9]', '', 'gi')) like '%' || gr.brand_norm || '%')
      )
      where gr.gtin = ANY(?) and sp.deleted_at is null
      limit 25`,
