@@ -2642,7 +2642,7 @@ function CatalogView({ onNavigate }) {
             <ul className="cat-supplier-list">
               {suppliers.slice(0, 5).map((supplier) => (
                 <li key={supplier.id}>
-                  <span className="cat-supplier-avatar">{supplierInitials(supplier.name)}</span>
+                  <CatalogSupplierAvatar name={supplier.name} />
                   <span className="cat-supplier-name">{supplier.name}</span>
                   <em>{(supplier.product_count || 0).toLocaleString()}</em>
                 </li>
@@ -3748,6 +3748,15 @@ function supplierLogoSrc(name) {
   const key = name.toLowerCase();
   if (key.includes("schein")) return "/schein-logo.png";
   return SUPPLIER_LOGOS.find((supplier) => key.includes(supplier.match))?.src || null;
+}
+
+function CatalogSupplierAvatar({ name }) {
+  const logo = supplierLogoSrc(name);
+  return (
+    <span className={`cat-supplier-avatar ${logo ? "has-img" : ""}`}>
+      {logo ? <img src={logo} alt="" /> : supplierInitials(name)}
+    </span>
+  );
 }
 
 function MatchSupplier({ name }) {
