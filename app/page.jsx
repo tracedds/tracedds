@@ -2384,6 +2384,7 @@ export default function Home() {
               onBuyingPrefs={setBuyingPrefs}
               onPrepareHandoff={prepareHandoff}
               onBuildCart={setCartGroup}
+              onSwitchOffer={applyMatchDecision}
               onNavigate={navigate}
               onToast={showToast}
             />
@@ -2572,6 +2573,17 @@ function formatPackLabel(quantity, basis, baseUnit, raw) {
     return `${quantity}/${word}`;
   }
   return raw || (quantity != null ? `${quantity}/pack` : "");
+}
+
+// "Can the buyer order this offer right now?" — conservative: only an explicit
+// negative blocks. Unknown stays orderable so we don't flag the whole catalog
+// (most ingested products have no published stock signal). A live Shopify check
+// (Phase B) overrides the ingestion snapshot when present.
+function isOrderable(offer) {
+  if (!offer) return true;
+  if (offer.liveAvailable === false) return false;
+  if (offer.availability === "backordered") return false;
+  return true;
 }
 
 // Plan-row stock badge: in_stock / unknown stay quiet, limited warns (amber),
@@ -4324,6 +4336,14 @@ function deriveMatchRows(items, prefs) {
     const price = best ? best.price : (item.oldUnitPrice ?? 0);
     const perEa = best ? (best.perUnit ?? null) : null;
     const qty = item.draftQty ?? item.qty ?? 1;
+    // When the selected offer can't be ordered now, surface the best orderable
+    // alternative (same strategy) as a one-click switch — buyer-driven, never
+    // applied silently.
+    const selectedOrderable = isOrderable(best);
+    const orderableAlts = notFound ? [] : offers.filter((offer) => offer.key !== best?.key && isOrderable(offer));
+    const switchTarget = !notFound && best && !selectedOrderable && orderableAlts.length
+      ? (pickBestOffer(orderableAlts, prefs, item) || null)
+      : null;
     const others = offers
       .filter((offer) => offer.key !== best?.key)
       .slice(0, 3)
@@ -4359,6 +4379,10 @@ function deriveMatchRows(items, prefs) {
       productUrl: notFound ? "" : (best?.productUrl || ""),
       // Stock signal for the selected offer — drives the OOS badge + switch flow.
       availability: notFound ? "unknown" : (best?.availability ?? "unknown"),
+      outOfStock: !notFound && Boolean(best) && !selectedOrderable,
+      switchTarget: switchTarget
+        ? { key: switchTarget.key, supplier: switchTarget.supplier, price: switchTarget.price, perEa: switchTarget.perUnit ?? null }
+        : null,
       confidence: notFound ? null : conf,
       price: notFound ? null : price,
       perEa: notFound ? null : perEa,
@@ -6261,7 +6285,7 @@ function CartBuilderModal({ group, onClose, onToast }) {
 
 // One supplier's order block — shared by the live plan (full rows) and the
 // frozen handoff (slim rows). `actions` injects the handoff's copy/open buttons.
-function SupplierGroupCard({ group, onNavigate, onBuildCart, actions = null }) {
+function SupplierGroupCard({ group, onNavigate, onBuildCart, onSwitchOffer, onToast, actions = null }) {
   const buildable = group.rows.some((row) => row.productUrl);
   return (
     <section className="crl-card pp-group">
@@ -6283,27 +6307,45 @@ function SupplierGroupCard({ group, onNavigate, onBuildCart, actions = null }) {
         {group.rows.map((row) => {
           const clickable = Boolean(row.canonicalHandle);
           return (
-            <div
-              className={`pp-line ${clickable ? "clickable" : ""}`}
-              key={row.id}
-              onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
-            >
-              <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
-              <span className="pp-line-name">
-                <strong>{row.matchName || row.canonicalName}</strong>
-                <span className="pp-line-sub">
-                  {row.matchSub && <small>{row.matchSub}</small>}
-                  {(() => {
-                    const badge = availabilityBadge(row.availability, row.liveAvailable);
-                    return badge ? (
-                      <span className={`pp-stock-badge stock-${badge.tone}`} title="Stock as of last catalog sync — verify before ordering">{badge.label}</span>
-                    ) : null;
-                  })()}
+            <div className="pp-line-wrap" key={row.id}>
+              <div
+                className={`pp-line ${clickable ? "clickable" : ""}`}
+                onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
+              >
+                <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+                <span className="pp-line-name">
+                  <strong>{row.matchName || row.canonicalName}</strong>
+                  <span className="pp-line-sub">
+                    {row.matchSub && <small>{row.matchSub}</small>}
+                    {(() => {
+                      const badge = availabilityBadge(row.availability, row.liveAvailable);
+                      return badge ? (
+                        <span className={`pp-stock-badge stock-${badge.tone}`} title="Stock as of last catalog sync — verify before ordering">{badge.label}</span>
+                      ) : null;
+                    })()}
+                  </span>
                 </span>
-              </span>
-              <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
-              <span className="pp-line-ea">{row.perEa != null ? `$${mrEa(row.perEa)} / ea` : ""}</span>
-              <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
+                <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+                <span className="pp-line-ea">{row.perEa != null ? `$${mrEa(row.perEa)} / ea` : ""}</span>
+                <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
+              </div>
+              {row.outOfStock && row.switchTarget && onSwitchOffer && (
+                <div className="pp-line-switch">
+                  <span className="pp-switch-msg"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock at {row.supplier}</span>
+                  <button
+                    className="pp-switch-btn"
+                    type="button"
+                    onClick={() => { onSwitchOffer(row.itemId, { selectedOfferKey: row.switchTarget.key }); onToast?.(`Switched to ${row.switchTarget.supplier}`); }}
+                  >
+                    <Icon name="icon-shuffle" className="button-icon" />Switch to {row.switchTarget.supplier} · {mrMoney(row.switchTarget.price)}
+                  </button>
+                </div>
+              )}
+              {row.outOfStock && !row.switchTarget && (
+                <div className="pp-line-switch">
+                  <span className="pp-switch-msg pp-switch-none"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock — no in-stock supplier carries this item</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -6312,7 +6354,7 @@ function SupplierGroupCard({ group, onNavigate, onBuildCart, actions = null }) {
   );
 }
 
-function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onBuildCart, onNavigate, onToast }) {
+function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onBuildCart, onSwitchOffer, onNavigate, onToast }) {
   const rows = deriveMatchRows(items || [], buyingPrefs);
   const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
   const unresolved = rows.filter((row) => row.status === "Not found" || !row.supplier || row.supplier === "—");
@@ -6366,7 +6408,7 @@ function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPr
                 <small>Grouped by supplier · best offer per line</small>
               </div>
               {groups.map((group) => (
-                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} onBuildCart={onBuildCart} />
+                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} onBuildCart={onBuildCart} onSwitchOffer={onSwitchOffer} onToast={onToast} />
               ))}
             </>
           )}
