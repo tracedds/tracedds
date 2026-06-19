@@ -2107,7 +2107,7 @@ export default function Home() {
   // don't drift if prices/preferences change after the buyer commits.
   function prepareHandoff() {
     const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
-    const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
+    const included = rows.filter(isPlanIncluded);
     if (!included.length) {
       showToast("Add matched items before preparing a handoff");
       return;
@@ -2592,6 +2592,20 @@ function availabilityBadge(availability, liveAvailable) {
   if (liveAvailable === false || availability === "backordered") return { label: "Out of stock", tone: "bad" };
   if (availability === "limited") return { label: "Limited stock", tone: "warn" };
   return null;
+}
+
+// A line out of stock at its selected supplier with no in-stock alternative
+// can't be ordered anywhere — keep it out of supplier groups and handoffs (it
+// surfaces in the unresolved bucket instead so it never silently ships).
+function isStrandedOutOfStock(row) {
+  return Boolean(row.outOfStock) && !row.switchTarget;
+}
+
+// A matched line that belongs in a supplier order: has a real supplier and is
+// orderable somewhere. Shared by the plan view and the handoff snapshot so the
+// two never disagree on what's included.
+function isPlanIncluded(row) {
+  return row.status !== "Not found" && row.supplier && row.supplier !== "—" && !isStrandedOutOfStock(row);
 }
 
 function QtyStepper({ qty, setQty }) {
@@ -6356,11 +6370,16 @@ function SupplierGroupCard({ group, onNavigate, onBuildCart, onSwitchOffer, onTo
 
 function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onBuildCart, onSwitchOffer, onNavigate, onToast }) {
   const rows = deriveMatchRows(items || [], buyingPrefs);
-  const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
-  const unresolved = rows.filter((row) => row.status === "Not found" || !row.supplier || row.supplier === "—");
+  const included = rows.filter(isPlanIncluded);
+  // No-match lines plus "out of stock everywhere" lines both land here so the
+  // buyer sees why they're not in any supplier order.
+  const unresolved = rows.filter((row) => !isPlanIncluded(row) && (row.status === "Not found" || !row.supplier || row.supplier === "—" || isStrandedOutOfStock(row)));
   const groups = groupRowsBySupplier(included);
   const total = included.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
   const coverage = rows.length ? Math.round((included.length / rows.length) * 100) : 0;
+  // Lines out of stock at their selected supplier that DO have an in-stock
+  // alternative — the bulk "reassign all" banner targets these.
+  const oosReassignable = included.filter((row) => row.outOfStock && row.switchTarget);
 
   const supplierOptions = useMemo(() => {
     const names = new Set();
@@ -6407,6 +6426,25 @@ function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPr
                 <h3>Included items</h3>
                 <small>Grouped by supplier · best offer per line</small>
               </div>
+              {oosReassignable.length > 0 && (
+                <div className="pp-oos-banner">
+                  <span className="pp-oos-banner-msg">
+                    <Icon name="icon-alert-triangle" className="button-icon" />
+                    <strong>{oosReassignable.length} item{oosReassignable.length === 1 ? " is" : "s are"} out of stock</strong>
+                    <span>— reassign to the next in-stock supplier.</span>
+                  </span>
+                  <button
+                    className="pp-oos-banner-btn"
+                    type="button"
+                    onClick={() => {
+                      oosReassignable.forEach((row) => onSwitchOffer?.(row.itemId, { selectedOfferKey: row.switchTarget.key }));
+                      onToast?.(`Reassigned ${oosReassignable.length} item${oosReassignable.length === 1 ? "" : "s"} to in-stock suppliers`);
+                    }}
+                  >
+                    <Icon name="icon-shuffle" className="button-icon" />Reassign all
+                  </button>
+                </div>
+              )}
               {groups.map((group) => (
                 <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} onBuildCart={onBuildCart} onSwitchOffer={onSwitchOffer} onToast={onToast} />
               ))}
@@ -6419,18 +6457,21 @@ function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPr
                 <h3>Unresolved items ({unresolved.length})</h3>
                 <button className="crl-edit-link" type="button" onClick={() => onNavigate("/app")}>Resolve on list</button>
               </div>
-              <p className="pp-unresolved-note">These items have no confirmed supplier match and won&rsquo;t be included in the supplier handoff.</p>
+              <p className="pp-unresolved-note">These items aren&rsquo;t in any supplier order and won&rsquo;t be included in the supplier handoff.</p>
               <ul className="pp-unresolved-list">
-                {unresolved.map((row) => (
-                  <li key={row.id}>
-                    <ProductThumb image={row.image} alt={row.importedName} />
-                    <span className="pp-unresolved-name">
-                      <strong>{row.canonicalName || row.importedName}</strong>
-                      <small>Qty {row.qty} {row.uom}</small>
-                    </span>
-                    <span className="pp-unresolved-tag">No match</span>
-                  </li>
-                ))}
+                {unresolved.map((row) => {
+                  const stranded = isStrandedOutOfStock(row);
+                  return (
+                    <li key={row.id}>
+                      <ProductThumb image={row.image} alt={row.importedName} />
+                      <span className="pp-unresolved-name">
+                        <strong>{row.canonicalName || row.importedName}</strong>
+                        <small>{stranded ? "Out of stock at every supplier" : `Qty ${row.qty} ${row.uom}`}</small>
+                      </span>
+                      <span className={`pp-unresolved-tag ${stranded ? "tag-oos" : ""}`}>{stranded ? "Out of stock" : "No match"}</span>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           )}

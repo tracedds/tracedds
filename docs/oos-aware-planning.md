@@ -161,26 +161,28 @@ It depends only on `main` (no dependency on the Build-cart branch).
   with its `availabilityInfo` pill, sort orderable-first, and visually mark
   non-orderable candidates (still selectable, for an intentional backorder).
 
-### A5. Make availability a selection constraint
-- `pickBestOffer` (`:3974`): before cost sort, prefer `offers.filter(isOrderable)`;
-  fall back to the full pool only if none are orderable (so a line is never left
-  with no recommendation).
-- `candidatePool` (`:4077`, used by `optimizeLandedAssignment`): same filter, so
-  the optimizer naturally routes baskets around out-of-stock offers.
+### A5. Make availability a selection constraint — **DROPPED (decision)**
+Decided **against** silently filtering OOS out of the default pick: keep
+`pickBestOffer` / `candidatePool` cost-ranked and instead **surface-and-suggest**
+(the A4 badge + switch). Auto-preferring in-stock would hide a cheaper-but-OOS
+option, which conflicts with decision #1 ("not silent"). So A5 is a no-op in code;
+the recommendation stays cost-ranked and every OOS line is shown, not avoided.
 
-### A6. Bulk reassign banner
-- Mirror the existing optimizer "Apply" card pattern: when ≥1 included line is
-  out of stock at its selected supplier, show
-  > **{n} items are out of stock — reassign to the next in-stock supplier.** [Apply]
-- Apply iterates those lines and sets each `selectedOfferKey` to its A4 target in
-  one state update. Recompute summary after.
+### A6. Bulk reassign banner — **DONE**
+- `pp-oos-banner` above the supplier groups when ≥1 included line is out of stock
+  with an in-stock alternative (`oosReassignable`):
+  > **{n} items are out of stock — reassign to the next in-stock supplier.** [Reassign all]
+- "Reassign all" sets each line's `selectedOfferKey` to its A4 `switchTarget` via
+  `onSwitchOffer` (= `applyMatchDecision`). Summary recomputes.
 
-### A7. All-offers-out-of-stock → unresolved
-- If `row.offers.filter(isOrderable)` is empty, classify the line as
-  "Out of stock everywhere" and route it into the existing unresolved bucket
-  (`ProcurementPlanView`, `:2061`) with a "keep as backorder / remove" choice, so
-  it can't silently enter a handoff. `prepareHandoff` should exclude it unless the
-  buyer explicitly keeps it.
+### A7. All-offers-out-of-stock → unresolved — **DONE**
+- Shared `isStrandedOutOfStock(row)` (`outOfStock && !switchTarget`) +
+  `isPlanIncluded(row)`. Both `ProcurementPlanView` and `prepareHandoff` use
+  `isPlanIncluded`, so stranded lines drop out of supplier groups, totals,
+  coverage, AND the handoff. They render in the unresolved bucket with an
+  "Out of stock" tag ("Out of stock at every supplier"), distinct from "No match".
+- Deferred: an explicit "keep as backorder" toggle (currently stranded = simply
+  excluded). Revisit if buyers want to force a backorder onto a handoff.
 
 ---
 
