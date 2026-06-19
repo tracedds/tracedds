@@ -423,8 +423,9 @@ function useBarcodeScanner({ active, onScan }) {
 
         // Prefer the native BarcodeDetector (Chrome/Edge/Android). iOS Safari —
         // and every WebKit browser on iPhone/iPad — doesn't ship it, so fall back
-        // to ZXing decoding the same video frames. Without this, iOS has no decoder
-        // at all and the shutter can only hand off to manual entry.
+        // to the ZXing-C++ WebAssembly ponyfill. The older JavaScript ZXing reader
+        // could decode clean UPC test cards but failed on five of the six real
+        // dental labels in test/photos, especially Data Matrix and skewed codes.
         if ("BarcodeDetector" in window) {
           try {
             detector = new window.BarcodeDetector();
@@ -435,23 +436,11 @@ function useBarcodeScanner({ active, onScan }) {
 
         if (!detector) {
           try {
-            const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = await import("@zxing/library");
+            const { BarcodeDetector } = await import("barcode-detector/ponyfill");
             if (!isMounted) return;
-            const hints = new Map([[DecodeHintType.POSSIBLE_FORMATS, [
-              BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.EAN_13,
-              BarcodeFormat.EAN_8, BarcodeFormat.CODE_128, BarcodeFormat.CODE_39,
-            ]]]);
-            const reader = new BrowserMultiFormatReader(hints);
-            detector = {
-              detect(video) {
-                try {
-                  const result = reader.decodeBitmap(reader.createBinaryBitmap(video));
-                  return result ? [{ rawValue: result.getText() }] : [];
-                } catch (error) {
-                  return []; // NotFoundException == no barcode in this frame
-                }
-              },
-            };
+            detector = new BarcodeDetector({
+              formats: ["upc_a", "upc_e", "ean_13", "ean_8", "code_128", "code_39", "data_matrix"],
+            });
           } catch (error) {
             detector = null; // import failed → stay on manual entry
           }

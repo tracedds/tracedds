@@ -129,6 +129,17 @@ function brandName(product: HsProduct): string {
   return ""
 }
 
+function barcodeValue(product: HsProduct): string {
+  // schema.org permits either the generic `gtin` property or a width-specific
+  // field. Prefer the widest representation when HS publishes more than one;
+  // scanner lookup normalizes GTIN-12/13/14 leading-zero differences.
+  for (const key of ["gtin14", "gtin13", "gtin12", "gtin8", "gtin"]) {
+    const value = stringValue(product[key]).replace(/\D/g, "")
+    if (value.length >= 8 && value.length <= 14) return value
+  }
+  return ""
+}
+
 function isProduct(record: HsProduct): boolean {
   const type = record["@type"]
   return Array.isArray(type)
@@ -163,6 +174,7 @@ export function extractHenryScheinProducts(html: string): ExtractedProductRow[] 
       // For HS house brand the mpn is an HS-internal code; for distributed
       // manufacturer brands it's the real MPN (cross-matches other suppliers).
       manufacturer_sku: mpn || sku,
+      barcode: barcodeValue(product),
       brand: brandName(product),
       name,
       description,
