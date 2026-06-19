@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { mapWithConcurrency, resolveShopifyVariant, shopifyProduct } from "../../../lib/shopify.mjs";
 
 // Turn one supplier's order lines into the best available "build cart" target.
 //
@@ -11,42 +12,8 @@ import { NextResponse } from "next/server";
 //     cart prefill, so we hand back the product pages for the buyer to open and
 //     add to the supplier's own cart.
 
-const FETCH_TIMEOUT_MS = 8000;
 const MAX_ITEMS = 60;
-
-// Shopify product pages live under `/products/{handle}`. Returns the handle (sans
-// query/hash) when the URL looks like a Shopify product page, else null.
-function shopifyHandle(productUrl) {
-  try {
-    const url = new URL(productUrl);
-    const match = url.pathname.match(/\/products\/([^/]+)/);
-    return match ? { origin: url.origin, handle: decodeURIComponent(match[1]) } : null;
-  } catch {
-    return null;
-  }
-}
-
-// Resolve a Shopify product to the variant we'd add to cart. Prefers an
-// in-stock variant; reports `available` so the caller can keep out-of-stock
-// lines out of the permalink (Shopify silently drops them anyway). Returns null
-// when the endpoint isn't Shopify (or the fetch/parse fails) so we fall back.
-async function resolveShopifyVariant(origin, handle) {
-  try {
-    const response = await fetch(`${origin}/products/${encodeURIComponent(handle)}.js`, {
-      headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
-      cache: "no-store",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const variants = Array.isArray(data?.variants) ? data.variants : [];
-    const inStock = variants.find((v) => v?.available);
-    const variant = inStock || variants[0];
-    return variant?.id ? { id: variant.id, available: Boolean(inStock) } : null;
-  } catch {
-    return null;
-  }
-}
+const MAX_CONCURRENCY = 5;
 
 export async function POST(request) {
   let body;
@@ -60,14 +27,20 @@ export async function POST(request) {
   const withUrls = items.filter((item) => item?.productUrl);
 
   // Try the Shopify path for any line whose URL looks like a Shopify product.
-  const resolved = await Promise.all(
-    withUrls.map(async (item) => {
-      const shop = shopifyHandle(item.productUrl);
+  const resolved = await mapWithConcurrency(
+    withUrls,
+    MAX_CONCURRENCY,
+    async (item) => {
+      const shop = shopifyProduct(item.productUrl);
       if (!shop) return { item, variant: null, origin: null };
       const variant = await resolveShopifyVariant(shop.origin, shop.handle);
       return { item, variant, origin: shop.origin };
-    })
+    }
   );
+
+  const stock = resolved
+    .filter((result) => result.variant)
+    .map((result) => ({ productUrl: result.item.productUrl, available: result.variant.available }));
 
   // Only in-stock variants can actually land in the cart via the permalink.
   const addable = resolved.filter((r) => r.variant && r.variant.available);
@@ -89,6 +62,7 @@ export async function POST(request) {
       url: `${origin}/cart/${pairs.join(",")}`,
       count: sameShop.length,
       leftovers,
+      stock,
     });
   }
 
@@ -101,5 +75,6 @@ export async function POST(request) {
       productUrl: item.productUrl,
     })),
     missing: items.length - withUrls.length,
+    stock,
   });
 }

@@ -12,6 +12,8 @@ const UPLOAD_TIMEOUT_MS = 180000;
 
 const APP_STATE_KEY = "medmkp_app_state_v1";
 const CATALOG_RECENT_KEY = "medmkp_catalog_recent_v1";
+const SHOPIFY_STOCK_SESSION_KEY = "medmkp_shopify_stock_v1";
+const SHOPIFY_STOCK_MAX_ITEMS = 60;
 // Device-local UI preference: whether the left nav sidebar is collapsed. Kept
 // out of the synced app-state blob since collapse is per-device, like ChatGPT.
 const NAV_COLLAPSED_KEY = "medmkp_nav_collapsed_v1";
@@ -1386,6 +1388,10 @@ export default function Home() {
   // list's "Handed off" status and links the archive entry to its handoff.
   const [currentHandoffId, setCurrentHandoffId] = useState(null);
   const [cartGroup, setCartGroup] = useState(null);
+  const [liveStockByUrl, setLiveStockByUrl] = useState({});
+  const liveStockCacheRef = useRef(new Map());
+  const liveStockHydratedRef = useRef(false);
+  const liveStockRequestsRef = useRef(new Set());
   const [listTouched, setListTouched] = useState(false);
   const [listName, setListName] = useState("June Restock");
   const [buyingPrefs, setBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
@@ -1648,6 +1654,87 @@ export default function Home() {
 
   const visibleDraftItems = draftItems.filter((item) => item.documentIds.some((documentId) => uploadedDocs.some((doc) => doc.id === documentId)));
   const activeDraftItems = visibleDraftItems.filter((item) => item.included);
+  const activePlanItems = applyLiveStock(activeDraftItems, liveStockByUrl);
+
+  const recordLiveStock = useCallback((entries) => {
+    if (!Array.isArray(entries) || !entries.length) return;
+    const nextLive = {};
+    for (const entry of entries) {
+      const key = shopifyStockKey(entry?.productUrl);
+      if (!key) continue;
+      const available = typeof entry.available === "boolean" ? entry.available : null;
+      liveStockCacheRef.current.set(key, available);
+      if (available !== null) nextLive[key] = available;
+    }
+    if (Object.keys(nextLive).length) {
+      setLiveStockByUrl((current) => ({ ...current, ...nextLive }));
+    }
+    try {
+      window.sessionStorage.setItem(
+        SHOPIFY_STOCK_SESSION_KEY,
+        JSON.stringify(Object.fromEntries(liveStockCacheRef.current))
+      );
+    } catch {
+      // Session storage is an optimization; live state still works in memory.
+    }
+  }, []);
+
+  // On plan entry, confirm only selected Shopify-looking offers. Successful and
+  // failed attempts are cached for the tab session so revisiting the plan does
+  // not repeatedly hit supplier storefronts.
+  useEffect(() => {
+    if (view !== "plan") return undefined;
+
+    if (!liveStockHydratedRef.current) {
+      liveStockHydratedRef.current = true;
+      try {
+        const cached = JSON.parse(window.sessionStorage.getItem(SHOPIFY_STOCK_SESSION_KEY) || "{}");
+        const cachedLive = {};
+        for (const [key, value] of Object.entries(cached || {})) {
+          const available = typeof value === "boolean" ? value : null;
+          liveStockCacheRef.current.set(key, available);
+          if (available !== null) cachedLive[key] = available;
+        }
+        if (Object.keys(cachedLive).length) setLiveStockByUrl((current) => ({ ...cachedLive, ...current }));
+      } catch {
+        // Corrupt/unavailable session storage simply starts a fresh cache.
+      }
+    }
+
+    const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
+    const pendingByKey = new Map();
+    for (const row of rows) {
+      const key = shopifyStockKey(row.productUrl);
+      if (!key || liveStockCacheRef.current.has(key) || liveStockRequestsRef.current.has(key)) continue;
+      pendingByKey.set(key, row.productUrl);
+      if (pendingByKey.size >= SHOPIFY_STOCK_MAX_ITEMS) break;
+    }
+    if (!pendingByKey.size) return undefined;
+
+    for (const key of pendingByKey.keys()) liveStockRequestsRef.current.add(key);
+    const controller = new AbortController();
+    fetch("/api/shopify-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productUrls: [...pendingByKey.values()] }),
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+      .then(({ stock }) => {
+        const byKey = new Map((stock || []).map((entry) => [shopifyStockKey(entry.productUrl), entry]));
+        recordLiveStock([...pendingByKey].map(([key, productUrl]) => byKey.get(key) || { productUrl, available: null }));
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          recordLiveStock([...pendingByKey.values()].map((productUrl) => ({ productUrl, available: null })));
+        }
+      })
+      .finally(() => {
+        for (const key of pendingByKey.keys()) liveStockRequestsRef.current.delete(key);
+      });
+
+    return () => controller.abort();
+  }, [view, draftItems, uploadedDocs, buyingPrefs, recordLiveStock]);
 
   // Real summary of the current reorder list for the product-page rail (matches
   // how archiveCurrentList tallies items/suppliers/spend).
@@ -2095,7 +2182,7 @@ export default function Home() {
   // best-offer-per-line snapshot (grouped by supplier) so the order details
   // don't drift if prices/preferences change after the buyer commits.
   function prepareHandoff() {
-    const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
+    const rows = deriveMatchRows(activePlanItems, buyingPrefs);
     const included = rows.filter(isPlanIncluded);
     if (!included.length) {
       showToast("Add matched items before preparing a handoff");
@@ -2367,7 +2454,7 @@ export default function Home() {
 
           {view === "plan" && (
             <ProcurementPlanView
-              items={activeDraftItems}
+              items={activePlanItems}
               listName={listName}
               buyingPrefs={buyingPrefs}
               onBuyingPrefs={setBuyingPrefs}
@@ -2444,7 +2531,14 @@ export default function Home() {
       </div>
 
       {cartGroup && (
-        <CartBuilderModal group={cartGroup} onClose={() => setCartGroup(null)} onToast={showToast} />
+        <CartBuilderModal
+          group={cartGroup}
+          buyingPrefs={buyingPrefs}
+          onClose={() => setCartGroup(null)}
+          onStockResults={recordLiveStock}
+          onSwitchOffer={applyMatchDecision}
+          onToast={showToast}
+        />
       )}
 
       <div className={`toast ${toast ? "show" : ""}`} role="status" aria-live="polite">{toast}</div>
@@ -2573,6 +2667,32 @@ function isOrderable(offer) {
   if (offer.liveAvailable === false) return false;
   if (offer.availability === "backordered") return false;
   return true;
+}
+
+function shopifyStockKey(productUrl) {
+  try {
+    const url = new URL(productUrl);
+    const match = url.pathname.match(/\/products\/([^/]+)/);
+    return match ? `${url.origin}/products/${encodeURIComponent(decodeURIComponent(match[1]))}` : null;
+  } catch {
+    return null;
+  }
+}
+
+// Apply live results as an ephemeral overlay. The underlying draft remains the
+// durable ingestion snapshot; live stock is intentionally session-scoped.
+function applyLiveStock(items, stockByUrl) {
+  const applyOffer = (offer) => {
+    const key = shopifyStockKey(offer?.productUrl);
+    return key && typeof stockByUrl[key] === "boolean"
+      ? { ...offer, liveAvailable: stockByUrl[key] }
+      : offer;
+  };
+  return (items || []).map((item) => ({
+    ...item,
+    bestOffer: item.bestOffer ? applyOffer(item.bestOffer) : item.bestOffer,
+    offers: (item.offers || []).map(applyOffer),
+  }));
 }
 
 // Plan-row stock badge: in_stock / unknown stay quiet, limited warns (amber),
@@ -4382,6 +4502,7 @@ function deriveMatchRows(items, prefs) {
       productUrl: notFound ? "" : (best?.productUrl || ""),
       // Stock signal for the selected offer — drives the OOS badge + switch flow.
       availability: notFound ? "unknown" : (best?.availability ?? "unknown"),
+      liveAvailable: notFound ? undefined : best?.liveAvailable,
       outOfStock: !notFound && Boolean(best) && !selectedOrderable,
       switchTarget: switchTarget
         ? { key: switchTarget.key, supplier: switchTarget.supplier, price: switchTarget.price, perEa: switchTarget.perUnit ?? null }
@@ -6161,7 +6282,7 @@ function buildHandoffCsv(handoff) {
 // available target via /api/cart-link: a one-click Shopify cart permalink that
 // prefills quantities, or — for platforms with no GET-based cart — the product
 // pages to open and add by hand. Shared by the live plan and the frozen handoff.
-function CartBuilderModal({ group, onClose, onToast }) {
+function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitchOffer, onToast }) {
   const [state, setState] = useState({ status: "loading", result: null });
   const rows = group.rows || [];
   const linkable = rows.filter((row) => row.productUrl);
@@ -6187,7 +6308,11 @@ function CartBuilderModal({ group, onClose, onToast }) {
       }),
     })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
-      .then((result) => { if (!cancelled) setState({ status: "ready", result }); })
+      .then((result) => {
+        if (cancelled) return;
+        setState({ status: "ready", result });
+        onStockResults?.(result.stock || []);
+      })
       .catch(() => { if (!cancelled) setState({ status: "error", result: null }); });
     return () => { cancelled = true; };
     // group identity is stable per open; re-resolve only when the supplier changes.
@@ -6243,12 +6368,12 @@ function CartBuilderModal({ group, onClose, onToast }) {
                 <Icon name="icon-cart" className="button-icon" />Open prefilled cart
               </a>
               {result.leftovers?.length > 0 && (
-                <small className="cart-leftover-note">{result.leftovers.length} item{result.leftovers.length === 1 ? "" : "s"} couldn’t be added automatically — open {result.leftovers.length === 1 ? "it" : "them"} below.</small>
+                <small className="cart-leftover-note">{result.leftovers.length} item{result.leftovers.length === 1 ? "" : "s"} couldn’t be added automatically — review {result.leftovers.length === 1 ? "it" : "them"} below.</small>
               )}
             </div>
           )}
 
-          {(state.status === "error" || (state.status === "ready" && !isShopify)) && linkable.length > 0 && (
+          {(state.status === "error" || (state.status === "ready" && !isShopify && !result?.stock?.length)) && linkable.length > 0 && (
             <button className="primary-action compact cart-openall" type="button" onClick={openAll}>
               <Icon name="icon-link" className="button-icon" />Open all {linkable.length} product page{linkable.length === 1 ? "" : "s"}
             </button>
@@ -6256,20 +6381,43 @@ function CartBuilderModal({ group, onClose, onToast }) {
 
           {state.status !== "loading" && rows.length > 0 && (
             <ul className="cart-item-list">
-              {rows.map((row, index) => (
-                <li className="cart-item" key={row.id ?? index}>
-                  <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
-                  <span className="cart-item-name">
-                    <strong>{row.matchName || row.canonicalName}</strong>
-                    <small>Qty {row.qty} {row.uom}{row.matchSub ? ` · ${row.matchSub}` : ""}</small>
-                  </span>
-                  {row.productUrl ? (
-                    <a className="crl-ghost-btn cart-item-open" href={row.productUrl} target="_blank" rel="noreferrer"><Icon name="icon-link" className="button-icon" />Open</a>
-                  ) : (
-                    <span className="cart-item-nolink">No link</span>
-                  )}
-                </li>
-              ))}
+              {rows.map((row, index) => {
+                const liveResult = result?.stock?.find(
+                  (entry) => shopifyStockKey(entry.productUrl) === shopifyStockKey(row.productUrl)
+                );
+                const liveOutOfStock = liveResult?.available === false;
+                const switchTarget = row.switchTarget || (liveOutOfStock
+                  ? pickBestOffer((row.offers || []).filter((offer) => offer.key !== row.selectedOfferKey && isOrderable(offer)), buyingPrefs, row)
+                  : null);
+                return (
+                  <li className="cart-item" key={row.id ?? index}>
+                    <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+                    <span className="cart-item-name">
+                      <strong>{row.matchName || row.canonicalName}</strong>
+                      <small>{liveOutOfStock ? "Out of stock at this supplier" : `Qty ${row.qty} ${row.uom}${row.matchSub ? ` · ${row.matchSub}` : ""}`}</small>
+                    </span>
+                    {liveOutOfStock && switchTarget && row.itemId && onSwitchOffer ? (
+                      <button
+                        className="crl-ghost-btn cart-item-open"
+                        type="button"
+                        onClick={() => {
+                          onSwitchOffer(row.itemId, { selectedOfferKey: switchTarget.key });
+                          onToast(`Switched to ${switchTarget.supplier}`);
+                          onClose();
+                        }}
+                      >
+                        <Icon name="icon-shuffle" className="button-icon" />Switch
+                      </button>
+                    ) : liveOutOfStock ? (
+                      <span className="cart-item-nolink">Unavailable</span>
+                    ) : row.productUrl ? (
+                      <a className="crl-ghost-btn cart-item-open" href={row.productUrl} target="_blank" rel="noreferrer"><Icon name="icon-link" className="button-icon" />Open</a>
+                    ) : (
+                      <span className="cart-item-nolink">No link</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
 
@@ -6323,7 +6471,12 @@ function SupplierGroupCard({ group, onNavigate, onBuildCart, onSwitchOffer, onTo
                     {(() => {
                       const badge = availabilityBadge(row.availability, row.liveAvailable);
                       return badge ? (
-                        <span className={`pp-stock-badge stock-${badge.tone}`} title="Stock as of last catalog sync — verify before ordering">{badge.label}</span>
+                        <span
+                          className={`pp-stock-badge stock-${badge.tone}`}
+                          title={typeof row.liveAvailable === "boolean" ? "Live stock checked this session" : "Stock as of last catalog sync — verify before ordering"}
+                        >
+                          {badge.label}
+                        </span>
                       ) : null;
                     })()}
                   </span>
