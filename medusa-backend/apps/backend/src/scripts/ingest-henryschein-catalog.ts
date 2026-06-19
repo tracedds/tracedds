@@ -4,11 +4,15 @@ import type MedMKPModuleService from "../modules/medmkp/service"
 import {
   extractHenryScheinCategoryLinks,
   extractHenryScheinProducts,
+  extractHenryScheinWebPricedProductIds,
+  extractHenryScheinWebPrices,
+  HS_WEB_PRICING_URL,
 } from "../ingestion/supplier-pipeline/adapters/henryschein"
 import {
   crawlHenryScheinCatalog,
   HS_DENTAL_BROWSE_ROOT,
   HS_TOP_CATEGORY_FALLBACK,
+  type HenryScheinCrawlSummary,
 } from "../ingestion/supplier-pipeline/henryschein-catalog-crawl"
 import {
   buildSupplierCatalogIngestion,
@@ -17,12 +21,12 @@ import {
 import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
 
 /**
- * Henry Schein catalog ingestion — identity layer only (no prices).
+ * Henry Schein catalog ingestion with public web-price enrichment.
  *
- * HS gates pricing behind login, but its public dental category listings embed
- * a JSON-LD Product block per item (name, brand, mpn, sku). We ingest those so a
- * scanned HS item (HIBC code → REF → sku) resolves to a real product, and the
- * search route can offer priced substitutes from other suppliers.
+ * Most HS prices are login-gated. Its public dental category listings provide
+ * the full identity catalog, while the Web Priced Products campaign advertises
+ * a bounded set of item IDs whose public prices render on Products.aspx. The
+ * second pass overlays those prices onto matching identity rows.
  *
  * Default crawl walks the full category tree (top categories → hubs → leaf
  * listings, paginated). Pass --query=… to instead sweep specific keyword
@@ -37,11 +41,27 @@ import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
 
 const SUPPLIER_ID = "msup_henryschein_com"
 const SOURCE_CATALOG = "henry-schein-website-public"
+const WEB_PRICE_BATCH_SIZE = 40
+const DB_CHUNK_SIZE = 500
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function forChunks<T>(
+  rows: T[],
+  work: (chunk: T[], index: number, total: number) => Promise<void>
+) {
+  const total = Math.ceil(rows.length / DB_CHUNK_SIZE)
+  for (let offset = 0; offset < rows.length; offset += DB_CHUNK_SIZE) {
+    await work(
+      rows.slice(offset, offset + DB_CHUNK_SIZE),
+      Math.floor(offset / DB_CHUNK_SIZE) + 1,
+      total
+    )
+  }
+}
 
 // Browser-UA fetch with one retry; returns "" on failure so the crawl skips a
 // bad node instead of aborting. Akamai stalls the default bot UA but serves a
@@ -84,25 +104,80 @@ function searchUrl(query: string, page: number) {
   return `https://www.henryschein.com/us-en/Search.aspx?${params.toString()}`
 }
 
+function webPriceProductsUrl(skus: string[]) {
+  const params = new URLSearchParams({
+    productid: skus.join(","),
+    dp: "true",
+    cdivid: "dental",
+    browsingmode: "p",
+  })
+  return `https://www.henryschein.com/us-en/shopping/products.aspx?${params.toString()}`
+}
+
+async function fetchPublicWebPrices(): Promise<Map<string, number>> {
+  const landingHtml = await fetchHtml(HS_WEB_PRICING_URL)
+  const skus = landingHtml
+    ? extractHenryScheinWebPricedProductIds(landingHtml)
+    : []
+  const prices = new Map<string, number>()
+
+  if (!skus.length) {
+    console.warn("[henryschein] Web-pricing campaign yielded no item IDs; continuing without prices")
+    return prices
+  }
+
+  console.log(`[henryschein] Web-pricing campaign advertises ${skus.length} item IDs`)
+  for (let offset = 0; offset < skus.length; offset += WEB_PRICE_BATCH_SIZE) {
+    const batch = skus.slice(offset, offset + WEB_PRICE_BATCH_SIZE)
+    const html = await fetchHtml(webPriceProductsUrl(batch))
+    if (html) {
+      for (const [sku, cents] of extractHenryScheinWebPrices(html)) {
+        prices.set(sku, cents)
+      }
+    }
+    console.log(
+      `[henryschein]   web prices ${Math.min(offset + batch.length, skus.length)}/${skus.length} IDs; ${prices.size} prices`
+    )
+    if (offset + WEB_PRICE_BATCH_SIZE < skus.length) await sleep(300)
+  }
+
+  return prices
+}
+
 function parseArgs() {
   const args = process.argv.slice(2)
   const queries: string[] = []
   let commit = false
   let allowShrink = false
+  let allowIncomplete = false
   let maxProducts = Infinity
-  let maxPages = 6000
+  let maxPages = 12000
+  let maxPagesPerCategory = 500
   let concurrency = 4
 
   for (const arg of args) {
     if (arg === "--commit") commit = true
     else if (arg === "--allow-shrink") allowShrink = true
+    else if (arg === "--allow-incomplete") allowIncomplete = true
     else if (arg.startsWith("--query=")) queries.push(arg.slice("--query=".length))
     else if (arg.startsWith("--max-products=")) maxProducts = Number(arg.slice("--max-products=".length))
     else if (arg.startsWith("--max-pages=")) maxPages = Number(arg.slice("--max-pages=".length))
+    else if (arg.startsWith("--max-pages-per-category=")) {
+      maxPagesPerCategory = Number(arg.slice("--max-pages-per-category=".length))
+    }
     else if (arg.startsWith("--concurrency=")) concurrency = Number(arg.slice("--concurrency=".length))
   }
 
-  return { commit, allowShrink, maxProducts, maxPages, concurrency, queries }
+  return {
+    commit,
+    allowShrink,
+    allowIncomplete,
+    maxProducts,
+    maxPages,
+    maxPagesPerCategory,
+    concurrency,
+    queries,
+  }
 }
 
 // Top-level dental categories to seed the crawl: read live from the browse root,
@@ -146,14 +221,24 @@ export default async function ingestHenryScheinCatalog({
   container: MedusaContainer
 }) {
   const medmkp = container.resolve<MedMKPModuleService>(MEDMKP_MODULE)
-  const { commit, allowShrink, maxProducts, maxPages, concurrency, queries } = parseArgs()
+  const {
+    commit,
+    allowShrink,
+    allowIncomplete,
+    maxProducts,
+    maxPages,
+    maxPagesPerCategory,
+    concurrency,
+    queries,
+  } = parseArgs()
   const mode = queries.length ? `keyword sweep (${queries.length})` : "full category crawl"
 
   console.log(
-    `[henryschein] ${commit ? "COMMIT" : "DRY RUN"} — ${mode} (identity only, no prices)`
+    `[henryschein] ${commit ? "COMMIT" : "DRY RUN"} — ${mode} + public web-price enrichment`
   )
 
   let rows: SupplierCatalogRow[]
+  let crawlSummary: HenryScheinCrawlSummary | undefined
   if (queries.length) {
     rows = await crawlByQueries(queries, maxProducts)
   } else {
@@ -164,8 +249,12 @@ export default async function ingestHenryScheinCatalog({
       seedUrls,
       maxProducts,
       maxPages,
+      maxPagesPerNode: maxPagesPerCategory,
       concurrency,
       log: (msg) => console.log(msg),
+      onSummary: (summary) => {
+        crawlSummary = summary
+      },
     })
   }
 
@@ -173,6 +262,45 @@ export default async function ingestHenryScheinCatalog({
     console.error("[henryschein] No products extracted — aborting (check fetch/UA).")
     return
   }
+
+  if (commit && queries.length && !allowIncomplete) {
+    console.error(
+      "[henryschein] ABORT: keyword mode is intentionally partial and cannot replace the full catalog. " +
+        "Use it as a dry run, or pass --allow-incomplete for an intentional partial replacement."
+    )
+    return
+  }
+
+  if (commit && crawlSummary && !crawlSummary.complete && !allowIncomplete) {
+    console.error(
+      "[henryschein] ABORT: category crawl was incomplete; refusing to replace the cached catalog. " +
+        `failures=${crawlSummary.failedUrls.length} truncated=${crawlSummary.truncatedCategories.length} ` +
+        `queued=${crawlSummary.queuedCategories} cap_hit=${crawlSummary.capHit}. ` +
+        "Re-run after the site recovers or pass --allow-incomplete for an intentional partial replacement."
+    )
+    return
+  }
+
+  const webPrices = await fetchPublicWebPrices()
+  let enriched = 0
+  rows = rows.map((row) => {
+    const sku = row.sku?.trim()
+    const price_cents = sku ? webPrices.get(sku) : undefined
+    if (price_cents === undefined) return row
+    enriched++
+    return {
+      ...row,
+      price_cents,
+      raw: {
+        ...((row.raw && typeof row.raw === "object") ? row.raw as Record<string, unknown> : {}),
+        web_price_source_url: HS_WEB_PRICING_URL,
+      },
+    }
+  })
+  console.log(
+    `[henryschein] Applied ${enriched} public prices to catalog rows` +
+      (webPrices.size > enriched ? ` (${webPrices.size - enriched} priced IDs absent from this crawl)` : "")
+  )
 
   // Match against the live canonical catalog (read-only) to see how the rows land.
   const canonicalProducts = await medmkp.listCanonicalProducts()
@@ -198,7 +326,7 @@ export default async function ingestHenryScheinCatalog({
     (m) => (m as { canonical_product_id: string }).canonical_product_id
   ).length
   console.log(
-    `[henryschein] Extracted ${rows.length} products | ${matched} matched to a canonical product | ${rows.length - matched} unmatched | price snapshots ${ingestion.priceSnapshots.length} (expected 0)`
+    `[henryschein] Extracted ${rows.length} products | ${matched} matched to a canonical product | ${rows.length - matched} unmatched | price snapshots ${ingestion.priceSnapshots.length}`
   )
 
   // Show a few sample matches so the reviewer can judge substitute quality.
@@ -243,11 +371,11 @@ export default async function ingestHenryScheinCatalog({
         onboarding_status: "in_review" as const,
         ein_last_four: "",
         certification_summary:
-          "Identity-only catalog (prices login-gated) used as a scan-to-substitute reference.",
+          "Public identity catalog with web-pricing campaign enrichment; most prices remain login-gated.",
         default_lead_time_days: 0,
         ach_enabled: false,
         catalog_source_urls: JSON.stringify(["https://www.henryschein.com/us-en/dental/"]),
-        catalog_source_notes: "Public JSON-LD listings; no prices ingested.",
+        catalog_source_notes: "Public JSON-LD listings enriched from the public Web Priced Products campaign.",
       },
     ])
     console.log(`[henryschein] Created supplier ${SUPPLIER_ID}`)
@@ -273,21 +401,52 @@ export default async function ingestHenryScheinCatalog({
   }
   if (existingProducts.length) {
     const ids = existingProducts.map((p) => p.id)
-    const existingMatches = await medmkp.listCanonicalProductMatches({ supplier_product_id: ids })
-    if (existingMatches.length) await medmkp.deleteCanonicalProductMatches(existingMatches.map((m) => m.id))
-    await medmkp.deleteSupplierProducts(ids)
+    await forChunks(ids, async (chunk) => {
+      const existingMatches = await medmkp.listCanonicalProductMatches({
+        supplier_product_id: chunk,
+      })
+      if (existingMatches.length) {
+        await forChunks(existingMatches.map((match) => match.id), async (matchChunk) => {
+          await medmkp.deleteCanonicalProductMatches(matchChunk)
+        })
+      }
+    })
+    await forChunks(ids, async (chunk) => {
+      await medmkp.deleteSupplierProducts(chunk)
+    })
     console.log(`[henryschein] Deleted ${ids.length} prior HS products`)
   }
 
+  const existingSources = await medmkp.listSupplierCatalogSources({
+    supplier_id: SUPPLIER_ID,
+    source_catalog: SOURCE_CATALOG,
+  })
+  if (existingSources.length) {
+    await medmkp.deleteSupplierCatalogSources(existingSources.map((source) => source.id))
+  }
+
   await medmkp.createSupplierCatalogSources(ingestion.source)
-  await medmkp.createSupplierProducts(
-    ingestion.supplierProducts as Parameters<typeof medmkp.createSupplierProducts>[0]
-  )
-  await medmkp.createCanonicalProductMatches(
-    ingestion.canonicalProductMatches as Parameters<typeof medmkp.createCanonicalProductMatches>[0]
-  )
+  await forChunks(ingestion.supplierProducts, async (chunk, index, total) => {
+    console.log(`[henryschein] Creating product chunk ${index}/${total} (${chunk.length})`)
+    await medmkp.createSupplierProducts(
+      chunk as Parameters<typeof medmkp.createSupplierProducts>[0]
+    )
+  })
+  await forChunks(ingestion.canonicalProductMatches, async (chunk, index, total) => {
+    console.log(`[henryschein] Creating match chunk ${index}/${total} (${chunk.length})`)
+    await medmkp.createCanonicalProductMatches(
+      chunk as Parameters<typeof medmkp.createCanonicalProductMatches>[0]
+    )
+  })
+  if (ingestion.priceSnapshots.length) {
+    await forChunks(ingestion.priceSnapshots, async (chunk) => {
+      await medmkp.createSupplierPriceSnapshots(
+        chunk as Parameters<typeof medmkp.createSupplierPriceSnapshots>[0]
+      )
+    })
+  }
 
   console.log(
-    `[henryschein] COMMIT complete — wrote ${ingestion.supplierProducts.length} products + ${ingestion.canonicalProductMatches.length} matches (0 price snapshots).`
+    `[henryschein] COMMIT complete — wrote ${ingestion.supplierProducts.length} products + ${ingestion.canonicalProductMatches.length} matches + ${ingestion.priceSnapshots.length} price snapshots.`
   )
 }

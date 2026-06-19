@@ -372,7 +372,35 @@ def build_product_matching_dag() -> DAG:
     return dag
 
 
+def build_henry_schein_dag() -> DAG:
+    ingest_args = " -- --max-pages=12000 --max-pages-per-category=500 --concurrency=4"
+    if COMMIT_ENABLED:
+        ingest_args += " --commit"
+
+    with DAG(
+        dag_id="henry_schein",
+        description=(
+            "Import the Henry Schein public dental catalog and enrich campaign-listed "
+            "products with public web prices."
+        ),
+        start_date=datetime(2026, 1, 1),
+        schedule="0 16 * * 0",
+        catchup=False,
+        max_active_runs=1,
+        tags=["medmkp", "supplier-ingestion", "msup_henryschein_com"],
+    ) as dag:
+        BashOperator(
+            task_id="ingest",
+            bash_command=backend_command(f"npm run henryschein:ingest{ingest_args}"),
+            pool=POOL,
+            retries=1,
+        )
+
+    return dag
+
+
 for supplier in SUPPLIERS:
     globals()[supplier["name"]] = build_supplier_dag(supplier)
 
+henry_schein = build_henry_schein_dag()
 match_products = build_product_matching_dag()
