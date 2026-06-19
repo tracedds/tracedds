@@ -59,30 +59,39 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     claimed_at: new Date(),
   })
 
-  const [credential] = await medmkp.listSupplierCredentials({
-    practice_id: job.practice_id,
-    supplier_id: job.supplier_id,
-  })
-  if (!credential) {
-    await medmkp.updateCartBuildJobs({
-      id: job.id,
-      status: "needs_auth",
-      error: "No stored credential for this supplier.",
-      finished_at: new Date(),
-    })
-    res.json({ job: null })
-    return
-  }
-
+  // Login source: ephemeral creds sealed on the job (on-the-fly build) win;
+  // otherwise fall back to the practice's stored vault login.
+  let username = ""
   let password = ""
   try {
-    password = decryptSecret(credential.password_encrypted)
+    if (job.credentials_encrypted) {
+      username = job.credentials_username ?? ""
+      password = decryptSecret(job.credentials_encrypted)
+    } else {
+      const [credential] = await medmkp.listSupplierCredentials({
+        practice_id: job.practice_id,
+        supplier_id: job.supplier_id,
+      })
+      if (!credential) {
+        await medmkp.updateCartBuildJobs({
+          id: job.id,
+          status: "needs_auth",
+          error: "No login available for this supplier.",
+          finished_at: new Date(),
+        })
+        res.json({ job: null })
+        return
+      }
+      username = credential.username
+      password = decryptSecret(credential.password_encrypted)
+    }
   } catch {
     await medmkp.updateCartBuildJobs({
       id: job.id,
       status: "failed",
-      error: "Stored credential could not be decrypted (key rotation?).",
+      error: "Login could not be decrypted (key rotation?).",
       finished_at: new Date(),
+      credentials_encrypted: null,
     })
     res.json({ job: null })
     return
@@ -93,7 +102,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       id: job.id,
       supplier_slug: job.supplier_slug,
       lines: job.lines,
-      credential: { username: credential.username, password },
+      credential: { username, password },
     },
   })
 }

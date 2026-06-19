@@ -17,6 +17,12 @@ const CartBuildJob = model.define("medmkp_cart_build_job", {
     .enum(["queued", "running", "done", "failed", "needs_auth"])
     .default("queued"),
   lines: model.json(),
+  // On-the-fly credentials for buyers who don't save a login: the password is
+  // sealed with the vault key (utils/secret-vault), rides the job only for the
+  // duration of the build, and is zeroed the moment the job finishes. Null when
+  // the build uses a stored supplier_credential instead.
+  credentials_encrypted: model.text().nullable(),
+  credentials_username: model.text().nullable(),
   results: model.json().nullable(),
   // Where the buyer opens their now-populated cart (the supplier's cart URL).
   cart_url: model.text().nullable(),

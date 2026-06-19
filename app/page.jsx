@@ -6406,6 +6406,14 @@ function supplierSiteUrl(name) {
   return known ? known.url : `https://www.google.com/search?q=${encodeURIComponent(`${name} dental supply`)}`;
 }
 
+// Suppliers the headless buying agent can drive (a NUC runner adapter exists).
+// Matched by name substring; grow this as adapters are added.
+const AGENT_SUPPLIERS = ["dc dental"];
+function isAgentSupplier(name) {
+  const key = (name || "").toLowerCase();
+  return AGENT_SUPPLIERS.some((match) => key.includes(match));
+}
+
 function planSlug(value) {
   return String(value || "list").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "list";
 }
@@ -6502,15 +6510,17 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group]);
 
-  // Headless buying-agent path: when the practice has stored a login for this
-  // supplier, we can log in and build the cart for them instead of handing over
-  // links. `agent.phase` drives the UI: checking → available/unavailable, then
+  // Headless buying-agent path. For suppliers we can drive (AGENT_SUPPLIERS), we
+  // either build with a saved login or prompt for one on the fly. `agent.phase`:
+  // checking → available (saved login) | prompt (ask on the fly) | off, then
   // queued → running → done/failed/needs_auth once a build is enqueued.
   const [agent, setAgent] = useState({ phase: "checking", job: null });
+  const [login, setLogin] = useState({ username: "", password: "", save: false });
   const supplierId = group.supplierId || null;
+  const agentEnabled = isAgentSupplier(group.supplier);
 
   useEffect(() => {
-    if (!supplierId) { setAgent({ phase: "unavailable", job: null }); return; }
+    if (!supplierId || !agentEnabled) { setAgent({ phase: "off", job: null }); return; }
     let cancelled = false;
     setAgent({ phase: "checking", job: null });
     fetch("/api/supplier-credentials")
@@ -6518,11 +6528,12 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
       .then(({ credentials }) => {
         if (cancelled) return;
         const has = (credentials || []).some((c) => c.supplier_id === supplierId);
-        setAgent({ phase: has ? "available" : "unavailable", job: null });
+        // Saved login → one-click; otherwise prompt for it on the fly.
+        setAgent({ phase: has ? "available" : "prompt", job: null });
       })
-      .catch(() => { if (!cancelled) setAgent({ phase: "unavailable", job: null }); });
+      .catch(() => { if (!cancelled) setAgent({ phase: "prompt", job: null }); });
     return () => { cancelled = true; };
-  }, [supplierId]);
+  }, [supplierId, agentEnabled]);
 
   // Poll a queued/running job until it settles.
   useEffect(() => {
@@ -6547,7 +6558,10 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
     return () => { cancelled = true; clearInterval(timer); };
   }, [agent.phase, agent.job?.id]);
 
-  function startAgentBuild() {
+  // `creds` carries an on-the-fly login (prompt path); omitted when a saved
+  // login already exists.
+  function startAgentBuild(creds) {
+    const prevPhase = agent.phase;
     setAgent((a) => ({ ...a, phase: "queued" }));
     fetch("/api/cart-builds", {
       method: "POST",
@@ -6560,18 +6574,25 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
           productUrl: row.productUrl,
           sku: row.sku || "",
         })),
+        ...(creds ? { username: creds.username, password: creds.password, save: creds.save } : {}),
       }),
     })
       .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (!ok || !data.job) {
-          onToast(data?.error === "needs_credentials" ? "Add your supplier login in Settings first" : "Couldn’t start the cart build");
-          setAgent((a) => ({ ...a, phase: "available" }));
+          onToast(data?.error === "needs_credentials" ? "Enter your supplier login to build the cart" : "Couldn’t start the cart build");
+          setAgent((a) => ({ ...a, phase: prevPhase }));
           return;
         }
         setAgent({ phase: "running", job: data.job });
       })
-      .catch(() => { onToast("Couldn’t start the cart build"); setAgent((a) => ({ ...a, phase: "available" })); });
+      .catch(() => { onToast("Couldn’t start the cart build"); setAgent((a) => ({ ...a, phase: prevPhase })); });
+  }
+
+  function submitLoginAndBuild(e) {
+    e.preventDefault();
+    if (!login.username.trim() || !login.password) { onToast("Enter your username and password"); return; }
+    startAgentBuild({ username: login.username.trim(), password: login.password, save: login.save });
   }
 
   const result = state.result;
@@ -6602,16 +6623,34 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
         </header>
 
         <div className="crl-modal-body cart-modal-body">
-          {/* Headless buying-agent path — preferred when a login is stored. */}
+          {/* Headless buying-agent path — one-click when a login is saved. */}
           {agent.phase === "available" && (
             <div className="cart-agent cart-agent-offer">
               <div className="cart-prefill-icon"><Icon name="icon-bolt" /></div>
               <strong>Build this cart for you</strong>
               <small>We’ll sign in to {group.supplier} with your saved login and add all {linkable.length} item{linkable.length === 1 ? "" : "s"} to your cart.</small>
-              <button className="primary-action compact" type="button" onClick={startAgentBuild}>
+              <button className="primary-action compact" type="button" onClick={() => startAgentBuild()}>
                 <Icon name="icon-cart" className="button-icon" />Build my {group.supplier} cart
               </button>
             </div>
+          )}
+
+          {/* On-the-fly login: build without saving the password. */}
+          {agent.phase === "prompt" && (
+            <form className="cart-agent cart-agent-prompt" onSubmit={submitLoginAndBuild}>
+              <div className="cart-prefill-icon"><Icon name="icon-bolt" /></div>
+              <strong>Build this cart for you</strong>
+              <small>Enter your {group.supplier} login and we’ll add all {linkable.length} item{linkable.length === 1 ? "" : "s"} to your cart. We use it for this order only — it isn’t saved unless you ask.</small>
+              <input type="text" autoComplete="off" placeholder={`${group.supplier} username or email`} value={login.username} onChange={(e) => setLogin((l) => ({ ...l, username: e.target.value }))} />
+              <input type="password" autoComplete="off" placeholder="Password" value={login.password} onChange={(e) => setLogin((l) => ({ ...l, password: e.target.value }))} />
+              <label className="cart-agent-save">
+                <input type="checkbox" checked={login.save} onChange={(e) => setLogin((l) => ({ ...l, save: e.target.checked }))} />
+                Save this login so I don’t have to re-enter it
+              </label>
+              <button className="primary-action compact" type="submit">
+                <Icon name="icon-cart" className="button-icon" />Build my {group.supplier} cart
+              </button>
+            </form>
           )}
 
           {(agent.phase === "queued" || agent.phase === "running") && (
@@ -6619,7 +6658,7 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
           )}
 
           {agent.phase === "needs_auth" && (
-            <div className="cart-status">Your saved {group.supplier} login didn’t work — update it in Settings and try again.</div>
+            <div className="cart-status">That {group.supplier} login didn’t work. Double-check it (or that you have a {group.supplier} account) and try again.</div>
           )}
 
           {agent.phase === "failed" && (
@@ -6651,18 +6690,6 @@ function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitc
                   </>
                 );
               })()}
-            </div>
-          )}
-
-          {/* Offer to connect a login when the buyer has none and the one-click
-              Shopify path isn't available for this supplier. */}
-          {agent.phase === "unavailable" && supplierId && state.status === "ready" && !isShopify && (
-            <div className="cart-agent cart-agent-connect">
-              <strong>Skip the busywork</strong>
-              <small>Save your {group.supplier} login in Settings and we’ll build your cart automatically next time.</small>
-              <a className="crl-ghost-btn" href="/app/settings" onClick={(e) => { e.preventDefault(); onClose(); window.location.assign("/app/settings"); }}>
-                <Icon name="icon-settings" className="button-icon" />Add {group.supplier} login
-              </a>
             </div>
           )}
 

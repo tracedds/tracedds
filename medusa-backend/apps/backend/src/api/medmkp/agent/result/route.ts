@@ -54,6 +54,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     cart_url: body.cart_url ?? null,
     error: body.error ?? null,
     finished_at: new Date(),
+    // Discard any ephemeral on-the-fly login now that the build is done.
+    credentials_encrypted: null,
+    credentials_username: null,
   })
 
   // Reflect the login result onto the credential record.
