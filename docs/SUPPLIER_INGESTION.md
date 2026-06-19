@@ -237,9 +237,11 @@ Do not use generated debug CSVs as long-term source files.
 ## Scheduled Refresh (Airflow)
 
 `airflow/dags/supplier_catalog_ingestion.py` refreshes proven-adapter suppliers
-weekly (Sunday 03:00) by running `supplier:ingest:db --commit` per supplier with
-tuned concurrency flags. It needs the `medmkp_backend_dir` Airflow Variable and an
-env file with the target `DATABASE_URL` (Render Postgres: `DB_SSL=true`) — set the
+weekly on Sunday by running `supplier:ingest:db --commit` per supplier with tuned
+concurrency flags. Henry Schein has a dedicated `henry_schein` DAG at 16:00 UTC
+that runs `henryschein:ingest --commit`, including public web-price enrichment.
+The DAGs need the `medmkp_backend_dir` Airflow Variable and an env file with the
+target `DATABASE_URL` (Render Postgres: `DB_SSL=true`) — set the
 `medmkp_env_file` Variable to `.env.production` on hosts that target the remote
 database (`.env` is reserved for local development). Ingestion commands export
 `ALLOW_REMOTE_DB_DESTRUCTIVE=true` to pass the db-safety guard that otherwise
@@ -309,6 +311,32 @@ plus a full-catalog discovery module (`shasta-catalog-discovery.ts`).
 - Clearance items strike the list price and show a `Sale Price:` line; the
   adapter extracts the sale price and keeps the list price in
   `raw.list_price`.
+
+Henry Schein uses a dedicated catalog command because its Microsoft Commerce
+Server catalog has no usable sitemap:
+
+```bash
+cd medusa-backend/apps/backend
+npm run henryschein:ingest                 # dry run
+npm run henryschein:ingest -- --commit    # replace the cached HS catalog
+```
+
+- The full category crawl ingests public JSON-LD identity fields for the entire
+  dental catalog. It follows category pagination until the first empty or
+  repeated page; large departments are no longer cut off at page 60. Most HS
+  prices remain login-gated.
+- A second pass reads the public [Web Priced Products](https://www.henryschein.com/us-en/dental/supplies/shop-web-pricing.aspx)
+  campaign, discovers its explicit HS item IDs, fetches them in batches, and
+  overlays the server-rendered public prices onto matching catalog rows.
+- Only campaign-listed products receive price snapshots. A product merely
+  accepting `dp=true` is not treated as evidence of a public web price.
+- The command keeps the existing catalog shrink guard. Use `--allow-shrink`
+  only when an intentional partial replacement is required.
+- Commits also require a complete category crawl. Fetch failures, the global
+  page cap, or a category reaching its safety cap abort replacement; use
+  `--allow-incomplete` only for an intentional partial catalog.
+- Keyword mode remains useful for focused dry runs, but cannot replace the full
+  catalog unless `--allow-incomplete` is explicitly supplied.
 
 Frontier Dental (frontierdental.com) is currently not ingestible.
 

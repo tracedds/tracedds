@@ -1372,6 +1372,7 @@ export default function Home() {
   // Id of the handoff prepared for the live list, or null. Drives the live
   // list's "Handed off" status and links the archive entry to its handoff.
   const [currentHandoffId, setCurrentHandoffId] = useState(null);
+  const [cartGroup, setCartGroup] = useState(null);
   const [listTouched, setListTouched] = useState(false);
   const [listName, setListName] = useState("June Restock");
   const [buyingPrefs, setBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
@@ -1973,6 +1974,19 @@ export default function Home() {
     }));
   }
 
+  // Apply the landed-cost-optimized plan: set each line's selected offer to the
+  // optimizer's choice. Reuses the per-line override mechanism, so the buyer can
+  // still re-pick any line afterward.
+  function applyOptimizedPlan(assignmentByItemId) {
+    if (!assignmentByItemId || !Object.keys(assignmentByItemId).length) return;
+    setListTouched(true);
+    setDraftItems((items) => items.map((item) => {
+      const key = assignmentByItemId[item.id];
+      return key ? { ...item, selectedOfferKey: key } : item;
+    }));
+    showToast("Plan optimized for lowest landed cost");
+  }
+
   // Bulk-confirm a set of items, accepting whatever offer is currently best.
   function verifyItems(itemIds) {
     const ids = new Set(itemIds);
@@ -2322,6 +2336,7 @@ export default function Home() {
                 buyingPrefs={buyingPrefs}
                 supplierShipping={supplierShipping}
                 onBuyingPrefs={setBuyingPrefs}
+                onApplyOptimized={applyOptimizedPlan}
                 onArchiveList={archiveCurrentList}
                 onClearList={clearCurrentList}
                 onConfirmMatch={applyMatchDecision}
@@ -2340,6 +2355,7 @@ export default function Home() {
               buyingPrefs={buyingPrefs}
               onBuyingPrefs={setBuyingPrefs}
               onPrepareHandoff={prepareHandoff}
+              onBuildCart={setCartGroup}
               onNavigate={navigate}
               onToast={showToast}
             />
@@ -2349,6 +2365,7 @@ export default function Home() {
             <SupplierHandoffView
               handoff={(selectedHandoffId && handoffs.find((h) => h.id === selectedHandoffId)) || handoffs[0] || null}
               onArchive={archiveFromHandoff}
+              onBuildCart={setCartGroup}
               onNavigate={navigate}
               onToast={showToast}
             />
@@ -2407,6 +2424,10 @@ export default function Home() {
         />
         </div>
       </div>
+
+      {cartGroup && (
+        <CartBuilderModal group={cartGroup} onClose={() => setCartGroup(null)} onToast={showToast} />
+      )}
 
       <div className={`toast ${toast ? "show" : ""}`} role="status" aria-live="polite">{toast}</div>
       <IconSprite />
@@ -3903,6 +3924,7 @@ function mapSearchOffer(offer) {
     packQty: offer.pack_quantity ?? null,
     packSize: offer.pack_size || "",
     imageUrl: offer.image_url || "",
+    productUrl: offer.product_url || "",
   };
 }
 
@@ -4111,6 +4133,108 @@ function computePlanTotals(rows, shippingByName) {
   };
 }
 
+// Candidate offers for a line under the buyer's preferences — mirrors
+// pickBestOffer's preferred-supplier filter so optimization never proposes a
+// supplier the buyer excluded.
+function candidatePool(offers, prefs) {
+  const preferred = prefs?.preferredSuppliers || [];
+  if (!preferred.length) return offers;
+  const inPref = offers.filter((offer) =>
+    preferred.some((name) => (offer.supplier || "").toLowerCase().includes(name.toLowerCase())));
+  return inPref.length ? inPref : offers;
+}
+
+// Landed cost of an assignment (chosen offer + qty per line): item cost plus
+// per-supplier shipping evaluated on each supplier's assigned basket.
+function assignmentLanded(assignment, shippingByName) {
+  const groups = new Map();
+  for (const { offer, qty } of assignment) {
+    const key = normSupplierName(offer.supplier);
+    const group = groups.get(key) || { subtotal: 0 };
+    group.subtotal += (offer.price || 0) * qty;
+    groups.set(key, group);
+  }
+  let total = 0;
+  for (const [key, group] of groups) {
+    total += group.subtotal + (computeSupplierShipping(shippingByName?.[key] || null, group.subtotal) || 0);
+  }
+  return total;
+}
+
+// Re-assign lines across suppliers to minimize total LANDED cost (item price +
+// per-supplier shipping) — this naturally favors consolidating onto a supplier
+// whose free-shipping threshold the combined basket can clear. Callers gate this
+// on complete shipping data so an unknown policy can't masquerade as free.
+//
+// Multi-start local search: from each seed (the buyer's current plan, plus one
+// "everything to supplier S" per supplier), repeatedly move each line to the
+// offer that lowers the landed total until stable, then keep the cheapest result
+// across all seeds. The per-supplier seeds keep single-line search from getting
+// stuck consolidating onto the wrong supplier. Returns null when nothing beats
+// the current plan.
+function optimizeLandedAssignment(rows, shippingByName, prefs) {
+  const lines = (rows || [])
+    .filter((row) => row.status !== "Not found" && (row.offers || []).length && row.itemId)
+    .map((row) => {
+      const pool = candidatePool(row.offers, prefs);
+      const current = pool.find((offer) => offer.key === row.selectedOfferKey) || pool[0];
+      return { itemId: row.itemId, qty: row.qty || 1, pool, current };
+    })
+    .filter((line) => line.pool.length);
+  if (lines.length < 2) return null;
+
+  const landedOf = (assign) =>
+    assignmentLanded(assign.map((offer, i) => ({ offer, qty: lines[i].qty })), shippingByName);
+
+  const localSearch = (seed) => {
+    const assign = seed.slice();
+    let improved = true;
+    let passes = 0;
+    while (improved && passes < 20) {
+      improved = false;
+      passes += 1;
+      for (let i = 0; i < lines.length; i++) {
+        let bestOffer = assign[i];
+        let bestCost = landedOf(assign);
+        for (const cand of lines[i].pool) {
+          if (cand.key === assign[i].key) continue;
+          assign[i] = cand;
+          const cost = landedOf(assign);
+          if (cost < bestCost - 1e-6) { bestCost = cost; bestOffer = cand; improved = true; }
+        }
+        assign[i] = bestOffer;
+      }
+    }
+    return assign;
+  };
+
+  const baseline = lines.map((line) => line.current);
+  const baseLanded = landedOf(baseline);
+  const cheapest = (pool) => [...pool].sort((a, b) => (a.price || 0) - (b.price || 0))[0];
+  const suppliers = new Set();
+  for (const line of lines) for (const offer of line.pool) suppliers.add(normSupplierName(offer.supplier));
+
+  const seeds = [baseline];
+  for (const sup of suppliers) {
+    seeds.push(lines.map((line) => line.pool.find((offer) => normSupplierName(offer.supplier) === sup) || cheapest(line.pool)));
+  }
+
+  let best = baseline;
+  let bestLanded = baseLanded;
+  for (const seed of seeds) {
+    const result = localSearch(seed);
+    const landed = landedOf(result);
+    if (landed < bestLanded - 1e-6) { bestLanded = landed; best = result; }
+  }
+
+  const savings = baseLanded - bestLanded;
+  if (savings <= 0.5) return null;
+
+  const assignmentByItemId = {};
+  for (let i = 0; i < lines.length; i++) assignmentByItemId[lines[i].itemId] = best[i].key;
+  return { assignmentByItemId, savings, optimizedLanded: bestLanded, suppliers: new Set(best.map((offer) => normSupplierName(offer.supplier))).size };
+}
+
 function deriveMatchRows(items, prefs) {
   return (items || []).map((item, index) => {
     const conf = Math.round((item.confidence ?? item.recommendation?.confidence ?? 0) * 100);
@@ -4166,6 +4290,7 @@ function deriveMatchRows(items, prefs) {
       supplier,
       matchName: notFound ? null : (best?.name || item.canonicalName || item.product || null),
       matchSub: notFound ? null : (best ? [best.sku, best.packSize].filter(Boolean).join(" · ") : ""),
+      productUrl: notFound ? "" : (best?.productUrl || ""),
       confidence: notFound ? null : conf,
       price: notFound ? null : price,
       perEa: notFound ? null : perEa,
@@ -5158,6 +5283,7 @@ function CurrentReorderList({
   buyingPrefs,
   supplierShipping = {},
   onBuyingPrefs,
+  onApplyOptimized,
   onArchiveList,
   onClearList,
   onConfirmMatch,
@@ -5219,6 +5345,15 @@ function CurrentReorderList({
     const missingPrice = rows.filter((row) => row.status !== "Not found" && !row.hasPaidPrice).length;
     return { ...totals, coverage, savings, currentSpend, missingPrice };
   }, [rows, stats, supplierShipping]);
+
+  // Lowest-landed-cost re-assignment, surfaced as an opt-in suggestion. Only run
+  // it when shipping is fully known for the plan (so an unknown policy can't look
+  // free) and the buyer isn't in brand-match mode (which prioritizes brand over
+  // cost). Non-destructive: it sets per-line selections only when Applied.
+  const optimizedPlan = useMemo(() => {
+    if (!planSummary.shippingComplete || buyingPrefs?.strategy === "brand-match") return null;
+    return optimizeLandedAssignment(rows, supplierShipping, buyingPrefs);
+  }, [rows, supplierShipping, buyingPrefs, planSummary.shippingComplete]);
 
   const tabFilter = {
     all: () => true,
@@ -5608,6 +5743,19 @@ function CurrentReorderList({
                     {planSummary.nudge.saves ? ` (saves ${money.format(planSummary.nudge.saves)})` : ""}.
                   </p>
                 )}
+                {optimizedPlan && (
+                  <div className="crl-optimize">
+                    <div className="crl-optimize-text">
+                      Save <strong>{money.format(optimizedPlan.savings)}</strong>{" "}
+                      {optimizedPlan.suppliers < planSummary.suppliers
+                        ? `by consolidating to ${optimizedPlan.suppliers} supplier${optimizedPlan.suppliers === 1 ? "" : "s"}`
+                        : "by optimizing suppliers for shipping"}.
+                    </div>
+                    <button className="crl-optimize-btn" type="button" onClick={() => onApplyOptimized?.(optimizedPlan.assignmentByItemId)}>
+                      Apply
+                    </button>
+                  </div>
+                )}
                 {planSummary.missingPrice > 0 && (
                   <p className="crl-plan-note">
                     Add what you pay to {planSummary.missingPrice} item{planSummary.missingPrice === 1 ? "" : "s"} to see your full savings.
@@ -5827,6 +5975,7 @@ function slimHandoffRow(row) {
     matchSub: row.matchSub || "",
     supplier: row.supplier,
     sku: selected?.sku || "",
+    productUrl: selected?.productUrl || row.productUrl || "",
     qty: row.qty,
     uom: row.uom,
     price: row.price,
@@ -5912,16 +6061,155 @@ function buildHandoffCsv(handoff) {
   return rows.map((cells) => cells.map(esc).join(",")).join("\n");
 }
 
+// Per-supplier "build cart" helper. Resolves the supplier's lines to the best
+// available target via /api/cart-link: a one-click Shopify cart permalink that
+// prefills quantities, or — for platforms with no GET-based cart — the product
+// pages to open and add by hand. Shared by the live plan and the frozen handoff.
+function CartBuilderModal({ group, onClose, onToast }) {
+  const [state, setState] = useState({ status: "loading", result: null });
+  const rows = group.rows || [];
+  const linkable = rows.filter((row) => row.productUrl);
+  const missing = rows.length - linkable.length;
+
+  useEffect(() => {
+    if (!linkable.length) {
+      setState({ status: "empty", result: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ status: "loading", result: null });
+    fetch("/api/cart-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        supplier: group.supplier,
+        items: linkable.map((row) => ({
+          name: row.matchName || row.canonicalName || "",
+          qty: row.qty,
+          productUrl: row.productUrl,
+        })),
+      }),
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+      .then((result) => { if (!cancelled) setState({ status: "ready", result }); })
+      .catch(() => { if (!cancelled) setState({ status: "error", result: null }); });
+    return () => { cancelled = true; };
+    // group identity is stable per open; re-resolve only when the supplier changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group]);
+
+  const result = state.result;
+  const isShopify = state.status === "ready" && result?.kind === "shopify-cart";
+
+  // Best-effort multi-tab open for the page-by-page path. Browsers block all but
+  // the first pop-up, so we nudge the buyer to allow them (per-item links below
+  // always work as the reliable fallback).
+  function openAll() {
+    let opened = 0;
+    for (const row of linkable) {
+      if (window.open(row.productUrl, "_blank", "noopener")) opened += 1;
+    }
+    if (opened < linkable.length) onToast("Allow pop-ups to open every product page at once");
+  }
+
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cartModalTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="crl-modal cart-modal">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="cartModalTitle">Build cart · {group.supplier}</h3>
+            <p>{isShopify
+              ? "We can prefill this supplier’s cart in one click — quantities included."
+              : "Open each product on the supplier’s site and add it to your cart."}</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+
+        <div className="crl-modal-body cart-modal-body">
+          {state.status === "loading" && (
+            <div className="cart-status"><span className="cart-spinner" aria-hidden="true" />Finding the best way to fill your {group.supplier} cart…</div>
+          )}
+
+          {state.status === "empty" && (
+            <div className="cart-status">No supplier product links are available for these items yet.</div>
+          )}
+
+          {state.status === "error" && (
+            <div className="cart-status">Couldn’t reach {group.supplier} to prefill the cart — open each product below instead.</div>
+          )}
+
+          {isShopify && (
+            <div className="cart-prefill">
+              <div className="cart-prefill-icon"><Icon name="icon-cart" /></div>
+              <strong>Your {group.supplier} cart is ready</strong>
+              <small>{result.count} item{result.count === 1 ? "" : "s"} with quantities, added to the cart on {group.supplier}.</small>
+              <a className="primary-action compact" href={result.url} target="_blank" rel="noreferrer" onClick={() => onToast(`Opening your ${group.supplier} cart`)}>
+                <Icon name="icon-cart" className="button-icon" />Open prefilled cart
+              </a>
+              {result.leftovers?.length > 0 && (
+                <small className="cart-leftover-note">{result.leftovers.length} item{result.leftovers.length === 1 ? "" : "s"} couldn’t be added automatically — open {result.leftovers.length === 1 ? "it" : "them"} below.</small>
+              )}
+            </div>
+          )}
+
+          {(state.status === "error" || (state.status === "ready" && !isShopify)) && linkable.length > 0 && (
+            <button className="primary-action compact cart-openall" type="button" onClick={openAll}>
+              <Icon name="icon-link" className="button-icon" />Open all {linkable.length} product page{linkable.length === 1 ? "" : "s"}
+            </button>
+          )}
+
+          {state.status !== "loading" && rows.length > 0 && (
+            <ul className="cart-item-list">
+              {rows.map((row, index) => (
+                <li className="cart-item" key={row.id ?? index}>
+                  <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+                  <span className="cart-item-name">
+                    <strong>{row.matchName || row.canonicalName}</strong>
+                    <small>Qty {row.qty} {row.uom}{row.matchSub ? ` · ${row.matchSub}` : ""}</small>
+                  </span>
+                  {row.productUrl ? (
+                    <a className="crl-ghost-btn cart-item-open" href={row.productUrl} target="_blank" rel="noreferrer"><Icon name="icon-link" className="button-icon" />Open</a>
+                  ) : (
+                    <span className="cart-item-nolink">No link</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {missing > 0 && state.status !== "loading" && (
+            <small className="cart-missing-note">{missing} item{missing === 1 ? "" : "s"} on this order ha{missing === 1 ? "s" : "ve"} no supplier link — add {missing === 1 ? "it" : "them"} from the supplier’s site directly.</small>
+          )}
+        </div>
+
+        <footer className="crl-modal-foot">
+          <button className="crl-ghost-btn" type="button" onClick={onClose}>Done</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 // One supplier's order block — shared by the live plan (full rows) and the
 // frozen handoff (slim rows). `actions` injects the handoff's copy/open buttons.
-function SupplierGroupCard({ group, onNavigate, actions = null }) {
+function SupplierGroupCard({ group, onNavigate, onBuildCart, actions = null }) {
+  const buildable = group.rows.some((row) => row.productUrl);
   return (
     <section className="crl-card pp-group">
       <div className="pp-group-head">
         <MatchSupplier name={group.supplier} />
         <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
       </div>
-      {actions}
+      {(onBuildCart || actions) && (
+        <div className="ho-group-actions">
+          {onBuildCart && (
+            <button className="crl-ghost-btn pp-buildcart-btn" type="button" disabled={!buildable} onClick={() => onBuildCart(group)} title={buildable ? "" : "No supplier product links for these items"}>
+              <Icon name="icon-cart" className="button-icon" />Build cart
+            </button>
+          )}
+          {actions}
+        </div>
+      )}
       <div className="pp-group-lines">
         {group.rows.map((row) => {
           const clickable = Boolean(row.canonicalHandle);
@@ -5947,7 +6235,7 @@ function SupplierGroupCard({ group, onNavigate, actions = null }) {
   );
 }
 
-function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onNavigate, onToast }) {
+function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onBuildCart, onNavigate, onToast }) {
   const rows = deriveMatchRows(items || [], buyingPrefs);
   const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
   const unresolved = rows.filter((row) => row.status === "Not found" || !row.supplier || row.supplier === "—");
@@ -6001,7 +6289,7 @@ function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPr
                 <small>Grouped by supplier · best offer per line</small>
               </div>
               {groups.map((group) => (
-                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} />
+                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} onBuildCart={onBuildCart} />
               ))}
             </>
           )}
@@ -6054,7 +6342,7 @@ function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPr
   );
 }
 
-function SupplierHandoffView({ handoff, onArchive, onNavigate, onToast }) {
+function SupplierHandoffView({ handoff, onArchive, onBuildCart, onNavigate, onToast }) {
   if (!handoff) {
     return (
       <div className="crl ho">
@@ -6126,11 +6414,12 @@ function SupplierHandoffView({ handoff, onArchive, onNavigate, onToast }) {
             key={group.supplier}
             group={group}
             onNavigate={onNavigate}
+            onBuildCart={onBuildCart}
             actions={(
-              <div className="ho-group-actions">
+              <>
                 <button className="crl-ghost-btn" type="button" onClick={() => copyGroup(group)}><Icon name="icon-clipboard" className="button-icon" />Copy order details</button>
                 <a className="crl-ghost-btn" href={supplierSiteUrl(group.supplier)} target="_blank" rel="noreferrer"><Icon name="icon-store" className="button-icon" />Open website</a>
-              </div>
+              </>
             )}
           />
         ))}
