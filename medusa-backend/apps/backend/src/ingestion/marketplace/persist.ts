@@ -1,5 +1,6 @@
 import { boundedId } from "../supplier-catalog"
 import { parsePack, unitPriceCents } from "../pack"
+import { cleanProductName } from "../supplier-pipeline/html"
 import type { MarketplaceCatalogRow } from "./search"
 
 type SourceType = "website" | "pdf" | "csv" | "manual" | "api" | "email" | "agent"
@@ -55,7 +56,7 @@ export function buildMarketplaceIngestion(input: MarketplaceIngestionInput) {
       [input.supplier_id, input.source_catalog, row.sku],
       96
     )
-    const name = row.name?.trim() || row.sku
+    const name = cleanProductName(row.name?.trim() || row.sku)
     const category = row.category?.trim() || "Dental supplies"
     const pack = parsePack(row.pack_size, name, category)
 

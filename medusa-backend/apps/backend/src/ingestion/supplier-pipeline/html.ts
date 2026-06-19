@@ -1,13 +1,76 @@
-export function decodeHtml(value: string) {
+// Named HTML entities seen in supplier product names. The numeric decoder below
+// covers the long tail (&#8217;, &#xae;, …); this map only needs the common
+// named ones. Legitimate symbols (®, ™, ², é) are decoded and KEPT — only the
+// broken stuff (literal entities, smart punctuation, replacement chars) gets
+// normalized away by normalizeText.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  reg: "®", trade: "™", copy: "©", deg: "°", ordm: "º", ordf: "ª",
+  hellip: "…", middot: "·", bull: "•", times: "×", divide: "÷",
+  plusmn: "±", micro: "µ", frac12: "½", frac14: "¼", frac34: "¾",
+  sup1: "¹", sup2: "²", sup3: "³",
+  mdash: "—", ndash: "–", minus: "−",
+  lsquo: "‘", rsquo: "’", sbquo: "‚",
+  ldquo: "“", rdquo: "”", bdquo: "„",
+  laquo: "«", raquo: "»",
+  eacute: "é", egrave: "è", ecirc: "ê", agrave: "à", acirc: "â",
+  ccedil: "ç", ntilde: "ñ", ouml: "ö", uuml: "ü", auml: "ä",
+  aring: "å", oslash: "ø", szlig: "ß",
+}
+
+// Decode numeric (&#233; / &#xe9;) and named (&reg;) HTML entities.
+export function decodeHtmlEntities(value: string) {
+  return value.replace(
+    /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g,
+    (match, body: string) => {
+      if (body[0] === "#") {
+        const code =
+          body[1] === "x" || body[1] === "X"
+            ? parseInt(body.slice(2), 16)
+            : parseInt(body.slice(1), 10)
+        if (Number.isFinite(code) && code > 0 && code <= 0x10ffff) {
+          try {
+            return String.fromCodePoint(code)
+          } catch {
+            return match
+          }
+        }
+        return match
+      }
+      const named = NAMED_ENTITIES[body] ?? NAMED_ENTITIES[body.toLowerCase()]
+      return named ?? match
+    }
+  )
+}
+
+// Normalize the "weird characters" that show up in product names while keeping
+// legitimate symbols (®, ™, ², accented letters) intact: drop replacement and
+// zero-width characters, fold smart punctuation and exotic spaces/hyphens to
+// their ASCII forms, then collapse whitespace.
+export function normalizeText(value: string) {
   return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .normalize("NFC")
+    .replace(/\uFFFD/g, "") // replacement char (byte lost to a bad decode)
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "") // zero-width + word-joiner + BOM
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'") // smart single quotes / prime
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"') // smart double quotes / double prime
+    .replace(/[\u2010\u2011\u2012]/g, "-") // hyphen / non-breaking / figure dash
+    .replace(/[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g, " ") // exotic spaces
+    .replace(/[\u0000-\u001F\u007F]/g, " ") // control characters
     .replace(/\s+/g, " ")
     .trim()
+}
+
+export function decodeHtml(value: string) {
+  return normalizeText(decodeHtmlEntities(value))
+}
+
+// Canonical product-name cleaner, applied at the supplier-catalog persistence
+// boundary so every ingestion path (all pipeline adapters, CSV, marketplace,
+// Henry Schein) lands a cleaned name regardless of how its adapter extracted it.
+// Idempotent: re-running on an already-clean name is a no-op.
+export function cleanProductName(value: string) {
+  return decodeHtml(value)
 }
 
 export function stripTags(value: string) {
