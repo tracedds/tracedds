@@ -174,7 +174,9 @@ export function categoryBySlug(slug) {
 }
 
 // Resolve a live (supplier-named) category to its curated department for the
-// product-page breadcrumb. Returns { slug, name } or null when nothing matches.
+// product-page breadcrumb. Uses curatedFor's broad matching (incl. the keyword
+// fallback) so long-tail categories still get a department label. Returns
+// { slug, name } or null when nothing matches.
 export function departmentForCategory(liveName) {
   const dept = curatedFor(liveName)
   return dept ? { slug: dept.slug, name: dept.name } : null
@@ -182,6 +184,9 @@ export function departmentForCategory(liveName) {
 
 // Match a live (supplier-named) category to a curated department. First match
 // in CATALOG_CATEGORIES order wins, so specific departments are listed first.
+// Exact source name first, then a keyword pattern fallback for the long tail.
+// Used for breadcrumbs/labels — NOT counts: bucketCategories uses the stricter
+// departmentBySource so landing counts stay aligned with the drill-down.
 function curatedFor(liveName) {
   const lower = normalize(liveName)
   if (!lower) return null
@@ -202,6 +207,21 @@ function curatedFor(liveName) {
   return null
 }
 
+// Exact source-name match only — no keyword fallback. The drill-down
+// (/app/catalog/[slug]) lists exactly a department's declared `sources`, so the
+// landing roll-up must use the same set; keyword matching would inflate the
+// headline count with products the drill-down can't show (the discrepancy this
+// is meant to avoid).
+function departmentBySource(liveName) {
+  const lower = normalize(liveName)
+  if (!lower) return null
+  return (
+    CATALOG_CATEGORIES.find((category) =>
+      category.sources.some((source) => normalize(source) === lower)
+    ) || null
+  )
+}
+
 // Roll live category rows (from /api/catalog) up into the curated departments:
 // sum product counts, keep the highest supplier count, and the single cheapest
 // best-value offer. Returns only populated departments, richest first.
@@ -209,7 +229,7 @@ export function bucketCategories(liveCategories = []) {
   const totals = new Map()
 
   for (const live of liveCategories) {
-    const curated = curatedFor(live.name)
+    const curated = departmentBySource(live.name)
     if (!curated) continue
     const entry =
       totals.get(curated.slug) ||
