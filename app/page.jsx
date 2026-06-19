@@ -1707,6 +1707,8 @@ export default function Home() {
         price_cents: product.best_offer?.price_cents,
         per_unit_cents: product.best_offer?.unit_price_cents,
         pack_size: product.best_offer?.pack_size,
+        pack_quantity: product.best_offer?.pack_quantity,
+        pack_basis: product.best_offer?.pack_basis,
         base_unit: product.base_unit,
         handle: product.handle,
         price_range_cents: product.price_range_cents,
@@ -2482,6 +2484,7 @@ function SearchResults({ results, query = "", loading, onNavigate }) {
           ? `${money.format(result.per_unit_cents / 100)}/${result.base_unit || "unit"}`
           : null;
         const href = result.handle ? `/app/product/${result.handle}` : catalogHref;
+        const packLabel = formatPackLabel(result.pack_quantity, result.pack_basis, result.base_unit, result.pack_size);
 
         return (
           <a className="search-result" key={result.id} href={href} onClick={go(href)}>
@@ -2493,7 +2496,7 @@ function SearchResults({ results, query = "", loading, onNavigate }) {
               <span>{price}</span>
               {perUnit && (
                 <small style={{ color: "var(--muted)", fontWeight: 600, fontStyle: "normal" }}>
-                  {perUnit}{result.pack_size ? ` · ${result.pack_size}` : ""}
+                  {perUnit}{packLabel ? ` · ${packLabel}` : ""}
                 </small>
               )}
             </em>
@@ -2554,6 +2557,23 @@ function availabilityInfo(value) {
   return { label: "Check with supplier", tone: "muted" };
 }
 
+// Suppliers write the same pack a dozen ways ("100/Bx", "100/Box", "Box of 300",
+// "200/Box"). The ingestion parser (ingestion/pack.ts) already resolved each to a
+// structured (quantity, basis, base_unit), so render one canonical label from
+// those fields and only fall back to the raw supplier string when unparsed.
+const PACK_BASIS_WORD = { box: "box", case: "case", pack: "pack" };
+function formatPackLabel(quantity, basis, baseUnit, raw) {
+  // A measured base unit (ml, g, oz…) reads as an amount, not a container count.
+  if (quantity != null && baseUnit && baseUnit !== "each") {
+    return `${quantity} ${baseUnit}`;
+  }
+  const word = PACK_BASIS_WORD[basis];
+  if (quantity != null && word) {
+    return `${quantity}/${word}`;
+  }
+  return raw || (quantity != null ? `${quantity}/pack` : "");
+}
+
 function QtyStepper({ qty, setQty }) {
   return (
     <div className="pdp-stepper">
@@ -2593,6 +2613,7 @@ function catMoney(cents) {
 // to the pack price when the best offer has no per-unit price.
 function CatBestPrice({ best, showBadge }) {
   const perUnit = best && best.unit_comparable && best.unit_price_cents != null ? best.unit_price_cents : null;
+  const packLabel = best ? formatPackLabel(best.pack_quantity, best.pack_basis, best.base_unit, best.pack_size) : "";
   return (
     <div className="cat-pt-price">
       {perUnit != null ? (
@@ -2601,7 +2622,7 @@ function CatBestPrice({ best, showBadge }) {
         <strong>{best ? catMoney(best.price_cents) : "—"}</strong>
       )}
       {perUnit != null && (
-        <span className="cat-pt-pack">{catMoney(best.price_cents)}{best.pack_size ? ` · ${best.pack_size}` : ""}</span>
+        <span className="cat-pt-pack">{catMoney(best.price_cents)}{packLabel ? ` · ${packLabel}` : ""}</span>
       )}
       {showBadge && <span className="cat-pt-badge">Best price</span>}
     </div>
@@ -3637,8 +3658,7 @@ function ProductDetail({ handle, onNavigate, onToast, onAddToList, listName, lis
                   const perUnit = offer.unit_comparable && offer.unit_price_cents != null
                     ? offer.unit_price_cents / 100
                     : null;
-                  const packLabel = offer.pack_size
-                    || (offer.pack_quantity ? `${offer.pack_quantity}/pack` : "");
+                  const packLabel = formatPackLabel(offer.pack_quantity, offer.pack_basis, offer.base_unit, offer.pack_size);
                   const logo = supplierLogoSrc(offer.supplier_name);
                   const avail = availabilityInfo(offer.availability);
                   return (
