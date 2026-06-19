@@ -3184,7 +3184,7 @@ function ProductDetail({ handle, onNavigate, onToast, onAddToList, listName, lis
   const [activeIdx, setActiveIdx] = useState(0);
   const [status, setStatus] = useState("loading");
   const [subs, setSubs] = useState([]);
-  const [qty, setQty] = useState(10);
+  const [qty, setQty] = useState(1);
   const [uom, setUom] = useState("Box");
   // Full-screen image viewer (the "View larger image" affordance).
   const [lightbox, setLightbox] = useState(false);
