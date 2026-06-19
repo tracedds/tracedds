@@ -663,8 +663,7 @@ function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResult, sca
   );
 }
 
-function MobileBottomNav({ view, onNavigate, onScan, buyerName, practiceName, buyerInitials, email, onLogout }) {
-  const [accountOpen, setAccountOpen] = useState(false);
+function MobileBottomNav({ view, onNavigate, onScan }) {
   return (
     <nav className="mobile-bottom-nav" aria-label="Mobile primary navigation">
       <div className="m-nav-group">
@@ -682,35 +681,10 @@ function MobileBottomNav({ view, onNavigate, onScan, buyerName, practiceName, bu
         <button className={view === "history" ? "active" : ""} type="button" onClick={() => onNavigate("history")}>
           <span><Icon name="icon-clock" className="mobile-bottom-icon" /></span>History
         </button>
-        <button
-          className={`m-nav-account ${view === "settings" || accountOpen ? "active" : ""}`}
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={accountOpen}
-          onClick={() => setAccountOpen((open) => !open)}
-        >
-          <span className="m-nav-avatar">{buyerInitials || "··"}</span>Account
+        <button className={view === "settings" ? "active" : ""} type="button" onClick={() => onNavigate("settings")}>
+          <span><Icon name="icon-settings" className="mobile-bottom-icon" /></span>Settings
         </button>
       </div>
-      {accountOpen && (
-        <>
-          <div className="m-nav-menu-backdrop" onClick={() => setAccountOpen(false)} />
-          <div className="m-nav-menu" role="menu">
-            <div className="m-nav-menu-head">
-              <strong>{buyerName || "Your account"}</strong>
-              <small>{email || practiceName || "Buyer"}</small>
-            </div>
-            <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate("settings"); }}>
-              <Icon name="icon-settings" className="button-icon" />
-              Settings
-            </button>
-            <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onLogout?.(); }}>
-              <Icon name="icon-logout" className="button-icon" />
-              Sign out
-            </button>
-          </div>
-        </>
-      )}
     </nav>
   );
 }
@@ -2170,6 +2144,9 @@ export default function Home() {
                 onRenameList={setListName}
                 buyerName={buyerName}
                 practiceName={practiceName}
+                buyerInitials={buyerInitials}
+                email={me?.customer?.email}
+                onLogout={handleLogout}
                 addMode={addMode}
                 onAddMode={setAddMode}
                 lastUpload={lastUpload}
@@ -2243,11 +2220,6 @@ export default function Home() {
           view={view}
           onNavigate={setView}
           onScan={openMobileScan}
-          buyerName={buyerName}
-          practiceName={practiceName}
-          buyerInitials={buyerInitials}
-          email={me?.customer?.email}
-          onLogout={handleLogout}
         />
         </div>
       </div>
@@ -4229,16 +4201,52 @@ function rowMode(row) {
 
 // Mobile card list for the current reorder list (replaces the desktop table on
 // phones). Stats band + status tabs + tappable product cards.
-function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate }) {
+function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate, buyerName = "", practiceName = "", buyerInitials = "", email = "", onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   return (
     <div className="m-list">
       <div className="m-brandbar">
         <BrandMark />
-        <button className="m-iconbtn" type="button" aria-label="Alerts">
-          <Icon name="icon-bell" className="button-icon" />
-          <span className="m-brand-badge">3</span>
-        </button>
+        <div className="m-brand-actions">
+          <button className="m-iconbtn" type="button" aria-label="Alerts">
+            <Icon name="icon-bell" className="button-icon" />
+            <span className="m-brand-badge">3</span>
+          </button>
+          {onLogout && (
+            <div className="m-brand-account">
+              <button
+                className={`m-brand-avatar-btn ${accountOpen ? "active" : ""}`}
+                type="button"
+                aria-label="Account"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen((open) => !open)}
+              >
+                {buyerInitials || "··"}
+              </button>
+              {accountOpen && (
+                <>
+                  <div className="m-brand-menu-backdrop" onClick={() => setAccountOpen(false)} />
+                  <div className="m-brand-menu" role="menu">
+                    <div className="m-brand-menu-head">
+                      <strong>{buyerName || "Your account"}</strong>
+                      <small>{email || practiceName || "Buyer"}</small>
+                    </div>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate?.(pathForView("settings")); }}>
+                      <Icon name="icon-settings" className="button-icon" />
+                      Settings
+                    </button>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onLogout?.(); }}>
+                      <Icon name="icon-logout" className="button-icon" />
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="m-search-wrap">
@@ -4618,6 +4626,9 @@ function CurrentReorderList({
   onRenameList,
   buyerName = "",
   practiceName = "",
+  buyerInitials = "",
+  email = "",
+  onLogout,
   addMode,
   onAddMode,
   lastUpload,
@@ -4769,6 +4780,11 @@ function CurrentReorderList({
           searchResults={searchResults}
           searchLoading={searchLoading}
           onNavigate={onNavigate}
+          buyerName={buyerName}
+          practiceName={practiceName}
+          buyerInitials={buyerInitials}
+          email={email}
+          onLogout={onLogout}
         />
         {detail && (
           <MobileItemDetail
