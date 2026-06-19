@@ -60,6 +60,7 @@ function toOffer(offer) {
     packSize: offer.pack_size || "",
     imageUrl: offer.image_url || "",
     productUrl: offer.product_url || "",
+    availability: offer.availability || "unknown",
   };
 }
 
