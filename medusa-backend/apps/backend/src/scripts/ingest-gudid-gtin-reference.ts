@@ -30,17 +30,28 @@ function resolveDir(): string {
   throw new Error("Pass --dir <gudid full release directory>")
 }
 
-// The set of normalized manufacturer SKUs (real MPNs) we actually carry. GUDID
-// holds ~430k GS1 device GTINs across every medical specialty; keeping only the
-// rows whose model matches a catalog MPN bounds the table to the few thousand
-// that the brand+MPN enrichment could ever use, instead of storing unrelated
-// cardiac/ortho/surgical devices. Brand agreement is still enforced at join time.
+// The set of normalized model keys we actually carry. GUDID holds ~430k GS1
+// device GTINs across every medical specialty; keeping only the rows whose model
+// matches one of ours bounds the table to the few thousand the enrichment could
+// ever use, instead of storing unrelated cardiac/ortho/surgical devices.
+//
+// Two key sources: (1) real manufacturer SKUs across all suppliers, and (2) the
+// Henry Schein item number (sku) — GUDID keys HS house-brand products (Criterion
+// gloves, Syngauze, etc.) on the HS item number, which is our sku, not an MPN,
+// so we'd miss the entire HS house brand without this. Brand/identity agreement
+// is still enforced at join time.
 async function loadCatalogModelKeys(client: Client): Promise<Set<string>> {
   const { rows } = await client.query<{ model_norm: string }>(
-    `select distinct lower(regexp_replace(manufacturer_sku, '[^a-z0-9]', '', 'gi')) model_norm
-     from medmkp_supplier_product
-     where deleted_at is null and manufacturer_sku <> sku
-       and length(lower(regexp_replace(manufacturer_sku, '[^a-z0-9]', '', 'gi'))) >= 4`
+    `select distinct model_norm from (
+       select lower(regexp_replace(manufacturer_sku, '[^a-z0-9]', '', 'gi')) model_norm
+       from medmkp_supplier_product
+       where deleted_at is null and manufacturer_sku <> sku
+       union
+       select lower(regexp_replace(sku, '[^a-z0-9]', '', 'gi')) model_norm
+       from medmkp_supplier_product
+       where deleted_at is null and supplier_id = 'msup_henryschein_com'
+     ) k
+     where length(model_norm) >= 4`
   )
   return new Set(rows.map((r) => r.model_norm))
 }
