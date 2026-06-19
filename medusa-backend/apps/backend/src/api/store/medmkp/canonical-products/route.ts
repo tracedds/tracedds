@@ -75,6 +75,7 @@ type CategoryListItem = {
     unit_price_cents: number | null
     pack_quantity: number | null
     base_unit: string | null
+    pack_basis: string | null
     pack_size: string
     unit_comparable: boolean
     match_status: string
@@ -153,7 +154,7 @@ async function queryCategoryProducts(
       b.supplier_product_id AS best_sp_id,
       sp.sku AS best_sku, sp.name AS best_name, sp.brand AS best_brand,
       sp.image_url AS best_image, sp.product_url AS best_url,
-      sp.pack_size AS best_pack_size, sp.pack_quantity AS best_pack_qty, sp.base_unit AS best_base_unit,
+      sp.pack_size AS best_pack_size, sp.pack_quantity AS best_pack_qty, sp.base_unit AS best_base_unit, sp.pack_basis AS best_pack_basis,
       sp.supplier_id AS best_supplier_id, s.name AS best_supplier_name,
       COUNT(*) OVER() AS total_count
     FROM grpinfo g
@@ -191,6 +192,7 @@ async function queryCategoryProducts(
         unit_price_cents: row.best_unit_price != null ? Number(row.best_unit_price) : null,
         pack_quantity: row.best_pack_qty != null ? Number(row.best_pack_qty) : null,
         base_unit: row.best_base_unit ?? null,
+        pack_basis: row.best_pack_basis ?? null,
         pack_size: row.best_pack_size || "",
         unit_comparable: row.best_unit_price != null,
         match_status: "matched",
@@ -401,6 +403,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           unit_price_cents: latestPrice.unit_price_cents ?? null,
           pack_quantity: supplierProduct.pack_quantity ?? null,
           base_unit: supplierProduct.base_unit ?? null,
+          pack_basis: supplierProduct.pack_basis ?? null,
           pack_size: supplierProduct.pack_size || "",
           availability: latestPrice.availability,
           match_status: match.match_status,
