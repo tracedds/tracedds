@@ -1,4 +1,5 @@
 import { adapterForCandidate } from "./adapters"
+import { decodeBody } from "./charset"
 import type {
   FailedProductExtraction,
   ProductExtractionResult,
@@ -269,7 +270,9 @@ export async function fetchProductHtml(
     }
 
     const contentType = response.headers.get("content-type") ?? ""
-    const body = await response.text()
+    // Decode with the page's real charset so Windows-1252 bytes (™, ®, …) survive
+    // instead of becoming the U+FFFD replacement character.
+    const body = decodeBody(await response.arrayBuffer(), contentType)
     const dcDentalApiJson = response.ok
       ? await fetchDcDentalApiJson(url, body, timeoutMs, limiter)
       : ""
