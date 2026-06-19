@@ -80,6 +80,42 @@ describe("GET /medmkp/products/search — HIBC scan path", () => {
       expect.objectContaining({ barcode: expect.any(Array) })
     )
   })
+
+  it.each([
+    ["GS1-128", "10304040153939", "01103040401539391729101930300\u001d1024015414"],
+    ["GS1 Data Matrix", "00605861017657", "01006058610176571013593092\u001d17281204"],
+    ["GS1 Data Matrix", "00616784430225", "010061678443022510241401210212\u001d112412123010"],
+  ])("extracts AI 01 from a full %s payload", async (_format, gtin, payload) => {
+    const hit = { ...ER24_HIT, id: "sp_gtin", barcode: gtin, name: "Scanned GS1 product" }
+    const { service } = makeService({
+      listSupplierProducts: jest.fn(async (filter: any) =>
+        filter.barcode?.includes(gtin) ? [hit] : []
+      ),
+    })
+    const body = await run(service, `barcode=${encodeURIComponent(payload)}`)
+
+    expect(service.listSupplierProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ barcode: expect.arrayContaining([gtin]) })
+    )
+    expect(body.kind).toBe("barcode")
+    expect(body.products[0].name).toBe("Scanned GS1 product")
+  })
+
+  it("does not treat a needs-review canonical link as the scanned product", async () => {
+    const wrongCanonical = { id: "canon_wrong", name: "Unrelated bur", category: "Burs" }
+    const { service } = makeService({
+      listCanonicalProductMatches: jest.fn(async () => [{
+        supplier_product_id: ER24_HIT.id,
+        canonical_product_id: wrongCanonical.id,
+        match_status: "needs_review",
+      }]),
+      listCanonicalProducts: jest.fn(async () => [wrongCanonical]),
+    })
+    const body = await run(service, `barcode=${encodeURIComponent(ETCH_ROYALE_HIBC)}`)
+
+    expect(body.products[0].name).toBe("Etch Royale Bulk Pack ER24")
+    expect(body.products[0].name).not.toBe("Unrelated bur")
+  })
 })
 
 // A Henry Schein house-brand item ingested as identity only (no price, no

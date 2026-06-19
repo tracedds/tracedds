@@ -19,6 +19,7 @@ const LISTING_HTML = `
  "image":"https://www.henryschein.com/Products/1014583_US_Front_01_600x600.jpg",
  "brand":{"@type":"Organization","name":"Henry Schein Inc."},
  "url":"https://www.henryschein.com/us-en/dental/p/infection-control/gauze-sponges/syngauze50-nw-4ply-ns/1014583?FullPageMode=true",
+ "gtin14":"00616784430225",
  "mpn":"2100-HS"}
 </script>
 <script type="application/ld+json">
@@ -51,6 +52,7 @@ describe("extractHenryScheinProducts", () => {
     const gauze = rows.find((r) => r.sku === "1014583")!
     expect(gauze.sku).toBe("1014583") // = REF 101-4583 = HIBC PCN
     expect(gauze.manufacturer_sku).toBe("2100-HS")
+    expect(gauze.barcode).toBe("00616784430225")
     expect(gauze.brand).toBe("Henry Schein Inc.")
     expect(gauze.name).toContain("Syngauze 50")
     expect(gauze.category).toBe("Infection Control")

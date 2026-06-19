@@ -39,6 +39,18 @@ function dedupeById<T extends { id: string }>(rows: T[]): T[] {
   return [...seen.values()]
 }
 
+// GS1 barcodes carry the product GTIN in application identifier 01, followed
+// by lot, expiry, quantity, and other production data. BarcodeDetector/ZXing
+// return the full payload, not just the GTIN, so peel out AI 01 before running
+// the exact barcode lookup. Readers may prefix a symbology identifier (]C1 for
+// GS1-128, ]d2 for GS1 Data Matrix); parenthesized manual input is accepted too.
+function gs1Gtin(value: string): string | null {
+  const raw = value.trim().replace(/^\](?:C1|d2)/i, "")
+  const match = raw.match(/^01(\d{14})/) || raw.match(/^\(01\)(\d{14})/)
+  if (!match) return null
+  return gtinVariants(match[1]).length ? match[1] : null
+}
+
 type CanonicalRow = Awaited<ReturnType<MedMKPModuleService["listCanonicalProducts"]>>[number]
 type SupplierProductHit = Awaited<ReturnType<MedMKPModuleService["listSupplierProducts"]>>[number]
 
@@ -63,13 +75,13 @@ async function enrichWithOffers(medmkp: MedMKPModuleService, canonicals: Canonic
 
   return canonicals.map((product) => {
     const rawOffers = matches
-      // Same-product offers only. Substitutes (a different brand/product linked to
-      // this canonical) are surfaced separately, not mixed into the price compare.
+      // Same-product offers only. Substitutes are surfaced separately, and
+      // needs-review links are explicitly unproven, so neither belongs in the
+      // supplier price comparison or an exact scan result.
       .filter(
         (match) =>
           match.canonical_product_id === product.id &&
-          match.match_status !== "unmatched" &&
-          match.match_status !== "substitute"
+          (match.match_status === "exact" || match.match_status === "variant")
       )
       .map((match) => {
         const supplierProduct = supplierProductById.get(match.supplier_product_id)
@@ -141,9 +153,11 @@ async function resolveHitsToProducts(
   hits: SupplierProductHit[],
   matchKind: "sku" | "barcode"
 ): Promise<any[]> {
-  const matches = await medmkp.listCanonicalProductMatches({
+  const matches = (await medmkp.listCanonicalProductMatches({
     supplier_product_id: hits.map((hit) => hit.id),
-  })
+  })).filter(
+    (match) => match.match_status === "exact" || match.match_status === "variant"
+  )
   const canonicalIds = [...new Set(matches.map((match) => match.canonical_product_id))]
 
   let products: any[] = []
@@ -307,7 +321,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   // EAN-13 vs GTIN-14). gtinVariants() returns [] for a non-GTIN / misread, so a
   // garbage code short-circuits to "none" without querying.
   if (barcode) {
-    const variants = gtinVariants(barcode)
+    const embeddedGtin = gs1Gtin(barcode)
+    const variants = gtinVariants(embeddedGtin || barcode)
     const hits = variants.length
       ? dedupeById(await medmkp.listSupplierProducts({ barcode: variants }))
       : []
