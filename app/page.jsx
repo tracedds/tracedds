@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CATALOG_CATEGORIES, CATALOG_TINTS, bucketCategories, categoryBySlug } from "./catalogData";
+import { CATALOG_CATEGORIES, CATALOG_TINTS, bucketCategories, categoryBySlug, departmentForCategory } from "./catalogData";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -38,6 +38,7 @@ const routeByView = {
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
   home: "/app",
+  plan: "/app/plan",
   catalog: "/app/catalog",
   history: "/app/history",
   settings: "/app/settings",
@@ -62,6 +63,8 @@ function viewFromPath(pathname = "/") {
   // Authenticated app
   if (path === "/app") return { view: "home", isLoggedIn: true };
   if (path === "/app/scan") return { view: "home", isLoggedIn: true, mobileAddItemRoute: true };
+  if (path === "/app/plan") return { view: "plan", isLoggedIn: true };
+  if (path === "/app/plan/handoff") return { view: "handoff", isLoggedIn: true };
   if (path === "/app/history") return { view: "history", isLoggedIn: true };
   if (path.startsWith("/app/history/")) return { view: "historyDetail", isLoggedIn: true, historyId: path.split("/")[3] || "" };
   if (path === "/app/catalog") return { view: "catalog", isLoggedIn: true };
@@ -1364,6 +1367,7 @@ export default function Home() {
   const [canonicalSource, setCanonicalSource] = useState("idle");
   const [searchLoading, setSearchLoading] = useState(false);
   const [archivedLists, setArchivedLists] = useState([]);
+  const [handoffs, setHandoffs] = useState([]);
   const [listTouched, setListTouched] = useState(false);
   const [listName, setListName] = useState("June Restock");
   const [buyingPrefs, setBuyingPrefs] = useState(DEFAULT_BUYING_PREFS);
@@ -1388,6 +1392,7 @@ export default function Home() {
     setDraftItems(items);
     setUploadedDocs(saved.uploadedDocs || []);
     setArchivedLists(saved.archivedLists || []);
+    setHandoffs(saved.handoffs || []);
     setListTouched(Boolean(saved.listTouched));
     if (saved.listName) setListName(saved.listName);
     setDefaultBuyingPrefs(savedDefaults);
@@ -1464,7 +1469,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!stateLoaded) return;
-    const blob = { draftItems, uploadedDocs, archivedLists, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
+    const blob = { draftItems, uploadedDocs, archivedLists, handoffs, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
     try {
       window.localStorage.setItem(APP_STATE_KEY, JSON.stringify(blob));
     } catch {
@@ -1485,7 +1490,7 @@ export default function Home() {
       }, 800);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
+  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, handoffs, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
 
   // Supplier names for the preferred-supplier picker, plus each supplier's
   // shipping policy for landed-cost estimates on the reorder list.
@@ -1623,6 +1628,15 @@ export default function Home() {
 
   const visibleDraftItems = draftItems.filter((item) => item.documentIds.some((documentId) => uploadedDocs.some((doc) => doc.id === documentId)));
   const activeDraftItems = visibleDraftItems.filter((item) => item.included);
+
+  // Real summary of the current reorder list for the product-page rail (matches
+  // how archiveCurrentList tallies items/suppliers/spend).
+  const listSummary = useMemo(() => {
+    const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
+    const suppliers = new Set(rows.map((row) => row.supplier).filter((name) => name && name !== "—"));
+    const spend = rows.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+    return { items: rows.length, suppliers: suppliers.size, spend };
+  }, [activeDraftItems, buyingPrefs]);
 
   // Who's signed in, for the topbar / profile / upload metadata. Falls back to
   // neutral labels until /api/auth/me resolves (or if a field is missing).
@@ -1894,6 +1908,31 @@ export default function Home() {
     return true;
   }
 
+  // Add a catalog product (from the product page) to the current reorder list.
+  // Reuses the scan draft shape (offers, best supplier, canonical handle) but
+  // tags the source as a catalog add and respects the buyer's chosen quantity.
+  function addCatalogItem(product, quantity = 1, unitOfMeasure) {
+    if (!product) return;
+    setListTouched(true);
+    setUploadedDocs((docs) => docs.some((doc) => doc.id === "catalog")
+      ? docs
+      : [...docs, { id: "catalog", name: "Catalog adds", itemCount: 0 }]);
+
+    const base = makeScanDraftItem(null, product);
+    const item = {
+      ...base,
+      source: "catalog",
+      barcode: "",
+      draftQty: quantity,
+      qty: quantity,
+      unit: (unitOfMeasure || base.unit || "ea"),
+      documentIds: ["catalog"],
+      documentQuantities: { catalog: quantity },
+      extractedFrom: product.name || base.product || "Catalog item",
+    };
+    setDraftItems((items) => [...items, item]);
+  }
+
   function removeDraftItem(target) {
     const id = typeof target === "string" ? target : target?.id;
     if (!id) return;
@@ -2011,6 +2050,44 @@ export default function Home() {
     setHasUploadedInvoice(false);
     setBuyingPrefs(defaultBuyingPrefs);
     showToast("List cleared");
+  }
+
+  // Freeze the current plan into a read-only supplier handoff. Captures the
+  // best-offer-per-line snapshot (grouped by supplier) so the order details
+  // don't drift if prices/preferences change after the buyer commits.
+  function prepareHandoff() {
+    const rows = deriveMatchRows(activeDraftItems, buyingPrefs);
+    const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
+    if (!included.length) {
+      showToast("Add matched items before preparing a handoff");
+      return;
+    }
+    const groups = groupRowsBySupplier(included.map(slimHandoffRow));
+    const total = included.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+    const now = new Date();
+    const snapshot = {
+      id: `ho_${now.getTime()}`,
+      listName,
+      createdAt: now.toISOString(),
+      createdLabel: now.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }),
+      buyer: buyerName,
+      practice: practiceName,
+      prefs: buyingPrefs,
+      groups,
+      total,
+      itemCount: included.length,
+      supplierCount: groups.length,
+    };
+    setHandoffs((list) => [snapshot, ...list]);
+    showToast("Supplier handoff prepared");
+    navigate("/app/plan/handoff");
+  }
+
+  // Archive the live list and return to a fresh Home — the frozen handoff lives
+  // on in History, so archiving here doesn't lose the order details.
+  function archiveFromHandoff() {
+    archiveCurrentList();
+    navigate("/app");
   }
 
   const navItems = [
@@ -2218,6 +2295,27 @@ export default function Home() {
             )
           )}
 
+          {view === "plan" && (
+            <ProcurementPlanView
+              items={activeDraftItems}
+              listName={listName}
+              buyingPrefs={buyingPrefs}
+              onBuyingPrefs={setBuyingPrefs}
+              onPrepareHandoff={prepareHandoff}
+              onNavigate={navigate}
+              onToast={showToast}
+            />
+          )}
+
+          {view === "handoff" && (
+            <SupplierHandoffView
+              handoff={handoffs[0] || null}
+              onArchive={archiveFromHandoff}
+              onNavigate={navigate}
+              onToast={showToast}
+            />
+          )}
+
           {view === "history" && <HistoryView archivedLists={archivedLists} onOpen={(id) => navigate(`/app/history/${id}`)} />}
 
           {view === "historyDetail" && <HistoryDetail id={historyId} archivedLists={archivedLists} onBack={() => navigate("/app/history")} />}
@@ -2233,7 +2331,14 @@ export default function Home() {
           )}
 
           {view === "productDetail" && (
-            <ProductDetail handle={productHandle} onNavigate={navigate} onToast={showToast} />
+            <ProductDetail
+              handle={productHandle}
+              onNavigate={navigate}
+              onToast={showToast}
+              onAddToList={addCatalogItem}
+              listName={listName}
+              listSummary={listSummary}
+            />
           )}
 
           {view === "settings" && (
@@ -2344,24 +2449,14 @@ function initials(name) {
     .join("");
 }
 
-// Deterministic per-supplier rating + lead time so the comparison reads like the
-// catalog mock without inventing values that jump around on every render.
-function supplierMeta(seed) {
-  const key = String(seed || "");
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) {
-    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  }
-  const rating = (4.2 + (hash % 8) / 10).toFixed(1);
-  const lead = 1 + (hash % 4);
-  return { rating, lead: `${lead}–${lead + 1} days` };
-}
-
+// Real availability from the latest price snapshot. We don't have ship-time
+// estimates, so we report only the status the supplier actually published and
+// leave anything unknown explicitly unconfirmed rather than inventing an ETA.
 function availabilityInfo(value) {
-  if (value === "in_stock") return { label: "In stock", sub: "Ships today", tone: "ok" };
-  if (value === "limited") return { label: "Limited", sub: "Ships in 1–2 days", tone: "warn" };
-  if (value === "backordered") return { label: "Backordered", sub: "Ships in 1–2 weeks", tone: "bad" };
-  return { label: "Availability on request", sub: "Confirm with supplier", tone: "muted" };
+  if (value === "in_stock") return { label: "In stock", tone: "ok" };
+  if (value === "limited") return { label: "Limited stock", tone: "warn" };
+  if (value === "backordered") return { label: "Backordered", tone: "bad" };
+  return { label: "Check with supplier", tone: "muted" };
 }
 
 function QtyStepper({ qty, setQty }) {
@@ -2561,7 +2656,7 @@ function CatalogView({ onNavigate }) {
             <ul className="cat-supplier-list">
               {suppliers.slice(0, 5).map((supplier) => (
                 <li key={supplier.id}>
-                  <span className="cat-supplier-avatar">{supplierInitials(supplier.name)}</span>
+                  <CatalogSupplierAvatar name={supplier.name} />
                   <span className="cat-supplier-name">{supplier.name}</span>
                   <em>{(supplier.product_count || 0).toLocaleString()}</em>
                 </li>
@@ -3095,7 +3190,7 @@ function CatalogCategoryView({ slug, onNavigate }) {
 // Product detail surface reached from search (/app/product/[handle]). Pulls the
 // canonical product + supplier offers from the same API the search uses, then
 // lays out the comparison, specs, substitutes, and reorder rail.
-function ProductDetail({ handle, onNavigate, onToast }) {
+function ProductDetail({ handle, onNavigate, onToast, onAddToList, listName, listSummary }) {
   // A product may be a family of size/spec variants. `variants` holds them in
   // selector order; `activeIdx` is the chosen one and drives the whole page.
   const [variants, setVariants] = useState([]);
@@ -3103,9 +3198,10 @@ function ProductDetail({ handle, onNavigate, onToast }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [status, setStatus] = useState("loading");
   const [subs, setSubs] = useState([]);
-  const [qty, setQty] = useState(10);
+  const [qty, setQty] = useState(1);
   const [uom, setUom] = useState("Box");
-  const [showHistory, setShowHistory] = useState(false);
+  // Full-screen image viewer (the "View larger image" affordance).
+  const [lightbox, setLightbox] = useState(false);
 
   useEffect(() => {
     if (!handle) {
@@ -3115,7 +3211,7 @@ function ProductDetail({ handle, onNavigate, onToast }) {
 
     let live = true;
     setStatus("loading");
-    setShowHistory(false);
+    setLightbox(false);
     setActiveIdx(0);
 
     fetch(`/api/canonical-products?handle=${encodeURIComponent(handle)}`)
@@ -3195,6 +3291,9 @@ function ProductDetail({ handle, onNavigate, onToast }) {
   }
 
   const attrs = parseAttributes(product.attributes_text);
+  // Breadcrumb middle crumb: the curated department this product's live category
+  // rolls up into (null when the category doesn't map to one).
+  const department = departmentForCategory(product.category);
   const variantGroupLabel = family ? variantAxisLabel(variants) : null;
   // The API returns one offer per supplier variant; collapse to the lowest-priced
   // offer per supplier so the comparison reads as a supplier comparison (one row
@@ -3260,13 +3359,24 @@ function ProductDetail({ handle, onNavigate, onToast }) {
       <div className="pdp-breadcrumb-row">
         <nav className="pdp-breadcrumb" aria-label="Breadcrumb">
           <a href="/app/catalog" onClick={(event) => { event.preventDefault(); onNavigate("/app/catalog"); }}>Products</a>
+          {department && (
+            <>
+              <Icon name="icon-chevron-right" className="nav-icon" />
+              <a
+                href={`/app/catalog/${department.slug}`}
+                onClick={(event) => { event.preventDefault(); onNavigate(`/app/catalog/${department.slug}`); }}
+              >
+                {department.name}
+              </a>
+            </>
+          )}
           <Icon name="icon-chevron-right" className="nav-icon" />
-          <span>Product detail</span>
+          <span>{family ? family.family_name : product.name}</span>
         </nav>
         <div className="pdp-top-actions">
           <button className="secondary-action compact" type="button" onClick={() => window.history.back()}>
             <Icon name="icon-chevron-left" className="button-icon" />
-            Back to results
+            Back
           </button>
           <button className="secondary-action compact" type="button" onClick={() => window.print()}>
             <Icon name="icon-file-text" className="button-icon" />
@@ -3279,11 +3389,17 @@ function ProductDetail({ handle, onNavigate, onToast }) {
         <div className="pdp-main">
           <section className="crl-card pdp-hero">
             <div className="pdp-hero-media">
-              {image ? <img src={image} alt={product.name} /> : <div className="pdp-hero-placeholder">No image available</div>}
-              <button type="button" className="pdp-view-larger">
-                <Icon name="icon-search" className="button-icon" />
-                View larger image
-              </button>
+              {image ? (
+                <img src={image} alt={product.name} onClick={() => setLightbox(true)} style={{ cursor: "zoom-in" }} />
+              ) : (
+                <div className="pdp-hero-placeholder">No image available</div>
+              )}
+              {image && (
+                <button type="button" className="pdp-view-larger" onClick={() => setLightbox(true)}>
+                  <Icon name="icon-search" className="button-icon" />
+                  View larger image
+                </button>
+              )}
             </div>
             <div className="pdp-hero-body">
               <div className="pdp-hero-headline">
@@ -3347,11 +3463,7 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                   </span>
                 )}
               </div>
-              <div className="pdp-qty-inline">
-                <span>Quantity</span>
-                <QtyStepper qty={qty} setQty={setQty} />
-                <UomSelect uom={uom} setUom={setUom} />
-              </div>
+              <span className="pdp-compare-note">Extended price shown for {qty} &times; {cap(uom)}</span>
             </div>
 
             <div className="pdp-table-wrap">
@@ -3374,15 +3486,17 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                     : null;
                   const packLabel = offer.pack_size
                     || (offer.pack_quantity ? `${offer.pack_quantity}/pack` : "");
-                  const meta = supplierMeta(offer.supplier_id || offer.supplier_name || index);
+                  const logo = supplierLogoSrc(offer.supplier_name);
                   const avail = availabilityInfo(offer.availability);
                   return (
                     <div className={`pdp-row ${index === 0 ? "best" : ""}`} key={offer.supplier_product_id || index}>
                       <div className="pdp-row-supplier">
-                        <span className="pdp-supplier-logo">{initials(offer.supplier_name)}</span>
+                        <span className={`pdp-supplier-logo ${logo ? "has-img" : ""}`}>
+                          {logo ? <img src={logo} alt="" /> : initials(offer.supplier_name)}
+                        </span>
                         <div>
-                          <strong>{offer.supplier_name}<Icon name="icon-check-circle" className="pdp-verified" /></strong>
-                          <small>&#9733; {meta.rating} &middot; {meta.lead}</small>
+                          <strong>{offer.supplier_name}</strong>
+                          {offer.brand && <small>{offer.brand}</small>}
                         </div>
                       </div>
                       <div className="pdp-row-sku">{offer.sku || "—"}</div>
@@ -3403,7 +3517,6 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                       <div className="pdp-row-ext">{money.format(packPrice * qty)}</div>
                       <div className={`pdp-row-avail ${avail.tone}`}>
                         <span><span className="pdp-dot" aria-hidden="true" />{avail.label}</span>
-                        <small>{avail.sub}</small>
                       </div>
                       <div className="pdp-row-actions">
                         {offer.product_url ? (
@@ -3417,7 +3530,6 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                             Open supplier
                           </button>
                         )}
-                        <button className="pdp-more" type="button" aria-label="More actions">&#8943;</button>
                       </div>
                     </div>
                   );
@@ -3425,12 +3537,9 @@ function ProductDetail({ handle, onNavigate, onToast }) {
               </div>
             </div>
 
-            <button className="pdp-history-toggle" type="button" onClick={() => setShowHistory((value) => !value)}>
-              Show price history
-              <Icon name="icon-chevron-down" className={`button-icon ${showHistory ? "flip" : ""}`} />
-            </button>
-            {showHistory && range && (
+            {range && range.lowest !== range.highest && (
               <div className="pdp-history">
+                <div className="pdp-history-head">Price range across suppliers</div>
                 <div className="pdp-history-row">
                   <span>Lowest offer</span>
                   <strong>{money.format(range.lowest / 100)}</strong>
@@ -3490,18 +3599,10 @@ function ProductDetail({ handle, onNavigate, onToast }) {
         <aside className="pdp-rail">
           <section className="crl-card pdp-add">
             <h3>Add to Current Reorder List</h3>
-            <label className="pdp-field">
+            <div className="pdp-field">
               <span>Current list</span>
-              <div className="pdp-select">
-                <Icon name="icon-list" className="nav-icon" />
-                <select aria-label="Reorder list" defaultValue="June Restock">
-                  <option>June Restock</option>
-                  <option>Q3 Restock</option>
-                  <option>New list&hellip;</option>
-                </select>
-                <Icon name="icon-chevron-down" className="nav-icon" />
-              </div>
-            </label>
+              <div className="pdp-current-list"><Icon name="icon-list" className="nav-icon" />{listName || "Current reorder list"}</div>
+            </div>
             <div className="pdp-qty-grid">
               <label className="pdp-field">
                 <span>Quantity</span>
@@ -3522,13 +3623,16 @@ function ProductDetail({ handle, onNavigate, onToast }) {
                   <span>Est. total</span>
                   <strong>{money.format(bestUnit * qty)}</strong>
                 </div>
-                <small className="pdp-best-foot">{availabilityInfo(best.availability).label} &middot; {availabilityInfo(best.availability).sub}</small>
+                <small className="pdp-best-foot">{availabilityInfo(best.availability).label}</small>
               </div>
             )}
             <button
               className="primary-action"
               type="button"
-              onClick={() => onToast(`Added ${qty} ${uomLabel}${qty === 1 ? "" : "s"} of ${product.name} to June Restock`)}
+              onClick={() => {
+                onAddToList?.(product, qty, cap(uom));
+                onToast(`Added ${qty} × ${cap(uom)} of ${product.name} to ${listName || "your reorder list"}`);
+              }}
             >
               Add to Reorder List
             </button>
@@ -3538,18 +3642,19 @@ function ProductDetail({ handle, onNavigate, onToast }) {
             </button>
           </section>
 
-          <section className="crl-card pdp-summary">
-            <div className="pdp-card-head">
-              <h3>Current list summary</h3>
-              <button className="pdp-link" type="button" onClick={() => onNavigate("/app")}>Open list</button>
-            </div>
-            <div className="pdp-summary-list">
-              <div><span>Total items</span><strong>24</strong></div>
-              <div><span>Total suppliers</span><strong>6</strong></div>
-              <div><span>Estimated spend</span><strong>$1,284.67</strong></div>
-              <div><span>Potential savings</span><strong className="green">$212.45</strong></div>
-            </div>
-          </section>
+          {listSummary && listSummary.items > 0 && (
+            <section className="crl-card pdp-summary">
+              <div className="pdp-card-head">
+                <h3>Current list summary</h3>
+                <button className="pdp-link" type="button" onClick={() => onNavigate("/app")}>Open list</button>
+              </div>
+              <div className="pdp-summary-list">
+                <div><span>Total items</span><strong>{listSummary.items}</strong></div>
+                <div><span>Total suppliers</span><strong>{listSummary.suppliers}</strong></div>
+                <div><span>Estimated spend</span><strong>{money.format(listSummary.spend)}</strong></div>
+              </div>
+            </section>
+          )}
 
           <section className="crl-card pdp-help">
             <h3>Need help?</h3>
@@ -3561,6 +3666,13 @@ function ProductDetail({ handle, onNavigate, onToast }) {
           </section>
         </aside>
       </div>
+
+      {lightbox && image && (
+        <div className="pdp-lightbox" role="dialog" aria-modal="true" onClick={() => setLightbox(false)}>
+          <button type="button" className="pdp-lightbox-close" aria-label="Close" onClick={() => setLightbox(false)}>&times;</button>
+          <img src={image} alt={product.name} onClick={(event) => event.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }
@@ -3650,6 +3762,15 @@ function supplierLogoSrc(name) {
   const key = name.toLowerCase();
   if (key.includes("schein")) return "/schein-logo.png";
   return SUPPLIER_LOGOS.find((supplier) => key.includes(supplier.match))?.src || null;
+}
+
+function CatalogSupplierAvatar({ name }) {
+  const logo = supplierLogoSrc(name);
+  return (
+    <span className={`cat-supplier-avatar ${logo ? "has-img" : ""}`}>
+      {logo ? <img src={logo} alt="" /> : supplierInitials(name)}
+    </span>
+  );
 }
 
 function MatchSupplier({ name }) {
@@ -4675,6 +4796,14 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
           );
         })}
       </div>
+
+      {stats.matched + stats.review > 0 && (
+        <div className="m-plan-cta">
+          <button type="button" className="primary-action" onClick={() => onNavigate?.("/app/plan")}>
+            <Icon name="icon-handshake" className="button-icon" />View procurement plan
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -5492,7 +5621,7 @@ function CurrentReorderList({
                 <div><span>Potential savings</span><strong className="green">$842.15</strong></div>
               </div>
             )}
-            <button className="crl-plan-btn" type="button" onClick={() => onToast("Procurement plan coming next")}>Open procurement plan <Icon name="icon-arrow-right" className="button-icon" /></button>
+            <button className="crl-plan-btn" type="button" onClick={() => onNavigate?.("/app/plan")}>Open procurement plan <Icon name="icon-arrow-right" className="button-icon" /></button>
           </section>
         </aside>
         )}
@@ -5663,6 +5792,356 @@ function UploadModal({
           )}
         </footer>
       </div>
+    </div>
+  );
+}
+
+// ── Procurement Plan + Supplier Handoff ──────────────────────────────────────
+
+// Group derived match rows into per-supplier buckets (heaviest spend first) so
+// the plan and the frozen handoff both present orders supplier-by-supplier.
+function groupRowsBySupplier(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const supplier = row.supplier || "—";
+    if (!map.has(supplier)) map.set(supplier, { supplier, rows: [], subtotal: 0, count: 0 });
+    const group = map.get(supplier);
+    group.rows.push(row);
+    group.subtotal += row.lineTotal || 0;
+    group.count += 1;
+  }
+  return [...map.values()].sort((a, b) => b.subtotal - a.subtotal);
+}
+
+// Trim a live match row down to the fields a frozen handoff needs, pinning the
+// supplier SKU from the offer the buyer actually selected.
+function slimHandoffRow(row) {
+  const selected = (row.offers || []).find((offer) => offer.key === row.selectedOfferKey);
+  return {
+    id: row.id,
+    image: row.image || "",
+    canonicalName: row.canonicalName || null,
+    canonicalHandle: row.canonicalHandle || null,
+    matchName: row.matchName || row.canonicalName || "",
+    matchSub: row.matchSub || "",
+    supplier: row.supplier,
+    sku: selected?.sku || "",
+    qty: row.qty,
+    uom: row.uom,
+    price: row.price,
+    perEa: row.perEa ?? null,
+    lineTotal: row.lineTotal || 0,
+  };
+}
+
+// Best-known order page per supplier; unknown suppliers fall back to a search so
+// "Open website" always lands the buyer somewhere useful.
+const SUPPLIER_SITES = [
+  { match: "dc dental", url: "https://www.dcdental.com" },
+  { match: "carolina", url: "https://carolinadentalsupply.com" },
+  { match: "dental city", url: "https://www.dentalcity.com" },
+  { match: "schein", url: "https://www.henryschein.com" },
+  { match: "pearson", url: "https://www.pearsondental.com" },
+  { match: "patterson", url: "https://www.pattersondental.com" },
+  { match: "amazon", url: "https://www.amazon.com" },
+  { match: "unimed", url: "https://unimedusa.com" },
+  { match: "young", url: "https://www.youngspecialties.com" },
+  { match: "practicon", url: "https://www.practicon.com" },
+  { match: "net32", url: "https://www.net32.com" },
+];
+
+function supplierSiteUrl(name) {
+  const key = (name || "").toLowerCase();
+  const known = SUPPLIER_SITES.find((site) => key.includes(site.match));
+  return known ? known.url : `https://www.google.com/search?q=${encodeURIComponent(`${name} dental supply`)}`;
+}
+
+function planSlug(value) {
+  return String(value || "list").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "list";
+}
+
+function downloadTextFile(name, content, type) {
+  const blob = new Blob([content], { type: `${type};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Plain-text order summary for one supplier — what the buyer pastes into the
+// supplier's site, an email, or a phone order.
+function buildSupplierOrderText(group, handoff) {
+  const lines = [`${handoff.listName} — ${group.supplier}`];
+  if (handoff.practice) lines.push(`Practice: ${handoff.practice}`);
+  if (handoff.buyer) lines.push(`Buyer: ${handoff.buyer}`);
+  lines.push("");
+  for (const row of group.rows) {
+    const sku = row.sku ? ` [${row.sku}]` : "";
+    const unit = row.price != null ? ` @ ${mrMoney(row.price)}` : "";
+    lines.push(`${row.qty} ${row.uom} — ${row.matchName || row.canonicalName}${sku}${unit} = ${mrMoney(row.lineTotal || 0)}`);
+  }
+  lines.push("");
+  lines.push(`Subtotal: ${mrMoney(group.subtotal)}`);
+  return lines.join("\n");
+}
+
+function buildHandoffCsv(handoff) {
+  const esc = (value) => {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const rows = [["Supplier", "Item", "SKU", "Qty", "UOM", "Unit price", "Line total"]];
+  for (const group of handoff.groups) {
+    for (const row of group.rows) {
+      rows.push([
+        group.supplier,
+        row.matchName || row.canonicalName || "",
+        row.sku || "",
+        row.qty,
+        row.uom,
+        row.price != null ? Number(row.price).toFixed(2) : "",
+        Number(row.lineTotal || 0).toFixed(2),
+      ]);
+    }
+  }
+  return rows.map((cells) => cells.map(esc).join(",")).join("\n");
+}
+
+// One supplier's order block — shared by the live plan (full rows) and the
+// frozen handoff (slim rows). `actions` injects the handoff's copy/open buttons.
+function SupplierGroupCard({ group, onNavigate, actions = null }) {
+  return (
+    <section className="crl-card pp-group">
+      <div className="pp-group-head">
+        <MatchSupplier name={group.supplier} />
+        <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
+      </div>
+      {actions}
+      <div className="pp-group-lines">
+        {group.rows.map((row) => {
+          const clickable = Boolean(row.canonicalHandle);
+          return (
+            <div
+              className={`pp-line ${clickable ? "clickable" : ""}`}
+              key={row.id}
+              onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
+            >
+              <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+              <span className="pp-line-name">
+                <strong>{row.matchName || row.canonicalName}</strong>
+                {row.matchSub && <small>{row.matchSub}</small>}
+              </span>
+              <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+              <span className="pp-line-ea">{row.perEa != null ? `$${mrEa(row.perEa)} / ea` : ""}</span>
+              <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ProcurementPlanView({ items, listName, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onNavigate, onToast }) {
+  const rows = deriveMatchRows(items || [], buyingPrefs);
+  const included = rows.filter((row) => row.status !== "Not found" && row.supplier && row.supplier !== "—");
+  const unresolved = rows.filter((row) => row.status === "Not found" || !row.supplier || row.supplier === "—");
+  const groups = groupRowsBySupplier(included);
+  const total = included.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+  const coverage = rows.length ? Math.round((included.length / rows.length) * 100) : 0;
+
+  const supplierOptions = useMemo(() => {
+    const names = new Set();
+    for (const item of items || []) {
+      for (const offer of item.offers || []) {
+        if (offer.supplier) names.add(offer.supplier);
+      }
+    }
+    return [...names].sort();
+  }, [items]);
+
+  return (
+    <div className="crl pp">
+      <header className="crl-header pp-header">
+        <div className="crl-title crl-title-main">
+          <button className="history-back" type="button" onClick={() => onNavigate("/app")}><Icon name="icon-chevron-left" className="button-icon" />Current Reorder List</button>
+          <h2>Procurement Plan</h2>
+          <p className="crl-subtitle">
+            <span className="crl-listname">{listName}</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span>{included.length} item{included.length === 1 ? "" : "s"} · {groups.length} supplier{groups.length === 1 ? "" : "s"}</span>
+          </p>
+        </div>
+        <div className="crl-header-actions">
+          <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app")}>Back to list</button>
+          <button className="primary-action compact" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
+            <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
+          </button>
+        </div>
+      </header>
+
+      <div className="pp-layout">
+        <div className="pp-main">
+          {groups.length === 0 ? (
+            <div className="crl-card pp-empty">
+              <Icon name="icon-package" className="button-icon" />
+              <strong>No matched items yet</strong>
+              <p>Match items on your reorder list to build a procurement plan grouped by supplier.</p>
+              <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app")}>Go to reorder list</button>
+            </div>
+          ) : (
+            <>
+              <div className="pp-section-head">
+                <h3>Included items</h3>
+                <small>Grouped by supplier · best offer per line</small>
+              </div>
+              {groups.map((group) => (
+                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} />
+              ))}
+            </>
+          )}
+
+          {unresolved.length > 0 && (
+            <section className="crl-card pp-unresolved">
+              <div className="crl-card-head">
+                <h3>Unresolved items ({unresolved.length})</h3>
+                <button className="crl-edit-link" type="button" onClick={() => onNavigate("/app")}>Resolve on list</button>
+              </div>
+              <p className="pp-unresolved-note">These items have no confirmed supplier match and won&rsquo;t be included in the supplier handoff.</p>
+              <ul className="pp-unresolved-list">
+                {unresolved.map((row) => (
+                  <li key={row.id}>
+                    <ProductThumb image={row.image} alt={row.importedName} />
+                    <span className="pp-unresolved-name">
+                      <strong>{row.canonicalName || row.importedName}</strong>
+                      <small>Qty {row.qty} {row.uom}</small>
+                    </span>
+                    <span className="pp-unresolved-tag">No match</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        <aside className="pp-rail">
+          <BuyingPreferencesCard
+            prefs={buyingPrefs}
+            supplierOptions={supplierOptions}
+            onSave={onBuyingPrefs}
+            onToast={onToast}
+          />
+          <section className="crl-card">
+            <h3>Plan Summary</h3>
+            <div className="crl-plan">
+              <div><span>Estimated total</span><strong>{money.format(total)}</strong></div>
+              <div><span>Suppliers</span><strong>{groups.length}</strong></div>
+              <div><span>Coverage</span><strong>{coverage}%</strong></div>
+              <div><span>Included items</span><strong>{included.length}</strong></div>
+            </div>
+            <button className="primary-action compact pp-handoff-btn" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
+              <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
+            </button>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function SupplierHandoffView({ handoff, onArchive, onNavigate, onToast }) {
+  if (!handoff) {
+    return (
+      <div className="crl ho">
+        <header className="crl-header"><div className="crl-title crl-title-main"><h2>Supplier Handoff</h2></div></header>
+        <div className="crl-card pp-empty">
+          <Icon name="icon-handshake" className="button-icon" />
+          <strong>No handoff prepared yet</strong>
+          <p>Open your procurement plan and prepare a supplier handoff to see frozen order details here.</p>
+          <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app/plan")}>Open procurement plan</button>
+        </div>
+      </div>
+    );
+  }
+
+  function copyGroup(group) {
+    const text = buildSupplierOrderText(group, handoff);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => onToast(`${group.supplier} order details copied`))
+        .catch(() => onToast("Couldn’t copy — try again"));
+    } else {
+      onToast("Clipboard unavailable in this browser");
+    }
+  }
+
+  function exportCsv() {
+    downloadTextFile(`${planSlug(handoff.listName)}-handoff.csv`, buildHandoffCsv(handoff), "text/csv");
+    onToast("CSV exported");
+  }
+
+  function exportPdf() {
+    onToast("Opening print dialog — choose “Save as PDF”");
+    setTimeout(() => window.print(), 350);
+  }
+
+  return (
+    <div className="crl ho">
+      <header className="crl-header ho-header">
+        <div className="crl-title crl-title-main">
+          <button className="history-back" type="button" onClick={() => onNavigate("/app/plan")}><Icon name="icon-chevron-left" className="button-icon" />Procurement Plan</button>
+          <h2>Supplier Handoff</h2>
+          <p className="crl-subtitle">
+            <span className="ho-frozen-pill"><Icon name="icon-lock" className="button-icon" />Frozen snapshot</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span>{handoff.createdLabel}</span>
+          </p>
+        </div>
+        <div className="crl-header-actions ho-export">
+          <button className="secondary-action compact" type="button" onClick={exportCsv}><Icon name="icon-table" className="button-icon" />Export CSV</button>
+          <button className="secondary-action compact" type="button" onClick={exportPdf}><Icon name="icon-file-text" className="button-icon" />Export PDF</button>
+        </div>
+      </header>
+
+      <div className="ho-banner">
+        <Icon name="icon-lock" className="button-icon" />
+        <span>Frozen snapshot of <strong>{handoff.listName}</strong>, captured {handoff.createdLabel}. Prices and selections are locked so your order details won&rsquo;t drift.</span>
+      </div>
+
+      <div className="ho-summary">
+        <div><small>Suppliers</small><strong>{handoff.supplierCount}</strong></div>
+        <div><small>Items</small><strong>{handoff.itemCount}</strong></div>
+        <div><small>Estimated total</small><strong>{money.format(handoff.total)}</strong></div>
+        <div><small>Strategy</small><strong>{STRATEGY_LABELS[handoff.prefs?.strategy] || "Best price"}</strong></div>
+      </div>
+
+      <div className="ho-groups">
+        {handoff.groups.map((group) => (
+          <SupplierGroupCard
+            key={group.supplier}
+            group={group}
+            onNavigate={onNavigate}
+            actions={(
+              <div className="ho-group-actions">
+                <button className="crl-ghost-btn" type="button" onClick={() => copyGroup(group)}><Icon name="icon-clipboard" className="button-icon" />Copy order details</button>
+                <a className="crl-ghost-btn" href={supplierSiteUrl(group.supplier)} target="_blank" rel="noreferrer"><Icon name="icon-store" className="button-icon" />Open website</a>
+              </div>
+            )}
+          />
+        ))}
+      </div>
+
+      <footer className="ho-footer">
+        <div className="ho-footer-copy">
+          <strong>Order placed?</strong>
+          <small>Archive this list to move it to History and start a fresh reorder list. This frozen handoff stays available.</small>
+        </div>
+        <button className="primary-action compact" type="button" onClick={onArchive}><Icon name="icon-clipboard" className="button-icon" />Archive list &amp; start new</button>
+      </footer>
     </div>
   );
 }
