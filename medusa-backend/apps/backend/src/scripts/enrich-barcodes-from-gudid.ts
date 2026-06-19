@@ -20,21 +20,35 @@ import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
 
 const MIN_MODEL_LEN = 4
 
-// Unambiguous (brand_norm, model_norm) -> single GTIN keys from the reference.
+// Unambiguous single-GTIN keys from the reference, two ways:
+//   unique_keys  — (brand_norm, model_norm) for the general brand+MPN join
+//   hs_keys      — model_norm alone for Henry Schein labeled devices (companyName
+//                  "HENRY SCHEIN, INC."). GUDID keys HS house-brand products on
+//                  the HS item number, which is our sku (== manufacturer_sku),
+//                  so the brand+MPN path can't reach them. The HS item number is
+//                  globally unique to HS, so company + exact item number is a
+//                  safe identity.
 const UNIQUE_KEYS_CTE = `
   unique_keys as (
     select brand_norm, model_norm, min(gtin) gtin
     from medmkp_gtin_reference
     group by brand_norm, model_norm
     having count(distinct gtin) = 1
+  ),
+  hs_keys as (
+    select model_norm, min(gtin) gtin
+    from medmkp_gtin_reference
+    where lower(regexp_replace(company_name, '[^a-z0-9]', '', 'gi')) like 'henryschein%'
+    group by model_norm
+    having count(distinct gtin) = 1
   )`
 
-// Supplier rows eligible to receive a GUDID GTIN, joined to their unique key.
+// Supplier rows eligible to receive a GUDID GTIN. The general brand+MPN path is
+// unioned with the HS item-number path; a product matched by both collapses to a
+// single deterministic GTIN (min) so the UPDATE writes each row once.
 const CANDIDATES_CTE = `
-  candidates as (
-    select sp.id,
-           sp.supplier_id,
-           uk.gtin
+  candidate_pairs as (
+    select sp.id, sp.supplier_id, uk.gtin
     from medmkp_supplier_product sp
     join unique_keys uk
       on uk.brand_norm = lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi'))
@@ -43,6 +57,20 @@ const CANDIDATES_CTE = `
       and (sp.barcode is null or sp.barcode = '' or sp.barcode_source = 'gudid')
       and sp.manufacturer_sku <> sp.sku
       and length(lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi'))) >= ${MIN_MODEL_LEN}
+    union
+    select sp.id, sp.supplier_id, hk.gtin
+    from medmkp_supplier_product sp
+    join hs_keys hk
+      on hk.model_norm = lower(regexp_replace(sp.sku, '[^a-z0-9]', '', 'gi'))
+    where sp.supplier_id = 'msup_henryschein_com'
+      and sp.deleted_at is null
+      and (sp.barcode is null or sp.barcode = '' or sp.barcode_source = 'gudid')
+      and length(lower(regexp_replace(sp.sku, '[^a-z0-9]', '', 'gi'))) >= ${MIN_MODEL_LEN}
+  ),
+  candidates as (
+    select id, supplier_id, min(gtin) gtin
+    from candidate_pairs
+    group by id, supplier_id
   )`
 
 async function main() {

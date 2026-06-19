@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { MEDMKP_MODULE } from "../../../../modules/medmkp"
 import type MedMKPModuleService from "../../../../modules/medmkp/service"
 import { tokenizeName } from "../../../../matching/normalize"
@@ -49,6 +50,34 @@ function gs1Gtin(value: string): string | null {
   const match = raw.match(/^01(\d{14})/) || raw.match(/^\(01\)(\d{14})/)
   if (!match) return null
   return gtinVariants(match[1]).length ? match[1] : null
+}
+
+// Reverse GUDID lookup: resolve a scanned GTIN to supplier products via the
+// medmkp_gtin_reference table (FDA GUDID, brand+model -> GTIN). This catches
+// products we couldn't pre-write a barcode for, notably Henry Schein house-brand
+// items whose GTIN sits in a family of pack-level GTINs that share one
+// (non-unique) model number — ambiguous when going model -> GTIN, but exact in
+// the scanned GTIN -> model -> product direction. HS items key on the HS item
+// number (= sku); everything else on brand + manufacturer SKU.
+async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: string[]): Promise<string[]> {
+  if (!variants.length) return []
+  const knex = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+  const { rows } = await knex.raw(
+    `select distinct sp.id
+     from medmkp_gtin_reference gr
+     join medmkp_supplier_product sp on (
+       (lower(regexp_replace(gr.company_name, '[^a-z0-9]', '', 'gi')) like 'henryschein%'
+        and sp.supplier_id = 'msup_henryschein_com'
+        and lower(regexp_replace(sp.sku, '[^a-z0-9]', '', 'gi')) = gr.model_norm)
+       or
+       (lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) = gr.brand_norm
+        and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = gr.model_norm)
+     )
+     where gr.gtin = ANY(?) and sp.deleted_at is null
+     limit 25`,
+    [variants]
+  )
+  return rows.map((r: { id: string }) => r.id)
 }
 
 type CanonicalRow = Awaited<ReturnType<MedMKPModuleService["listCanonicalProducts"]>>[number]
@@ -347,6 +376,19 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       if (hibcHits.length) {
         res.json(await scanResponse(medmkp, barcode, "hibc", hibcHits, "sku", limit))
         return
+      }
+    }
+
+    // GUDID reference fallback: the GTIN isn't on any product directly, but FDA
+    // GUDID may map it to a brand+model (or HS item number) we carry.
+    if (variants.length) {
+      const refIds = await resolveByGtinReference(req.scope, variants)
+      if (refIds.length) {
+        const refHits = dedupeById(await medmkp.listSupplierProducts({ id: refIds }))
+        if (refHits.length) {
+          res.json(await scanResponse(medmkp, barcode, "barcode", refHits, "barcode", limit))
+          return
+        }
       }
     }
 
