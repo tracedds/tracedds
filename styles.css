@@ -9586,3 +9586,131 @@ th {
   .pscan-intro h1 { font-size: 22px; }
   .pscan-stage { aspect-ratio: 3 / 4; }
 }
+
+/* ── Procurement Plan + Supplier Handoff ──────────────────────────────────── */
+.pp, .ho { max-width: 1320px; }
+.pp-header, .ho-header { max-width: none; align-items: flex-start; }
+.pp-header .history-back, .ho-header .history-back { margin-bottom: 2px; }
+
+.pp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+.pp-main { display: grid; gap: 16px; min-width: 0; }
+.pp-rail { display: grid; gap: 16px; position: sticky; top: 26px; }
+
+.pp-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pp-section-head h3 { font-size: 16px; font-weight: 800; color: var(--ink); }
+.pp-section-head small { color: var(--muted); font-size: 12px; }
+
+/* Supplier group cards */
+.pp-group { padding: 0; overflow: hidden; }
+.pp-group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--bg);
+}
+.pp-group-meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.pp-group-meta strong { color: var(--ink); font-weight: 700; }
+.pp-group-lines { display: grid; }
+.pp-line {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 56px 96px 90px;
+  align-items: center; gap: 12px;
+  padding: 11px 16px; border-top: 1px solid var(--line);
+}
+.pp-group-lines .pp-line:first-child { border-top: none; }
+.pp-line.clickable { cursor: pointer; }
+.pp-line.clickable:hover { background: var(--bg); }
+.pp-line-name { display: grid; gap: 2px; min-width: 0; }
+.pp-line-name strong { color: var(--ink); font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-line-name small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-line-qty { text-align: center; }
+.pp-line-qty strong { display: block; color: var(--ink); font-weight: 700; font-size: 14px; }
+.pp-line-qty small { color: var(--muted); font-size: 11px; }
+.pp-line-ea { color: var(--muted); font-size: 12px; text-align: right; }
+.pp-line-total { color: var(--ink); font-weight: 700; font-size: 14px; text-align: right; }
+
+/* Empty + unresolved */
+.pp-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 40px 24px; }
+.pp-empty .button-icon { width: 30px; height: 30px; color: var(--muted); }
+.pp-empty strong { font-size: 16px; color: var(--ink); }
+.pp-empty p { color: var(--muted); font-size: 13px; max-width: 360px; }
+.pp-empty .secondary-action { margin-top: 6px; }
+
+.pp-unresolved-note { color: var(--muted); font-size: 13px; margin-top: 8px; }
+.pp-unresolved-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.pp-unresolved-list li {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 8px; border: 1px solid var(--line); border-radius: 9px;
+}
+.pp-unresolved-name { display: grid; gap: 2px; min-width: 0; }
+.pp-unresolved-name strong { color: var(--ink); font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-unresolved-name small { color: var(--muted); font-size: 12px; }
+.pp-unresolved-tag { font-size: 12px; font-weight: 700; color: var(--red); white-space: nowrap; }
+
+.pp-handoff-btn { width: 100%; margin-top: 14px; }
+
+/* Supplier handoff */
+.ho-export { flex-wrap: wrap; justify-content: flex-end; }
+.ho-frozen-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--blue); font-weight: 700; font-size: 12px;
+  background: rgba(21, 93, 252, 0.08); padding: 2px 9px; border-radius: 999px;
+}
+.ho-frozen-pill .button-icon { width: 13px; height: 13px; }
+.ho-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border: 1px solid var(--line); border-radius: 11px;
+  background: var(--bg); color: var(--muted); font-size: 13px;
+}
+.ho-banner .button-icon { width: 18px; height: 18px; color: var(--blue); flex-shrink: 0; }
+.ho-banner strong { color: var(--ink); font-weight: 700; }
+
+.ho-summary {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+}
+.ho-summary > div {
+  display: grid; gap: 4px; padding: 14px 16px;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: var(--shadow);
+}
+.ho-summary small { color: var(--muted); font-size: 12px; }
+.ho-summary strong { color: var(--ink); font-weight: 800; font-size: 18px; }
+
+.ho-groups { display: grid; gap: 16px; }
+.ho-group-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 0; }
+.ho-group-actions a { text-decoration: none; }
+
+.ho-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.ho-footer-copy { display: grid; gap: 3px; }
+.ho-footer-copy strong { color: var(--ink); font-weight: 700; font-size: 14px; }
+.ho-footer-copy small { color: var(--muted); font-size: 13px; }
+
+/* Mobile entry point into the plan */
+.m-plan-cta { padding: 4px 16px 16px; }
+.m-plan-cta .primary-action { width: 100%; justify-content: center; gap: 8px; }
+
+@media (max-width: 980px) {
+  .pp-layout { grid-template-columns: minmax(0, 1fr); }
+  .pp-rail { position: static; }
+}
+@media (max-width: 600px) {
+  .pp-line { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .pp-line-ea { display: none; }
+  .ho-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ho-footer { flex-direction: column; align-items: stretch; }
+  .ho-footer .primary-action { justify-content: center; }
+}
+
+/* Export PDF — print only the handoff content, drop the app chrome. */
+@media print {
+  .topbar, .sidebar, .mobile-bottom-nav, .ho-export, .ho-group-actions, .ho-footer, .history-back, .toast { display: none !important; }
+  .app-body, .app-main { display: block; }
+  .ho-banner { background: #fff; }
+  .crl-card, .ho-summary > div { box-shadow: none; }
+}
