@@ -9217,7 +9217,7 @@ th {
 .cat-crumb strong { color: var(--ink); font-weight: 700; }
 .cat-crumb button { border: 0; background: none; color: var(--muted); padding: 0; font: inherit; }
 .cat-crumb button:hover { color: var(--blue); text-decoration: underline; }
-.cat-crumb-sep { width: 14px; height: 14px; color: #b3bccd; }
+.cat-crumb-sep { width: 14px; height: 14px; color: #b3bccd; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 .cat-title { font-size: 30px; line-height: 1.1; margin: 0 0 8px; letter-spacing: -0.01em; }
 .cat-lede { margin: 0 0 22px; color: var(--muted); max-width: 640px; line-height: 1.55; }
 
@@ -9359,7 +9359,7 @@ th {
 .cat-pt-options { flex: 0 0 auto; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: #eef2fb; color: var(--blue); font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; }
 
 .cat-pt-path span { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: #46536d; }
-.cat-pt-pathsep { width: 13px; height: 13px; color: #b3bccd; flex: 0 0 auto; }
+.cat-pt-pathsep { width: 13px; height: 13px; color: #b3bccd; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 .cat-pt-path em { display: block; margin-top: 3px; font-style: normal; font-size: 12px; color: var(--muted); }
 
 .cat-pt-price { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
