@@ -362,6 +362,10 @@ export const MR_STATUS = {
 
 
 export function mrMoney(n) { return `$${Number(n).toFixed(2)}`; }
+// Price label that treats a null/0 offer price (login-gated suppliers like
+// Henry Schein) as "Not listed" instead of a misleading $0.00.
+
+export function mrPriceLabel(n) { return n != null && Number(n) > 0 ? mrMoney(n) : "Not listed"; }
 
 export function mrEa(n) { return Number(n) >= 1 ? Number(n).toFixed(2) : Number(n).toFixed(3); }
 
@@ -473,6 +477,10 @@ export function makeScanDraftItem(code, product) {
   if (product) {
     const offers = (product.offers || []).map(mapSearchOffer);
     const best = offers[0] || (product.best_offer ? mapSearchOffer(product.best_offer) : null);
+    // When a product matches but carries no purchasable offer (login-gated
+    // suppliers like Henry Schein ingest with no price), fall back to the
+    // catalog brand so the row can still show the supplier logo.
+    const matchBrand = best?.supplier || parseAttributes(product.attributes_text).brands?.[0] || "";
     return {
       ...base,
       product: product.name,
@@ -483,6 +491,7 @@ export function makeScanDraftItem(code, product) {
       matchStatus: "exact",
       confidence: product.match?.score ?? 0.9,
       imageUrl: product.image_url || product.best_offer?.image_url || "",
+      matchBrand,
       oldVendor: best?.supplier || "",
       oldUnitPrice: best?.price ?? 0,
       bestOffer: best,
@@ -563,7 +572,13 @@ export function pickBestOffer(offers, prefs, item) {
     const anyOrderable = offers.filter(isOrderable);
     if (anyOrderable.length) pool = anyOrderable;
   }
-  const cost = (offer) => offer.perUnit ?? offer.comparablePrice ?? offer.price ?? Infinity;
+  // Treat unpriced offers (e.g. Henry Schein, whose list price is gated behind a
+  // login and ingests as 0) as the most expensive, so a real priced offer always
+  // wins the "best price" ranking over a $0 placeholder.
+  const cost = (offer) => {
+    const c = offer.perUnit ?? offer.comparablePrice ?? offer.price;
+    return c != null && c > 0 ? c : Infinity;
+  };
   if (prefs?.strategy === "brand-match") {
     const want = (item?.oldVendor || "").toLowerCase();
     const branded = want
@@ -789,6 +804,11 @@ export function deriveMatchRows(items, prefs) {
     const supplier = notFound ? "—" : (best?.supplier || item.oldVendor || "—");
     const price = best ? best.price : (item.oldUnitPrice ?? 0);
     const perEa = best ? (best.perUnit ?? null) : null;
+    // Matched to a real product but the offer carries no usable price (Henry
+    // Schein and other login-gated suppliers ingest at 0). Render it as an
+    // honest "Price not listed" state instead of a misleading $0.00, and keep it
+    // out of the plan totals (its lineTotal is nulled below).
+    const priceMissing = !notFound && (price == null || price <= 0);
     const qty = item.draftQty ?? item.qty ?? 1;
     // When the selected offer can't be ordered now, surface the best orderable
     // alternative (same strategy) as a one-click switch — buyer-driven, never
@@ -839,8 +859,12 @@ export function deriveMatchRows(items, prefs) {
         ? { key: switchTarget.key, supplier: switchTarget.supplier, price: switchTarget.price, perEa: switchTarget.perUnit ?? null }
         : null,
       confidence: notFound ? null : conf,
-      price: notFound ? null : price,
+      price: notFound || priceMissing ? null : price,
       perEa: notFound ? null : perEa,
+      priceMissing,
+      // Brand for an offer-less match (e.g. Henry Schein), so the row can show
+      // the supplier logo even though there's no purchasable offer.
+      matchBrand: notFound ? null : (best?.supplier || item.matchBrand || null),
       status,
       linked: Boolean(item.linked),
       note: item.note || "",
@@ -850,7 +874,7 @@ export function deriveMatchRows(items, prefs) {
       qty,
       uom: displayUom(item.unit),
       packLabel: notFound ? "" : (best ? formatPackLabel(best.packQty, best.packBasis, best.baseUnit, best.packSize) : ""),
-      lineTotal: notFound ? null : (best ? best.price * qty : price * qty),
+      lineTotal: notFound || priceMissing ? null : (best ? best.price * qty : price * qty),
       paidUnitPrice: hasPaidPrice ? paidUnitPrice : null,
       hasPaidPrice,
       currentLineTotal: hasPaidPrice ? paidUnitPrice * qty : null,

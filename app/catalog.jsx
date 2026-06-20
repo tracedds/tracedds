@@ -1017,10 +1017,17 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
             <div className="pdp-hero-body">
               <div className="pdp-hero-headline">
                 <h1>{family ? family.family_name : product.name}</h1>
-                <span className="pdp-badge ok">
-                  <Icon name="icon-check-circle" className="button-icon" />
-                  Matched across {supplierCount} supplier{supplierCount === 1 ? "" : "s"}
-                </span>
+                {supplierCount === 0 ? (
+                  <span className="pdp-badge muted">
+                    <Icon name="icon-info" className="button-icon" />
+                    Price not listed{brand ? ` · ${brand.toLowerCase().includes("schein") ? "Henry Schein" : brand}` : ""}
+                  </span>
+                ) : (
+                  <span className="pdp-badge ok">
+                    <Icon name="icon-check-circle" className="button-icon" />
+                    Matched across {supplierCount} supplier{supplierCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </div>
               {brand && <span className="pdp-brand-link">{brand}<Icon name="icon-link" className="button-icon" /></span>}
               {variants.length > 1 && (
@@ -1089,6 +1096,11 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
                   <span>Availability</span>
                   <span>Actions</span>
                 </div>
+                {offers.length === 0 && (
+                  <div className="pdp-row pdp-row-empty">
+                    <p>No pricing available — {brand && brand.toLowerCase().includes("schein") ? "Henry Schein" : (brand || "this supplier")} doesn&rsquo;t publish a price (login required). We&rsquo;ll show pricing as soon as a supplier offer becomes available.</p>
+                  </div>
+                )}
                 {offers.map((offer, index) => {
                   const packPrice = offer.price_cents / 100;
                   // The comparable figure is the per-unit price; show it as the

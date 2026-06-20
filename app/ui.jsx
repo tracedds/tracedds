@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "./icons";
-import { CRL_STATUS, LIST_STATUS, STRATEGY_LABELS, SUBSTITUTION_LABELS, availabilityBadge, candidateSub, cap, formatNeedBy, mrEa, mrMoney, supplierInitials, supplierLogoSrc } from "./lib";
+import { CRL_STATUS, LIST_STATUS, STRATEGY_LABELS, SUBSTITUTION_LABELS, availabilityBadge, candidateSub, cap, formatNeedBy, mrEa, mrMoney, mrPriceLabel, supplierInitials, supplierLogoSrc } from "./lib";
 
 export function useBarcodeScanner({ active, onScan }) {
   const videoRef = useRef(null);
@@ -159,7 +159,9 @@ export function ScanResultCard({ result, className = "", onClear, onEnterManuall
   const { item, status, isDuplicate, qty } = result;
   const notFound = status === "Not found";
   const offer = item.bestOffer;
-  const price = offer?.price ?? (item.oldUnitPrice || null);
+  const rawPrice = offer?.price ?? (item.oldUnitPrice || null);
+  const priceMissing = !notFound && (rawPrice == null || rawPrice <= 0);
+  const price = priceMissing ? null : rawPrice;
   const meta = CRL_STATUS[status] || CRL_STATUS.Review;
 
   return (
@@ -189,12 +191,13 @@ export function ScanResultCard({ result, className = "", onClear, onEnterManuall
             ? (item.barcode ? `Code ${item.barcode} — key it in or search` : "No code read — enter it manually")
             : isDuplicate
               ? "Already on your list — adjust the quantity there"
-              : `${offer?.supplier || item.oldVendor || "Supplier pending"}${item.unit ? ` · ${item.unit}` : ""}`}
+              : `${offer?.supplier || item.oldVendor || item.matchBrand || "Supplier pending"}${item.unit ? ` · ${item.unit}` : ""}`}
         </small>
       </div>
       <div className="src-right">
+        {!notFound && !isDuplicate && priceMissing && <small className="src-noprice">Price not listed</small>}
         {!notFound && !isDuplicate && price != null && <strong>{mrMoney(price)}</strong>}
-        {!notFound && !isDuplicate && offer?.perUnit != null && <small>${mrEa(offer.perUnit)} / ea</small>}
+        {!notFound && !isDuplicate && !priceMissing && offer?.perUnit != null && <small>${mrEa(offer.perUnit)} / ea</small>}
         {isDuplicate
           ? <em className="src-pill duplicate">Already added</em>
           : <em className={`src-pill ${meta.cls}`}>{meta.label}</em>}
@@ -396,7 +399,7 @@ export function ProductSearchResults({ query, results, loading, onPick, emptyHin
               <CandidateSub supplier={offer?.supplier_name} sub={offer?.sku} />
             </span>
             <span className="crl-cand-right">
-              <strong>{price != null ? mrMoney(price) : "—"}</strong>
+              <strong>{mrPriceLabel(price)}</strong>
               {product.offer_count > 1 && <span className="crl-cand-rec">{product.offer_count} offers</span>}
             </span>
           </button>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { SearchResults } from "./catalog";
 import { BrandMark, Icon } from "./icons";
-import { CRL_SAMPLE_SOURCES, CRL_SOURCE_ICON, CRL_STATUS, SWIPE_REVEAL, collapseOffersBySupplier, computePlanTotals, deriveMatchRows, isOrderable, isPlanIncluded, matchReviewSample, matchReviewSampleStats, money, mrComputeStats, mrConfTone, mrEa, mrMoney, offerCandidates, optimizeLandedAssignment, pathForView, rowMode, showPerEa, supplierLogoSrc } from "./lib";
+import { CRL_SAMPLE_SOURCES, CRL_SOURCE_ICON, CRL_STATUS, SWIPE_REVEAL, collapseOffersBySupplier, computePlanTotals, deriveMatchRows, isOrderable, isPlanIncluded, matchReviewSample, matchReviewSampleStats, money, mrComputeStats, mrConfTone, mrEa, mrMoney, mrPriceLabel, offerCandidates, optimizeLandedAssignment, pathForView, rowMode, showPerEa, supplierLogoSrc } from "./lib";
 import { BuyingPreferencesCard, CandidateName, CandidateStock, CandidateSub, ListStatusPill, MatchSupplier, ProductSearchResults, ProductThumb, useBarcodeScanner, useProductSearch } from "./ui";
 
 export function DesktopBarcodeScan({ onScan }) {
@@ -135,7 +135,8 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
   })();
 
   // Live savings preview from the entered price vs. the selected offer.
-  const selPrice = candidates[selected]?.price ?? row.price ?? null;
+  const selPriceRaw = candidates[selected]?.price ?? row.price ?? null;
+  const selPrice = selPriceRaw != null && selPriceRaw > 0 ? selPriceRaw : null;
   const paidNum = paid === "" ? null : Number(paid);
   const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
     ? (paidNum - selPrice) * qty
@@ -255,7 +256,7 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
                     <CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} />
                   </span>
                   <span className="crl-cand-right">
-                    <strong>{candidate.price != null ? mrMoney(candidate.price) : "—"}</strong>
+                    <strong>{mrPriceLabel(candidate.price)}</strong>
                     {showPerEa(candidate.perEa, candidate.price) && <span className="crl-cand-per">${mrEa(candidate.perEa)} / ea</span>}
                     <span className="crl-cand-tags">
                       {candidate.recommended && <span className="crl-cand-rec">Recommended</span>}
@@ -381,19 +382,25 @@ export function MobileReorderCard({ row, onOpen, onRemove }) {
         <span className="m-card-body">
           <strong>{row.matchName || row.importedName}</strong>
           <small>{row.importedSub}</small>
-          {row.supplier && row.supplier !== "—" && (
-            <small className="m-card-supplier">
-              {supplierLogoSrc(row.supplier) && <img className="m-card-supplier-logo" src={supplierLogoSrc(row.supplier)} alt="" />}
-              {row.supplier}
-            </small>
-          )}
+          {(() => {
+            const sup = row.supplier && row.supplier !== "—" ? row.supplier : row.matchBrand;
+            if (!sup) return null;
+            return (
+              <small className="m-card-supplier">
+                {supplierLogoSrc(sup) && <img className="m-card-supplier-logo" src={supplierLogoSrc(sup)} alt="" />}
+                {sup.toLowerCase().includes("schein") ? "Henry Schein" : sup}
+              </small>
+            );
+          })()}
         </span>
         <span className="m-card-right">
           {notFound
             ? <em className="m-conf nomatch">Not found</em>
             : <em className={`m-conf ${mrConfTone(row.confidence)}`}>{row.confidence}%</em>}
-          {row.price != null && <strong>{mrMoney(row.price)}</strong>}
-          {showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}
+          {row.priceMissing
+            ? <small className="m-card-noprice">Price not listed</small>
+            : row.price != null && <strong>{mrMoney(row.price)}</strong>}
+          {!row.priceMissing && showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}
           {row.lineSavings > 0 && <small className="m-card-save">Save {mrMoney(row.lineSavings)}</small>}
         </span>
         <Icon name="icon-chevron-right" className="button-icon m-card-chev" />
@@ -599,7 +606,8 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
     : "Low match confidence";
 
   // Live savings from the entered price vs. the selected offer.
-  const selPrice = candidates[selected]?.price ?? row.price ?? null;
+  const selPriceRaw = candidates[selected]?.price ?? row.price ?? null;
+  const selPrice = selPriceRaw != null && selPriceRaw > 0 ? selPriceRaw : null;
   const paidNum = paid === "" ? null : Number(paid);
   const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
     ? (paidNum - selPrice) * (row.qty || 1)
@@ -685,7 +693,7 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
                 <input type="radio" name="m-cand" checked={selected === 0} disabled={!isOrderable(candidates[0])} onChange={() => setSelected(0)} />
                 <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
                 <span className="m-match-info"><CandidateName name={candidates[0].name} productUrl={candidates[0].productUrl} /><CandidateSub supplier={candidates[0].supplier} sub={candidates[0].sub} /><CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
-                <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrMoney(candidates[0].price)}</strong>{showPerEa(candidates[0].perEa, candidates[0].price) && <small>${mrEa(candidates[0].perEa)} / ea</small>}</span>
+                <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrPriceLabel(candidates[0].price)}</strong>{showPerEa(candidates[0].perEa, candidates[0].price) && <small>${mrEa(candidates[0].perEa)} / ea</small>}</span>
               </label>
             </section>
             {candidates.length > 1 && (
@@ -697,7 +705,7 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
                   <label className={`m-match ${selected === index + 1 ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index + 1}>
                     <input type="radio" name="m-cand" checked={selected === index + 1} disabled={oos} onChange={() => setSelected(index + 1)} />
                     <span className="m-match-info"><CandidateName name={candidate.name} productUrl={candidate.productUrl} /><CandidateSub supplier={candidate.supplier} sub={candidate.sub} /><CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
-                    <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrMoney(candidate.price)}</strong>{showPerEa(candidate.perEa, candidate.price) && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
+                    <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrPriceLabel(candidate.price)}</strong>{showPerEa(candidate.perEa, candidate.price) && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
                   </label>
                   );
                 })}
@@ -1183,12 +1191,14 @@ export function CurrentReorderList({
                         <>
                           <strong>{row.matchName}</strong>
                           {row.matchSub && <small>{row.matchSub}</small>}
-                          <MatchSupplier name={row.supplier} />
+                          <MatchSupplier name={row.supplier !== "—" ? row.supplier : row.matchBrand} />
                         </>
                       )}
                     </span>
                     <span className="crl-price">
-                      {notFound ? <span className="crl-dash">—</span> : (
+                      {notFound ? <span className="crl-dash">—</span> : row.priceMissing ? (
+                        <span className="crl-noprice">Price not listed<small>Login required</small></span>
+                      ) : (
                         <>
                           <strong>{mrMoney(row.price)}</strong>
                           {showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}

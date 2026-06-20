@@ -709,10 +709,10 @@ export function HistoryDetail({ id, onBack, archivedLists = [], handoffs = [], o
                 <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
                 <span className="crl-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
                 <span className="crl-match">
-                  {notFound ? <strong>No match found</strong> : (<><strong>{row.matchName}</strong><MatchSupplier name={row.supplier} /></>)}
+                  {notFound ? <strong>No match found</strong> : (<><strong>{row.matchName}</strong><MatchSupplier name={row.supplier !== "—" ? row.supplier : row.matchBrand} /></>)}
                 </span>
                 <span className="crl-price">
-                  {notFound ? <span className="crl-dash">—</span> : (<><strong>{mrMoney(row.price)}</strong>{showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}</>)}
+                  {notFound ? <span className="crl-dash">—</span> : row.priceMissing ? (<span className="crl-noprice">Price not listed<small>Login required</small></span>) : (<><strong>{mrMoney(row.price)}</strong>{showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}</>)}
                 </span>
               </div>
             );
