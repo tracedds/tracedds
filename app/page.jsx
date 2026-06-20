@@ -64,6 +64,10 @@ export default function Home() {
   // auto-revert effect below), so the pill can never overstate the list.
   const [listStage, setListStage] = useState("draft");
   const [cartGroup, setCartGroup] = useState(null);
+  // Suppliers (by display name) the buyer has confirmed they've placed an order
+  // with for the current list. Drives the Review view's collapsed "Order
+  // submitted" state; cleared when the list is archived or cleared.
+  const [submittedSuppliers, setSubmittedSuppliers] = useState([]);
   const [liveStockByUrl, setLiveStockByUrl] = useState({});
   const liveStockCacheRef = useRef(new Map());
   const liveStockHydratedRef = useRef(false);
@@ -101,6 +105,7 @@ export default function Home() {
     setArchivedLists(saved.archivedLists || []);
     setHandoffs(saved.handoffs || []);
     setCurrentHandoffId(saved.currentHandoffId || null);
+    setSubmittedSuppliers(saved.submittedSuppliers || []);
     setListStage(saved.listStage === "review" ? "review" : "draft");
     setListTouched(Boolean(saved.listTouched));
     if (saved.listName) setListName(saved.listName);
@@ -241,7 +246,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!stateLoaded) return;
-    const blob = { draftItems, uploadedDocs, archivedLists, handoffs, currentHandoffId, listStage, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
+    const blob = { draftItems, uploadedDocs, archivedLists, handoffs, currentHandoffId, submittedSuppliers, listStage, listTouched, listName, buyingPrefs, defaultBuyingPrefs };
     latestBlobRef.current = blob;
     try {
       window.localStorage.setItem(APP_STATE_KEY, JSON.stringify(blob));
@@ -265,7 +270,7 @@ export default function Home() {
       }, 800);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, handoffs, currentHandoffId, listStage, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
+  }, [stateLoaded, draftItems, uploadedDocs, archivedLists, handoffs, currentHandoffId, submittedSuppliers, listStage, listTouched, listName, buyingPrefs, defaultBuyingPrefs, authed, serverReady]);
 
   // Flush a pending (debounced) save when the tab is hidden or unloaded, so a
   // refresh/close within the 800ms save window can't drop the latest edits.
@@ -1010,6 +1015,7 @@ export default function Home() {
     setLastUpload(null);
     setHasUploadedInvoice(false);
     setCurrentHandoffId(null);
+    setSubmittedSuppliers([]);
     setListStage("draft");
     setBuyingPrefs(defaultBuyingPrefs);
     showToast("List archived to History");
@@ -1054,6 +1060,7 @@ export default function Home() {
     setLastUpload(null);
     setHasUploadedInvoice(false);
     setCurrentHandoffId(null);
+    setSubmittedSuppliers([]);
     setListStage("draft");
     setBuyingPrefs(defaultBuyingPrefs);
     showToast("List cleared");
@@ -1108,6 +1115,24 @@ export default function Home() {
   function archiveFromHandoff() {
     archiveCurrentList();
     navigate("/app");
+  }
+
+  // The buyer confirms they've placed this supplier's order (from the Build cart
+  // modal). We only record that it happened — no order number — which collapses
+  // the supplier's block in Review. Closing the modal keeps the flow moving.
+  function markOrderSubmitted(group) {
+    const supplier = group?.supplier;
+    if (!supplier) return;
+    setSubmittedSuppliers((list) => (list.includes(supplier) ? list : [...list, supplier]));
+    setCartGroup(null);
+    showToast(`Marked ${supplier} order as submitted`);
+  }
+
+  // Unlock a submitted order so its items can be edited again — the only way out
+  // of the locked state.
+  function reopenSupplierOrder(supplier) {
+    setSubmittedSuppliers((list) => list.filter((name) => name !== supplier));
+    showToast(`Reopened ${supplier} — order no longer marked submitted`);
   }
 
   // Rename an archived list in History (live list renames via setListName).
@@ -1353,8 +1378,9 @@ export default function Home() {
               onBackToDraft={() => { backToDraft(); navigate("/app"); }}
               buyingPrefs={buyingPrefs}
               onBuyingPrefs={setBuyingPrefs}
-              onPrepareHandoff={prepareHandoff}
               onBuildCart={setCartGroup}
+              submittedSuppliers={submittedSuppliers}
+              onReopenOrder={reopenSupplierOrder}
               onSwitchOffer={applyMatchDecision}
               onConfirmMatch={applyMatchDecision}
               onLinkProduct={linkProductToItem}
@@ -1435,6 +1461,8 @@ export default function Home() {
           onClose={() => setCartGroup(null)}
           onStockResults={recordLiveStock}
           onSwitchOffer={applyMatchDecision}
+          onOrderSubmitted={markOrderSubmitted}
+          submitted={submittedSuppliers.includes(cartGroup.supplier)}
           onToast={showToast}
         />
       )}

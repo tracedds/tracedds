@@ -10057,6 +10057,35 @@ th {
 .pp-buildcart-btn:disabled { border-color: var(--line); color: var(--muted); background: var(--surface); opacity: 0.6; cursor: not-allowed; }
 .pp-buildcart-btn:disabled .button-icon { color: var(--muted); }
 
+/* "Order submitted" state — once the buyer confirms a supplier's order it locks.
+   The header toggles a read-only view of what was ordered; the editable table is
+   gone, and the only way back is the explicit "Undo order submitted". */
+.pp-group-submitted .pp-group-lines { border-top: 1px solid var(--line); }
+.pp-group-head-toggle { cursor: pointer; border-bottom: none; }
+.pp-group-head-toggle:hover { background: var(--bg); }
+.pp-submitted-badge {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  font-size: 12px; font-weight: 700; color: var(--green); background: #e3f6ed;
+  padding: 6px 11px; border-radius: 999px;
+}
+.pp-submitted-badge .button-icon { width: 15px; height: 15px; color: var(--green); }
+.pp-submitted-chevron { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.pp-submitted-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; border-top: 1px solid var(--line);
+}
+.pp-submitted-lock {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--muted); font-size: 12px; font-weight: 600;
+}
+.pp-submitted-lock .button-icon { width: 13px; height: 13px; }
+.pp-undo-submitted { flex: none; }
+.cart-submitted-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--green);
+}
+.cart-submitted-tag .button-icon { width: 16px; height: 16px; color: var(--green); }
+
 /* Cart builder modal */
 .cart-modal-body { display: grid; gap: 14px; }
 .cart-status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; padding: 8px 0; }

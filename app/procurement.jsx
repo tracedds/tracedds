@@ -6,7 +6,7 @@ import { AGENT_SUPPLIERS, ARCHIVED_LISTS, CRL_STATUS, STRATEGY_LABELS, availabil
 import { BuyingPreferencesCard, ListStatusPill, MatchSupplier, ProductThumb } from "./ui";
 import { MatchPanel, ReorderRow, ReorderTableHead } from "./reorder";
 
-export function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitchOffer, onToast }) {
+export function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitchOffer, onOrderSubmitted, submitted = false, onToast }) {
   const [state, setState] = useState({ status: "loading", result: null });
   const rows = group.rows || [];
   const linkable = rows.filter((row) => row.productUrl);
@@ -307,8 +307,79 @@ export function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, 
 
         <footer className="crl-modal-foot">
           <button className="crl-ghost-btn" type="button" onClick={onClose}>Done</button>
+          {onOrderSubmitted && (
+            submitted ? (
+              <span className="cart-submitted-tag"><Icon name="icon-check-circle" className="button-icon" />Order submitted</span>
+            ) : (
+              <button className="primary-action compact" type="button" onClick={() => onOrderSubmitted(group)}>
+                <Icon name="icon-check-circle" className="button-icon" />Mark order submitted
+              </button>
+            )
+          )}
         </footer>
       </div>
+    </div>
+  );
+}
+
+// Read-only product lines for one supplier — thumb, name, qty, per-ea, total,
+// with an optional product-detail link. No edit affordances, so it's the shared
+// "look but don't touch" rendering for the frozen handoff and a submitted order.
+// Passing `onSwitchOffer` opts into the out-of-stock reassign button.
+
+export function SupplierGroupLines({ rows, onNavigate, onSwitchOffer, onToast }) {
+  return (
+    <div className="pp-group-lines">
+      {rows.map((row) => {
+        const clickable = Boolean(row.canonicalHandle);
+        return (
+          <div className="pp-line-wrap" key={row.id}>
+            <div
+              className={`pp-line ${clickable ? "clickable" : ""}`}
+              onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
+            >
+              <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+              <span className="pp-line-name">
+                <strong>{row.matchName || row.canonicalName}</strong>
+                <span className="pp-line-sub">
+                  {row.matchSub && <small>{row.matchSub}</small>}
+                  {(() => {
+                    const badge = availabilityBadge(row.availability, row.liveAvailable);
+                    return badge ? (
+                      <span
+                        className={`pp-stock-badge stock-${badge.tone}`}
+                        title={typeof row.liveAvailable === "boolean" ? "Live stock checked this session" : "Stock as of last catalog sync — verify before ordering"}
+                      >
+                        {badge.label}
+                      </span>
+                    ) : null;
+                  })()}
+                </span>
+              </span>
+              <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+              <span className="pp-line-ea">{showPerEa(row.perEa, row.price) ? `$${mrEa(row.perEa)} / ea` : ""}</span>
+              <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
+            </div>
+            {row.outOfStock && row.switchTarget && onSwitchOffer && (
+              <div className="pp-line-switch">
+                <span className="pp-switch-msg"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock at {row.supplier}</span>
+                <button
+                  className="pp-switch-btn"
+                  type="button"
+                  onClick={() => { onSwitchOffer(row.itemId, { selectedOfferKey: row.switchTarget.key }); onToast?.(`Switched to ${row.switchTarget.supplier}`); }}
+                >
+                  <Icon name="icon-shuffle" className="button-icon" />Switch to {row.switchTarget.supplier} · {mrMoney(row.switchTarget.price)}
+                </button>
+              </div>
+            )}
+            {row.outOfStock && !row.switchTarget && (
+              <div className="pp-line-switch">
+                <span className="pp-switch-msg pp-switch-none"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock — no in-stock supplier carries this item</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -334,68 +405,26 @@ export function SupplierGroupCard({ group, onNavigate, onBuildCart, onSwitchOffe
           {actions}
         </div>
       )}
-      <div className="pp-group-lines">
-        {group.rows.map((row) => {
-          const clickable = Boolean(row.canonicalHandle);
-          return (
-            <div className="pp-line-wrap" key={row.id}>
-              <div
-                className={`pp-line ${clickable ? "clickable" : ""}`}
-                onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
-              >
-                <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
-                <span className="pp-line-name">
-                  <strong>{row.matchName || row.canonicalName}</strong>
-                  <span className="pp-line-sub">
-                    {row.matchSub && <small>{row.matchSub}</small>}
-                    {(() => {
-                      const badge = availabilityBadge(row.availability, row.liveAvailable);
-                      return badge ? (
-                        <span
-                          className={`pp-stock-badge stock-${badge.tone}`}
-                          title={typeof row.liveAvailable === "boolean" ? "Live stock checked this session" : "Stock as of last catalog sync — verify before ordering"}
-                        >
-                          {badge.label}
-                        </span>
-                      ) : null;
-                    })()}
-                  </span>
-                </span>
-                <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
-                <span className="pp-line-ea">{showPerEa(row.perEa, row.price) ? `$${mrEa(row.perEa)} / ea` : ""}</span>
-                <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
-              </div>
-              {row.outOfStock && row.switchTarget && onSwitchOffer && (
-                <div className="pp-line-switch">
-                  <span className="pp-switch-msg"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock at {row.supplier}</span>
-                  <button
-                    className="pp-switch-btn"
-                    type="button"
-                    onClick={() => { onSwitchOffer(row.itemId, { selectedOfferKey: row.switchTarget.key }); onToast?.(`Switched to ${row.switchTarget.supplier}`); }}
-                  >
-                    <Icon name="icon-shuffle" className="button-icon" />Switch to {row.switchTarget.supplier} · {mrMoney(row.switchTarget.price)}
-                  </button>
-                </div>
-              )}
-              {row.outOfStock && !row.switchTarget && (
-                <div className="pp-line-switch">
-                  <span className="pp-switch-msg pp-switch-none"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock — no in-stock supplier carries this item</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <SupplierGroupLines rows={group.rows} onNavigate={onNavigate} onSwitchOffer={onSwitchOffer} onToast={onToast} />
     </section>
   );
 }
 
 
-export function ProcurementPlanView({ items, listName, listStatus = "draft", onBackToDraft, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onBuildCart, onSwitchOffer, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate, onToast }) {
+export function ProcurementPlanView({ items, listName, listStatus = "draft", onBackToDraft, buyingPrefs, onBuyingPrefs, onBuildCart, onSwitchOffer, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate, onToast, submittedSuppliers = [], onReopenOrder }) {
   // Product-match drawer state — mirrors the reorder list so a row click opens
   // the same MatchPanel, and the drawer replaces the right rail while open.
   const [detail, setDetail] = useState(null);
   const [detailWide, setDetailWide] = useState(false);
+  // Which submitted suppliers are expanded to show their (read-only) items. A
+  // submitted order collapses by default; the buyer can expand to review what
+  // was ordered without being able to change it.
+  const [expandedSubmitted, setExpandedSubmitted] = useState(() => new Set());
+  const toggleSubmitted = (supplier) => setExpandedSubmitted((prev) => {
+    const next = new Set(prev);
+    if (next.has(supplier)) next.delete(supplier); else next.add(supplier);
+    return next;
+  });
   const rows = deriveMatchRows(items || [], buyingPrefs);
   const included = rows.filter(isPlanIncluded);
   // No-match lines plus "out of stock everywhere" lines both land here so the
@@ -437,9 +466,6 @@ export function ProcurementPlanView({ items, listName, listStatus = "draft", onB
               <Icon name="icon-chevron-left" className="button-icon" />Back to draft
             </button>
           )}
-          <button className="primary-action compact pp-header-handoff" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
-            <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
-          </button>
         </div>
       </header>
 
@@ -478,31 +504,68 @@ export function ProcurementPlanView({ items, listName, listStatus = "draft", onB
                   MatchPanel on row click — it feels like the reorder list, grouped. */}
               {groups.map((group) => {
                 const buildable = group.rows.some((row) => row.productUrl);
+                const submitted = submittedSuppliers.includes(group.supplier);
+                const expanded = expandedSubmitted.has(group.supplier);
                 return (
-                  <section className="crl-card pp-group" key={group.supplier}>
-                    <div className="pp-group-head">
-                      <MatchSupplier name={group.supplier} />
-                      <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
-                      {onBuildCart && (
-                        <button className="crl-ghost-btn pp-buildcart-btn" type="button" disabled={!buildable} onClick={() => onBuildCart(group)} title={buildable ? "" : "No supplier product links for these items"}>
-                          <Icon name="icon-cart" className="button-icon" />Build cart
-                        </button>
-                      )}
-                    </div>
-                    <div className="pp-group-table">
-                      <ReorderTableHead />
-                      {group.rows.map((row) => (
-                        <ReorderRow
-                          key={row.id}
-                          row={row}
-                          active={detail?.row.id === row.id}
-                          onOpen={(r, mode) => setDetail({ row: r, mode })}
-                          onConfirmMatch={onConfirmMatch}
-                          onRemoveItem={onRemoveItem}
-                          onToast={onToast}
-                        />
-                      ))}
-                    </div>
+                  <section className={`crl-card pp-group ${submitted ? "pp-group-submitted" : ""}`} key={group.supplier}>
+                    {submitted ? (
+                      // Submitted = locked. The header toggles a read-only view of
+                      // what was ordered (no edit controls); the ONLY way back to
+                      // an editable cart is the explicit "Undo order submitted".
+                      <div
+                        className="pp-group-head pp-group-head-toggle"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={expanded}
+                        onClick={() => toggleSubmitted(group.supplier)}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSubmitted(group.supplier); } }}
+                      >
+                        <MatchSupplier name={group.supplier} />
+                        <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
+                        <span className="pp-submitted-badge"><Icon name="icon-check-circle" className="button-icon" />Order submitted</span>
+                        <Icon name={expanded ? "icon-chevron-down" : "icon-chevron-right"} className="button-icon pp-submitted-chevron" />
+                      </div>
+                    ) : (
+                      <div className="pp-group-head">
+                        <MatchSupplier name={group.supplier} />
+                        <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
+                        {onBuildCart && (
+                          <button className="crl-ghost-btn pp-buildcart-btn" type="button" disabled={!buildable} onClick={() => onBuildCart(group)} title={buildable ? "" : "No supplier product links for these items"}>
+                            <Icon name="icon-cart" className="button-icon" />Build cart
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {submitted ? (
+                      expanded && (
+                        <>
+                          <SupplierGroupLines rows={group.rows} onNavigate={onNavigate} />
+                          <div className="pp-submitted-foot">
+                            <span className="pp-submitted-lock"><Icon name="icon-lock" className="button-icon" />Locked after submitting</span>
+                            {onReopenOrder && (
+                              <button className="crl-ghost-btn pp-undo-submitted" type="button" onClick={() => onReopenOrder(group.supplier)}>
+                                <Icon name="icon-refresh" className="button-icon" />Undo order submitted
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )
+                    ) : (
+                      <div className="pp-group-table">
+                        <ReorderTableHead />
+                        {group.rows.map((row) => (
+                          <ReorderRow
+                            key={row.id}
+                            row={row}
+                            active={detail?.row.id === row.id}
+                            onOpen={(r, mode) => setDetail({ row: r, mode })}
+                            onConfirmMatch={onConfirmMatch}
+                            onRemoveItem={onRemoveItem}
+                            onToast={onToast}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </section>
                 );
               })}
@@ -565,9 +628,6 @@ export function ProcurementPlanView({ items, listName, listStatus = "draft", onB
                 <div><span>Coverage</span><strong>{coverage}%</strong></div>
                 <div><span>Included items</span><strong>{included.length}</strong></div>
               </div>
-              <button className="primary-action compact pp-handoff-btn" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
-                <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
-              </button>
             </section>
           </aside>
         )}
