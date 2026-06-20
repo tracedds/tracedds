@@ -105,6 +105,11 @@ function IconSprite() {
         <path d="M9 3.5h6l1 2h2A1.5 1.5 0 0 1 19.5 7v13A1.5 1.5 0 0 1 18 21.5H6A1.5 1.5 0 0 1 4.5 20V7A1.5 1.5 0 0 1 6 5.5h2l1-2Z" />
         <path d="M8.5 11.5h7M8.5 15.5h7" />
       </symbol>
+      <symbol id="icon-clipboard-check" viewBox="0 0 24 24">
+        <path d="M8 5.5h8" />
+        <path d="M9 3.5h6l1 2h2A1.5 1.5 0 0 1 19.5 7v13A1.5 1.5 0 0 1 18 21.5H6A1.5 1.5 0 0 1 4.5 20V7A1.5 1.5 0 0 1 6 5.5h2l1-2Z" />
+        <path d="m8.5 13.5 2.2 2.2 4.8-4.8" />
+      </symbol>
       <symbol id="icon-package" viewBox="0 0 24 24">
         <path d="m12 3 8 4.3v9.4L12 21l-8-4.3V7.3L12 3Z" />
         <path d="m4.5 7.6 7.5 4 7.5-4M12 12v8" />
@@ -5388,7 +5393,7 @@ function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenR
       {stats.matched + stats.review > 0 && (
         <div className="m-plan-cta">
           <button type="button" className="primary-action" onClick={() => onNavigate?.("/app/review")}>
-            <Icon name="icon-handshake" className="button-icon" />Review &amp; optimize
+            <Icon name="icon-clipboard-check" className="button-icon" />Review &amp; optimize
           </button>
         </div>
       )}
@@ -6004,22 +6009,9 @@ function CurrentReorderList({
             </span>
             <span className="crl-dot" aria-hidden="true">·</span>
             <ListStatusPill status={listStatus} />
-            <span className="crl-dot" aria-hidden="true">·</span>
-            <span className="crl-autosave"><Icon name="icon-check-circle" className="button-icon" />Auto saved just now</span>
           </p>
         </div>
         <div className="crl-header-actions">
-          {totalItems > 0 && (
-            <button
-              type="button"
-              className="crl-plan-header-btn crl-plan-header-btn--primary"
-              onClick={goToReview}
-              title="Optimize supplier consolidation, shipping, and delivery for this list"
-            >
-              <Icon name="icon-handshake" className="button-icon" />
-              {listStage === "review" ? "Continue in plan" : "Review & optimize"}
-            </button>
-          )}
           <button
             type="button"
             className={`crl-add-scan ${addMode === "scan" ? "active" : ""}`}
@@ -6035,6 +6027,17 @@ function CurrentReorderList({
             <Icon name="icon-cloud-upload" className="button-icon" />
             Upload Invoice
           </button>
+          {totalItems > 0 && (
+            <button
+              type="button"
+              className="crl-plan-header-btn crl-plan-header-btn--primary"
+              onClick={goToReview}
+              title="Optimize supplier consolidation, shipping, and delivery for this list"
+            >
+              <Icon name="icon-clipboard-check" className="button-icon" />
+              {listStage === "review" ? "Continue in plan" : "Review & optimize"}
+            </button>
+          )}
           <div className="crl-more-wrap">
             <button className="crl-more crl-more-kebab" type="button" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More actions" onClick={() => setMoreOpen((open) => !open)}>
               <svg className="crl-kebab-dots" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
