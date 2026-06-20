@@ -9,7 +9,7 @@ import { BuyingPreferencesCard, CandidateName, CandidateStock, CandidateSub, Lis
 export function DesktopBarcodeScan({ onScan, scanResult, onNavigate }) {
   const [captured, setCaptured] = useState(false);
   const flashTimer = useRef();
-  const { videoRef, cameraStatus, autoDetect, capture } = useBarcodeScanner({
+  const { videoRef, cameraStatus, autoDetect, capture, retry } = useBarcodeScanner({
     active: true,
     onScan: (code) => {
       onScan?.(code);
@@ -30,8 +30,14 @@ export function DesktopBarcodeScan({ onScan, scanResult, onNavigate }) {
             <p>
               {cameraStatus === "requesting"
                 ? "Allow camera access to scan item barcodes, or use another import method."
-                : "Enable camera permissions for this site, or use Upload or CSV import instead."}
+                : "Tap Try again to allow the camera, or use Upload or CSV import instead."}
             </p>
+            {cameraStatus !== "requesting" && (
+              <button type="button" className="camera-retry-btn" onClick={retry}>
+                <Icon name="icon-refresh" className="button-icon" />
+                Try again
+              </button>
+            )}
           </div>
         )}
         <div className="desktop-scan-frame" aria-hidden="true">

@@ -8,6 +8,7 @@ export function useBarcodeScanner({ active, onScan }) {
   const videoRef = useRef(null);
   const [cameraStatus, setCameraStatus] = useState("requesting");
   const [autoDetect, setAutoDetect] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
   const captureRef = useRef(() => {});
@@ -16,6 +17,12 @@ export function useBarcodeScanner({ active, onScan }) {
     if (!active) {
       return undefined;
     }
+
+    // Re-arm on every (re)attempt. iOS standalone PWAs frequently reject the
+    // first getUserMedia after a cold launch and offer no refresh to re-prompt,
+    // so retry() bumps retryNonce to re-run this effect from a user tap.
+    setAutoDetect(false);
+    setCameraStatus("requesting");
 
     let stream;
     let isMounted = true;
@@ -137,10 +144,11 @@ export function useBarcodeScanner({ active, onScan }) {
       stream?.getTracks().forEach((track) => track.stop());
       captureRef.current = () => {};
     };
-  }, [active]);
+  }, [active, retryNonce]);
 
   const capture = useCallback(() => captureRef.current(), []);
-  return { videoRef, cameraStatus, autoDetect, capture };
+  const retry = useCallback(() => setRetryNonce((nonce) => nonce + 1), []);
+  return { videoRef, cameraStatus, autoDetect, capture, retry };
 }
 
 // The verify moment: after each scan/lookup, surface what matched so the buyer
