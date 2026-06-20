@@ -1,0 +1,1608 @@
+"use client";
+
+import { useState, useEffect, useMemo, useRef } from "react";
+import { SearchResults } from "./catalog";
+import { BrandMark, Icon } from "./icons";
+import { CRL_SAMPLE_SOURCES, CRL_SOURCE_ICON, CRL_STATUS, SWIPE_REVEAL, collapseOffersBySupplier, computePlanTotals, deriveMatchRows, isOrderable, isPlanIncluded, matchReviewSample, matchReviewSampleStats, money, mrComputeStats, mrConfTone, mrEa, mrMoney, mrPriceLabel, offerCandidates, optimizeLandedAssignment, pathForView, rowMode, showPerEa, supplierLogoSrc } from "./lib";
+import { BuyingPreferencesCard, CandidateName, CandidateStock, CandidateSub, ListStatusPill, MatchSupplier, ProductSearchResults, ProductThumb, useBarcodeScanner, useProductSearch } from "./ui";
+
+export function DesktopBarcodeScan({ onScan }) {
+  const [captured, setCaptured] = useState(false);
+  const flashTimer = useRef();
+  const { videoRef, cameraStatus, autoDetect, capture } = useBarcodeScanner({
+    active: true,
+    onScan: (code) => {
+      onScan?.(code);
+      setCaptured(true);
+      window.clearTimeout(flashTimer.current);
+      flashTimer.current = window.setTimeout(() => setCaptured(false), 700);
+    },
+  });
+
+  return (
+    <div className="desktop-scan">
+      <div className={`desktop-scan-stage ${captured ? "scan-captured" : ""}`}>
+        <video ref={videoRef} className="desktop-scan-video" playsInline muted autoPlay aria-label="Live camera preview"></video>
+        {cameraStatus !== "ready" && (
+          <div className="desktop-scan-permission">
+            <Icon name="icon-scan" className="desktop-scan-permission-icon" />
+            <strong>{cameraStatus === "requesting" ? "Camera access needed" : "Camera unavailable"}</strong>
+            <p>
+              {cameraStatus === "requesting"
+                ? "Allow camera access to scan item barcodes, or use another import method."
+                : "Enable camera permissions for this site, or use Upload or CSV import instead."}
+            </p>
+          </div>
+        )}
+        <div className="desktop-scan-frame" aria-hidden="true">
+          <span className="corner top-left"></span>
+          <span className="corner top-right"></span>
+          <span className="corner bottom-left"></span>
+          <span className="corner bottom-right"></span>
+          <span className="scan-line"></span>
+        </div>
+        <div className="desktop-scan-hint">
+          <Icon name="icon-scan" className="button-icon" />
+          {captured
+            ? "Barcode captured"
+            : autoDetect
+              ? "Point at a barcode — we capture it automatically"
+              : "Align barcode in the frame, then click Scan"}
+        </div>
+        <button
+          className="desktop-scan-shutter"
+          type="button"
+          onClick={capture}
+          disabled={cameraStatus !== "ready" || captured}
+        >
+          <Icon name="icon-scan" className="button-icon" />
+          Scan barcode
+        </button>
+      </div>
+      <aside className="desktop-scan-result">
+        <div className="desktop-scan-result-head">
+          <span className="desktop-scan-check"><Icon name="icon-check-circle" className="button-icon" /></span>
+          <div><strong>Item recognized</strong><small>We found a match in your catalog.</small></div>
+        </div>
+        <div className="desktop-scan-product">
+          <div className="desktop-scan-thumb"><Icon name="icon-image" className="button-icon" /></div>
+          <div>
+            <strong>Microbrush Regular Superfine Blue</strong>
+            <span>100/Bag · MBRREG-BLU-100</span>
+            <span className="desktop-scan-supplier"><img src="/schein-logo.png" alt="" />Henry Schein</span>
+          </div>
+        </div>
+        <dl className="desktop-scan-meta">
+          <div><dt>UOM</dt><dd>Bag</dd></div>
+          <div><dt>Unit price</dt><dd>$12.45</dd></div>
+          <div><dt>Per each</dt><dd>$0.1245 / ea</dd></div>
+        </dl>
+        <button className="primary-action" type="button"><Icon name="icon-plus" className="button-icon" />Add to reorder list</button>
+        <button className="secondary-action" type="button"><Icon name="icon-search" className="button-icon" />View item details</button>
+        <button className="text-action desktop-scan-nomatch" type="button">This isn&rsquo;t a match</button>
+      </aside>
+    </div>
+  );
+}
+
+
+// Status pills. "Matched" is our auto match; "Needs review" flags a
+// low-confidence match (informational — there's no user "verify" step).
+
+export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate }) {
+  const isResolve = mode === "resolve";
+  const isView = mode === "view";
+  const candidates = isResolve ? [] : collapseOffersBySupplier(offerCandidates(row), row.selectedOfferKey);
+  // Start on the buyer's current selection (falls back to our recommendation).
+  const selectedIndex = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
+  const recommendedIndex = candidates.findIndex((candidate) => candidate.recommended);
+  const [selected, setSelected] = useState(selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex));
+  const [qty] = useState(row.qty || 1);
+  const [notes, setNotes] = useState(row.note || "");
+  // What the practice currently pays per pack — the savings anchor. Editable
+  // here so scanned items (which carry no price) and price-less invoice lines
+  // can still show savings. Persists immediately on blur.
+  const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
+  // Resolve opens straight into search; review/view can toggle in to re-link.
+  const [searching, setSearching] = useState(isResolve);
+  const search = useProductSearch(searching);
+  const status = CRL_STATUS[row.status];
+  const sourceLabel = row.source === "scan" ? "From Barcode Scan" : row.source === "csv" ? "From Reorder Sheet" : "From Invoice";
+  const title = isResolve ? "Resolve item" : isView ? "Product match" : "Verify product match";
+  const subtitle = isResolve
+    ? "We couldn’t match this item. Find the right product to link."
+    : isView
+      ? "Confirm or change the product matched to this item."
+      : "Please confirm the best match for this imported item.";
+
+  // "Buy bigger, pay less per unit": among this product's own offers (same
+  // canonical, different pack sizes), find a larger pack that beats the selected
+  // offer on price-per-each by a meaningful margin. Surfaced as an opt-in nudge —
+  // bigger packs tie up cash/shelf and can expire, so it's never auto-applied.
+  const sel = candidates[selected];
+  const biggerPackDeal = (() => {
+    if (!sel || sel.perEa == null || sel.packQty == null) return null;
+    let best = null;
+    candidates.forEach((candidate, index) => {
+      if (index === selected || !isOrderable(candidate)) return;
+      if (candidate.perEa == null || candidate.packQty == null) return;
+      if (candidate.packQty <= sel.packQty || candidate.perEa >= sel.perEa) return;
+      if (!best || candidate.perEa < best.perEa) best = { ...candidate, index };
+    });
+    if (!best) return null;
+    const pct = (sel.perEa - best.perEa) / sel.perEa;
+    return pct >= 0.1 ? { ...best, pct } : null;
+  })();
+
+  // Live savings preview from the entered price vs. the selected offer.
+  const selPriceRaw = candidates[selected]?.price ?? row.price ?? null;
+  const selPrice = selPriceRaw != null && selPriceRaw > 0 ? selPriceRaw : null;
+  const paidNum = paid === "" ? null : Number(paid);
+  const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
+    ? (paidNum - selPrice) * qty
+    : 0;
+
+  // Persist the entered price on blur, but only when it actually changed, so we
+  // don't churn the draft list (or fire a toast) on every focus out.
+  function savePaid() {
+    if (!row.itemId) return;
+    const current = row.paidUnitPrice != null ? String(row.paidUnitPrice) : "";
+    if (paid === current) return;
+    onConfirmMatch?.(row.itemId, { paidUnitPrice: paid });
+  }
+
+  function confirm() {
+    if (row.itemId) {
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty, note: notes, paidUnitPrice: paid });
+      onToast("Match updated");
+    } else {
+      onToast("Match updated");
+    }
+    onClose();
+  }
+
+  function linkResult(product) {
+    if (row.itemId) {
+      onLinkProduct?.(row.itemId, product, { qty, note: notes });
+      onToast("Product linked to item");
+      onClose();
+    } else {
+      onToast("Product linked to item");
+      onClose();
+    }
+  }
+
+  return (
+    <aside className="crl-detail" role="region" aria-label={title}>
+      <header className="crl-drawer-head">
+        <div className="crl-drawer-title">
+          <span className="crl-drawer-shield"><Icon name="icon-shield-check" className="button-icon" /></span>
+          <div>
+            <h3>{title}</h3>
+            <p>{subtitle}</p>
+          </div>
+        </div>
+        <div className="crl-drawer-head-actions">
+          <button type="button" aria-label={wide ? "Collapse panel" : "Expand panel"} onClick={onToggleWide}><span aria-hidden="true">⤢</span></button>
+          <button type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </div>
+      </header>
+
+      <div className="crl-drawer-body">
+        <section className="crl-drawer-section">
+          <div className="crl-drawer-section-head">
+            <span className="crl-drawer-label">Imported item</span>
+            <span className="crl-drawer-badge">{sourceLabel}</span>
+          </div>
+          <div className="crl-imported">
+            <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
+            <div className="crl-imported-info">
+              {row.canonicalHandle ? (
+                <button type="button" className="crl-imported-link" onClick={() => onNavigate?.(`/app/product/${row.canonicalHandle}`)} title="View this product in the catalog">
+                  {row.matchName || row.importedName}
+                  <Icon name="icon-arrow-right" className="button-icon" />
+                </button>
+              ) : (
+                <strong>{row.matchName || row.importedName}</strong>
+              )}
+              <small>{row.importedName}</small>
+              <div className="crl-imported-status">Status: <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span></div>
+            </div>
+          </div>
+        </section>
+
+        {searching ? (
+          <section className="crl-drawer-section">
+            <span className="crl-drawer-label">{isResolve ? "Find a match" : "Search for another product"}</span>
+            <label className="crl-search crl-drawer-search">
+              <Icon name="icon-search" className="button-icon" />
+              <input type="search" placeholder="Search products, suppliers…" value={search.query} onChange={(event) => search.setQuery(event.target.value)} autoFocus />
+            </label>
+            <ProductSearchResults
+              query={search.query}
+              results={search.results}
+              loading={search.loading}
+              onPick={linkResult}
+              emptyHint={isResolve ? "No catalog match found yet. Search above to link this item to a product." : "Search the catalog to link a different product to this item."}
+            />
+            {!isResolve && (
+              <button className="crl-drawer-link" type="button" onClick={() => setSearching(false)}><Icon name="icon-chevron-left" className="button-icon" />Back to suggested matches</button>
+            )}
+          </section>
+        ) : (
+          <section className="crl-drawer-section">
+            <strong className="crl-drawer-subhead">Choose the match</strong>
+            <p className="crl-drawer-hint">We recommend one offer from your buying preferences — pick a different one any time.</p>
+            {biggerPackDeal && (
+              <button type="button" className="crl-packdeal" onClick={() => setSelected(biggerPackDeal.index)}>
+                <Icon name="icon-tag" className="button-icon" />
+                <span className="crl-packdeal-text">
+                  <strong>Buy bigger, save {Math.round(biggerPackDeal.pct * 100)}% per unit</strong>
+                  <small>{biggerPackDeal.packLabel || "Larger pack"} at ${mrEa(biggerPackDeal.perEa)}/ea vs ${mrEa(sel.perEa)}/ea — if you use the volume.</small>
+                </span>
+                <span className="crl-packdeal-switch">Switch</span>
+              </button>
+            )}
+            <div className="crl-cand-list">
+              {candidates.map((candidate, index) => {
+                const oos = !isOrderable(candidate);
+                return (
+                <label key={candidate.key ?? index} className={`crl-cand ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos}>
+                  <input type="radio" name="crl-cand" checked={selected === index} disabled={oos} onChange={() => setSelected(index)} />
+                  <ProductThumb image={candidate.image} alt={candidate.name} />
+                  <span className="crl-cand-info">
+                    <CandidateName name={candidate.name} productUrl={candidate.productUrl} />
+                    <CandidateSub supplier={candidate.supplier} sub={candidate.sub} />
+                    <CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} />
+                  </span>
+                  <span className="crl-cand-right">
+                    <strong>{mrPriceLabel(candidate.price)}</strong>
+                    {showPerEa(candidate.perEa, candidate.price) && <span className="crl-cand-per">${mrEa(candidate.perEa)} / ea</span>}
+                    <span className="crl-cand-tags">
+                      {candidate.recommended && <span className="crl-cand-rec">Recommended</span>}
+                      {selected === index && !candidate.recommended && <span className="crl-cand-sel">Selected</span>}
+                    </span>
+                  </span>
+                </label>
+                );
+              })}
+            </div>
+            <button className="crl-drawer-link" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
+          </section>
+        )}
+
+        {!isResolve && selPrice != null && (
+          <section className="crl-drawer-section">
+            <span className="crl-drawer-label">What you pay now</span>
+            <p className="crl-drawer-hint">Enter your current price per {row.uom} to see your savings — scanned items don&rsquo;t carry a price.</p>
+            <div className="crl-paid-row">
+              <label className="crl-paid-field">
+                <span>$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={paid}
+                  onChange={(event) => setPaid(event.target.value)}
+                  onBlur={savePaid}
+                />
+                <em>/ {row.uom}</em>
+              </label>
+              {drawerSavings > 0 && (
+                <span className="crl-paid-savings">You save <strong>{mrMoney(drawerSavings)}</strong></span>
+              )}
+            </div>
+          </section>
+        )}
+
+        <section className="crl-drawer-section">
+          <span className="crl-drawer-label">Notes (optional)</span>
+          <textarea className="crl-drawer-notes" maxLength={500} placeholder="Add a note about this item…" value={notes} onChange={(event) => setNotes(event.target.value)} />
+          <div className="crl-drawer-notes-count">{notes.length} / 500</div>
+        </section>
+
+      </div>
+
+      <footer className="crl-drawer-foot">
+        <button className="crl-ghost-btn" type="button" onClick={onClose}>{isView ? "Close" : "Cancel"}</button>
+        {!searching && (
+          <button className="primary-action compact" type="button" onClick={confirm}>{isView ? "Update Match" : "Confirm Selected Match"}</button>
+        )}
+      </footer>
+    </aside>
+  );
+}
+
+
+export function MobileReorderCard({ row, onOpen, onRemove }) {
+  const [dx, setDx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const startX = useRef(0);
+  const startY = useRef(0);
+  const dragging = useRef(false);
+  const moved = useRef(false);
+
+  function onTouchStart(event) {
+    const touch = event.touches[0];
+    startX.current = touch.clientX;
+    startY.current = touch.clientY;
+    dragging.current = true;
+    moved.current = false;
+  }
+  function onTouchMove(event) {
+    if (!dragging.current) return;
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - startX.current;
+    const deltaY = touch.clientY - startY.current;
+    // Ignore mostly-vertical gestures so the list can still scroll.
+    if (!moved.current && Math.abs(deltaX) < Math.abs(deltaY)) { dragging.current = false; return; }
+    if (Math.abs(deltaX) > 6) moved.current = true;
+    const base = open ? -SWIPE_REVEAL : 0;
+    const next = Math.min(0, Math.max(-SWIPE_REVEAL, base + deltaX));
+    setDx(next);
+  }
+  function onTouchEnd() {
+    if (!dragging.current && !moved.current) return;
+    dragging.current = false;
+    const shouldOpen = dx <= -SWIPE_REVEAL / 2;
+    setOpen(shouldOpen);
+    setDx(shouldOpen ? -SWIPE_REVEAL : 0);
+  }
+  function handleClick() {
+    if (moved.current) return; // swipe, not a tap
+    if (open) { setOpen(false); setDx(0); return; }
+    onOpen();
+  }
+
+  const notFound = row.status === "Not found";
+  return (
+    <div className={`m-swipe ${open ? "open" : ""}`}>
+      <button
+        type="button"
+        className="m-swipe-remove"
+        aria-label={`Remove ${row.matchName || row.importedName} from list`}
+        tabIndex={open ? 0 : -1}
+        onClick={() => { setOpen(false); setDx(0); onRemove(); }}
+      >
+        <Icon name="icon-trash-ios" className="m-swipe-remove-icon" />
+        <span>Remove</span>
+      </button>
+      <button
+        className="m-card"
+        type="button"
+        onClick={handleClick}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ transform: `translateX(${dx}px)`, transition: dragging.current ? "none" : "transform .2s ease" }}
+      >
+        <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
+        <span className="m-card-body">
+          <strong>{row.matchName || row.importedName}</strong>
+          <small>{row.importedSub}</small>
+          {(() => {
+            const sup = row.supplier && row.supplier !== "—" ? row.supplier : row.matchBrand;
+            if (!sup) return null;
+            return (
+              <small className="m-card-supplier">
+                {supplierLogoSrc(sup) && <img className="m-card-supplier-logo" src={supplierLogoSrc(sup)} alt="" />}
+                {sup.toLowerCase().includes("schein") ? "Henry Schein" : sup}
+              </small>
+            );
+          })()}
+        </span>
+        <span className="m-card-right">
+          {notFound
+            ? <em className="m-conf nomatch">Not found</em>
+            : <em className={`m-conf ${mrConfTone(row.confidence)}`}>{row.confidence}%</em>}
+          {row.priceMissing
+            ? <small className="m-card-noprice">Price not listed</small>
+            : row.price != null && <strong>{mrMoney(row.price)}</strong>}
+          {!row.priceMissing && showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}
+          {row.lineSavings > 0 && <small className="m-card-save">Save {mrMoney(row.lineSavings)}</small>}
+        </span>
+        <Icon name="icon-chevron-right" className="button-icon m-card-chev" />
+      </button>
+    </div>
+  );
+}
+
+// Mobile card list for the current reorder list (replaces the desktop table on
+// phones). Stats band + status tabs + tappable product cards.
+
+export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, onRemoveItem, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate, buyerName = "", practiceName = "", buyerInitials = "", email = "", onLogout }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  return (
+    <div className="m-list">
+      <div className="m-brandbar">
+        <BrandMark />
+        <div className="m-brand-actions">
+          <button className="m-iconbtn" type="button" aria-label="Alerts">
+            <Icon name="icon-bell" className="button-icon" />
+            <span className="m-brand-badge">3</span>
+          </button>
+          {onLogout && (
+            <div className="m-brand-account">
+              <button
+                className={`m-brand-avatar-btn ${accountOpen ? "active" : ""}`}
+                type="button"
+                aria-label="Account"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen((open) => !open)}
+              >
+                {buyerInitials || "··"}
+              </button>
+              {accountOpen && (
+                <>
+                  <div className="m-brand-menu-backdrop" onClick={() => setAccountOpen(false)} />
+                  <div className="m-brand-menu" role="menu">
+                    <div className="m-brand-menu-head">
+                      <strong>{buyerName || "Your account"}</strong>
+                      <small>{email || practiceName || "Buyer"}</small>
+                    </div>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate?.(pathForView("settings")); }}>
+                      <Icon name="icon-settings" className="button-icon" />
+                      Settings
+                    </button>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onLogout?.(); }}>
+                      <Icon name="icon-logout" className="button-icon" />
+                      Sign out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="m-search-wrap">
+        <label className="m-search">
+          <Icon name="icon-search" className="button-icon" />
+          <input
+            type="search"
+            placeholder="Search products, suppliers…"
+            aria-label="Search"
+            value={searchTerm}
+            onChange={(event) => onSearchTerm?.(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") { onSearchTerm?.(""); event.currentTarget.blur(); }
+              else if (event.key === "Enter" && searchTerm.trim()) {
+                event.preventDefault();
+                event.currentTarget.blur();
+                onNavigate?.(`/app/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`);
+              }
+            }}
+          />
+        </label>
+        {searchTerm.trim() && (
+          <>
+            <div className="topbar-search-backdrop" onClick={() => onSearchTerm?.("")} />
+            <SearchResults
+              results={searchResults}
+              loading={searchLoading}
+              query={searchTerm.trim()}
+              onNavigate={onNavigate}
+            />
+          </>
+        )}
+      </div>
+
+      <header className="m-topbar">
+        <h1>{title}</h1>
+        <div className="m-topbar-actions">
+          <div className="m-menu-wrap">
+            <button className="m-iconbtn" type="button" aria-label="List actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
+              <svg className="crl-kebab-dots" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
+            </button>
+            {menuOpen && (
+              <>
+                <div className="crl-add-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                <div className="crl-add-menu m-actions-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onArchiveList?.(); }}>
+                    <Icon name="icon-clipboard" className="button-icon" />
+                    <span><strong>Archive list</strong><small>Move to list history</small></span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onClearList?.(); }}>
+                    <Icon name="icon-trash" className="button-icon crl-menu-danger" />
+                    <span><strong>Clear list</strong><small>Remove all items</small></span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <nav className="m-tabs" aria-label="Item list filters">
+        {[["all", `All ${totalItems}`], ["confirmed", `Matched ${stats.matched}`], ["possible", `Needs Review ${stats.review}`], ["nomatch", `No match ${stats.notFound}`]].map(([id, label]) => (
+          <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => onTab(id)}>{label}</button>
+        ))}
+      </nav>
+
+      <div className="m-cards">
+        {rows.length === 0 ? (
+          <div className="m-empty">
+            <Icon name="icon-clipboard" className="m-empty-icon" />
+            {totalItems === 0 ? (
+              <>
+                <strong>Your reorder list is empty</strong>
+                <p>Tap the scan button below to scan a barcode, or upload an invoice to start building your list.</p>
+              </>
+            ) : (
+              <>
+                <strong>Nothing in this view</strong>
+                <p>No items match this filter. Switch to “All {totalItems}” to see your whole list.</p>
+              </>
+            )}
+          </div>
+        ) : rows.map((row) => (
+          <MobileReorderCard
+            key={row.id}
+            row={row}
+            onOpen={() => onOpenRow(row)}
+            onRemove={() => {
+              if (row.itemId) onRemoveItem?.(row.itemId);
+              onToast("Item removed from list");
+            }}
+          />
+        ))}
+      </div>
+
+      {stats.matched + stats.review > 0 && (
+        <div className="m-plan-cta">
+          <button type="button" className="primary-action" onClick={() => onNavigate?.("/app/review")}>
+            <Icon name="icon-clipboard-check" className="button-icon" />Review &amp; optimize
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Full-screen mobile detail page. Layout follows the mobile mockup; the footer
+// actions mirror the desktop MatchPanel (Cancel / Confirm by mode).
+
+export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate }) {
+  const idx = rows.findIndex((r) => r.id === row.id);
+  const total = rows.length;
+  const isResolve = mode === "resolve";
+  const isView = mode === "view";
+  // Candidates come from the item's real offers; our recommended (preference-
+  // based) pick is floated to the front so it shows in the "Recommended" slot.
+  // The radio tracks the buyer's actual selection, which may differ.
+  const candidates = isResolve ? [] : collapseOffersBySupplier((row.offers || []).map((offer) => ({
+    key: offer.key,
+    name: offer.name,
+    supplier: offer.supplier,
+    sub: offer.sub,
+    price: offer.price,
+    perEa: offer.perUnit ?? null,
+    image: offer.imageUrl || "",
+    recommended: offer.key === row.recommendedOfferKey,
+    confidence: offer.key === row.recommendedOfferKey ? row.confidence : Math.max((row.confidence ?? 50) - 10, 40),
+    availability: offer.availability,
+    liveAvailable: offer.liveAvailable,
+    productUrl: offer.productUrl || "",
+  })), row.selectedOfferKey);
+  if (!isResolve && !candidates.length && row.matchName) {
+    candidates.push({ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" });
+  }
+  const recIdx = candidates.findIndex((candidate) => candidate.recommended);
+  if (recIdx > 0) candidates.unshift(...candidates.splice(recIdx, 1));
+  const initialSel = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
+  const [selected, setSelected] = useState(initialSel < 0 ? 0 : initialSel);
+  const [notes, setNotes] = useState(row.note || "");
+  const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
+  const [searching, setSearching] = useState(isResolve);
+  const search = useProductSearch(searching);
+  const confLabel = row.confidence == null ? "No catalog match"
+    : row.confidence >= 80 ? "High match confidence"
+    : row.confidence >= 50 ? "Medium match confidence"
+    : "Low match confidence";
+
+  // Live savings from the entered price vs. the selected offer.
+  const selPriceRaw = candidates[selected]?.price ?? row.price ?? null;
+  const selPrice = selPriceRaw != null && selPriceRaw > 0 ? selPriceRaw : null;
+  const paidNum = paid === "" ? null : Number(paid);
+  const drawerSavings = paidNum != null && Number.isFinite(paidNum) && paidNum > 0 && selPrice != null && paidNum > selPrice
+    ? (paidNum - selPrice) * (row.qty || 1)
+    : 0;
+
+  function savePaid() {
+    if (!row.itemId) return;
+    const current = row.paidUnitPrice != null ? String(row.paidUnitPrice) : "";
+    if (paid === current) return;
+    onConfirmMatch?.(row.itemId, { paidUnitPrice: paid });
+  }
+
+  function confirm() {
+    if (row.itemId) {
+      onConfirmMatch?.(row.itemId, { selectedOfferKey: candidates[selected]?.key ?? null, qty: row.qty, note: notes, paidUnitPrice: paid });
+    }
+    onToast("Match updated");
+    onClose();
+  }
+
+  function linkResult(product) {
+    if (row.itemId) onLinkProduct?.(row.itemId, product, { note: notes });
+    onToast("Product linked to item");
+    onClose();
+  }
+
+  function removeItem() {
+    if (row.itemId) onRemoveItem?.(row.itemId);
+    onToast("Item removed from list");
+    onClose();
+  }
+
+  return (
+    <div className="m-detail">
+      <header className="m-detail-top">
+        <button className="m-iconbtn" type="button" aria-label="Back to list" onClick={onClose}><Icon name="icon-chevron-left" className="button-icon" /></button>
+        <div className="m-pager">
+          <button type="button" aria-label="Previous item" disabled={idx <= 0} onClick={() => idx > 0 && onOpenRow(rows[idx - 1])}><Icon name="icon-chevron-left" className="button-icon" /></button>
+          <span>{idx + 1} of {total}</span>
+          <button type="button" aria-label="Next item" disabled={idx >= total - 1} onClick={() => idx < total - 1 && onOpenRow(rows[idx + 1])}><Icon name="icon-chevron-right" className="button-icon" /></button>
+        </div>
+        <button className="m-iconbtn" type="button" aria-label="More"><span aria-hidden="true">⋯</span></button>
+      </header>
+
+      <div className="m-detail-body">
+        <div className={`m-conf-banner ${row.confidence == null ? "nomatch" : mrConfTone(row.confidence)}`}>
+          <span>{confLabel}</span>
+          {row.confidence != null && <strong>{row.confidence}%</strong>}
+        </div>
+
+        <section className="m-detail-sec">
+          <span className="m-detail-label">Imported item</span>
+          <strong className="m-detail-name">{row.importedName}</strong>
+          <small>{row.importedSub}</small>
+          {row.supplier && row.supplier !== "—" && <small>Imported by {row.supplier}</small>}
+          {row.canonicalHandle && (
+            <button type="button" className="crl-drawer-link m-detail-catalog" onClick={() => onNavigate?.(`/app/product/${row.canonicalHandle}`)}>
+              View in product catalog <Icon name="icon-arrow-right" className="button-icon" />
+            </button>
+          )}
+        </section>
+
+        {searching ? (
+          <section className="m-detail-sec">
+            <span className="m-detail-label">{isResolve ? "Find a match" : "Search for another product"}</span>
+            <label className="crl-search"><Icon name="icon-search" className="button-icon" /><input type="search" placeholder="Search products, suppliers…" value={search.query} onChange={(event) => search.setQuery(event.target.value)} autoFocus /></label>
+            <ProductSearchResults
+              query={search.query}
+              results={search.results}
+              loading={search.loading}
+              onPick={linkResult}
+              emptyHint={isResolve ? "No catalog match found yet. Search above to link this item to a product." : "Search the catalog to link a different product to this item."}
+            />
+            {!isResolve && (
+              <button className="crl-drawer-link" type="button" onClick={() => setSearching(false)}><Icon name="icon-chevron-left" className="button-icon" />Back to suggested matches</button>
+            )}
+          </section>
+        ) : candidates.length ? (
+          <>
+            <section className="m-detail-sec">
+              <span className="m-detail-label">Recommended</span>
+              <label className={`m-match best ${selected === 0 ? "active" : ""} ${!isOrderable(candidates[0]) ? "oos" : ""}`} aria-disabled={!isOrderable(candidates[0])}>
+                <input type="radio" name="m-cand" checked={selected === 0} disabled={!isOrderable(candidates[0])} onChange={() => setSelected(0)} />
+                <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
+                <span className="m-match-info"><CandidateName name={candidates[0].name} productUrl={candidates[0].productUrl} /><CandidateSub supplier={candidates[0].supplier} sub={candidates[0].sub} /><CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
+                <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrPriceLabel(candidates[0].price)}</strong>{showPerEa(candidates[0].perEa, candidates[0].price) && <small>${mrEa(candidates[0].perEa)} / ea</small>}</span>
+              </label>
+            </section>
+            {candidates.length > 1 && (
+              <section className="m-detail-sec">
+                <span className="m-detail-label">Other possible matches</span>
+                {candidates.slice(1).map((candidate, index) => {
+                  const oos = !isOrderable(candidate);
+                  return (
+                  <label className={`m-match ${selected === index + 1 ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index + 1}>
+                    <input type="radio" name="m-cand" checked={selected === index + 1} disabled={oos} onChange={() => setSelected(index + 1)} />
+                    <span className="m-match-info"><CandidateName name={candidate.name} productUrl={candidate.productUrl} /><CandidateSub supplier={candidate.supplier} sub={candidate.sub} /><CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
+                    <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrPriceLabel(candidate.price)}</strong>{showPerEa(candidate.perEa, candidate.price) && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
+                  </label>
+                  );
+                })}
+              </section>
+            )}
+            <button className="crl-drawer-link m-detail-relink" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
+          </>
+        ) : null}
+
+        <section className="m-detail-sec">
+          <span className="m-detail-label">Item details</span>
+          <div className="m-itemdetails">
+            <div><small>Quantity</small><strong>{row.qty}</strong></div>
+            <div><small>UOM</small><strong>{row.uom}</strong></div>
+            <div><small>Line total</small><strong>{row.lineTotal != null ? mrMoney(row.lineTotal) : "—"}</strong></div>
+          </div>
+          {!isResolve && selPrice != null && (
+            <>
+              <span className="m-detail-label">What you pay now</span>
+              <div className="crl-paid-row">
+                <label className="crl-paid-field">
+                  <span>$</span>
+                  <input type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00" value={paid} onChange={(event) => setPaid(event.target.value)} onBlur={savePaid} />
+                  <em>/ {row.uom}</em>
+                </label>
+                {drawerSavings > 0 && <span className="crl-paid-savings">You save <strong>{mrMoney(drawerSavings)}</strong></span>}
+              </div>
+            </>
+          )}
+          <textarea className="m-notes" placeholder="Add a note…" maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} />
+          {row.itemId && (
+            <button className="crl-drawer-remove m-detail-remove" type="button" onClick={removeItem}><Icon name="icon-trash" className="button-icon" />Remove item from list</button>
+          )}
+        </section>
+      </div>
+
+      <footer className="m-detail-foot">
+        <button className="crl-ghost-btn" type="button" onClick={onClose}>{isView ? "Close" : "Cancel"}</button>
+        {!searching && (
+          <button className="primary-action compact" type="button" onClick={confirm}>{isView ? "Update Match" : "Confirm Selected Match"}</button>
+        )}
+      </footer>
+    </div>
+  );
+}
+
+
+export function CurrentReorderList({
+  items,
+  listName = "June Restock",
+  listStatus = "draft",
+  listStage = "draft",
+  onAdvanceStage,
+  onRenameList,
+  buyerName = "",
+  practiceName = "",
+  buyerInitials = "",
+  email = "",
+  onLogout,
+  addMode,
+  onAddMode,
+  lastUpload,
+  onCloseUpload,
+  onUploadAnother,
+  uploadFormRef,
+  onUpload,
+  uploading,
+  uploadProgress,
+  uploadElapsed,
+  uploadError,
+  onCancelUpload,
+  onClearUploadError,
+  isDraggingInvoice,
+  onDragStateChange,
+  onInvoiceDrop,
+  onInvoiceFile,
+  selectedInvoiceName,
+  hasUploadedInvoice,
+  onScan,
+  searchTerm,
+  onSearchTerm,
+  searchResults,
+  searchLoading,
+  onNavigate,
+  onToast,
+  listTouched,
+  allowSample = false,
+  buyingPrefs,
+  supplierShipping = {},
+  onBuyingPrefs,
+  onApplyOptimized,
+  onArchiveList,
+  onClearList,
+  onConfirmMatch,
+  onLinkProduct,
+  onRemoveItem,
+  onRefresh,
+}) {
+  const realRows = deriveMatchRows(items, buyingPrefs);
+  const usingReal = realRows.length > 0;
+  // The demo sample list is only for the public, unauthenticated preview
+  // (allowSample). A signed-in buyer — new or returning — with no real items
+  // sees a truly empty list, never the sample.
+  const showSample = allowSample && !usingReal && !listTouched;
+  const isEmpty = !usingReal && !showSample;
+  const rows = (usingReal ? realRows : showSample ? matchReviewSample : []).map((row) => ({
+    ...row,
+    source: row.source || CRL_SAMPLE_SOURCES[row.id] || "pdf",
+  }));
+  const stats = usingReal ? mrComputeStats(rows) : showSample ? matchReviewSampleStats : mrComputeStats(rows);
+  const totalItems = usingReal ? rows.length : showSample ? stats.total : 0;
+  // Items that won't make it into the supplier plan (no match, or out of stock
+  // everywhere) — surfaced in the warning modal before advancing to Review.
+  const unresolvedRows = usingReal ? rows.filter((row) => !isPlanIncluded(row)) : [];
+  const allReviewed = usingReal && totalItems > 0 && unresolvedRows.length === 0 && !rows.some(
+    (r) => r.status === "Review"
+  );
+  const [tab, setTab] = useState("all");
+  const [detail, setDetail] = useState(null);
+  const [detailWide, setDetailWide] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reviewConfirm, setReviewConfirm] = useState(false);
+  const listNameRef = useRef(null);
+
+  // Advance to Review & optimize. If anything is unresolved, confirm first so the
+  // buyer knows those items won't be included; otherwise go straight in.
+  function goToReview() {
+    // Already advanced — just continue into the plan (no need to re-warn).
+    if (listStage !== "review" && unresolvedRows.length > 0) { setReviewConfirm(true); return; }
+    onAdvanceStage?.("review");
+    onNavigate?.("/app/review");
+  }
+
+  function confirmReview() {
+    setReviewConfirm(false);
+    onAdvanceStage?.("review");
+    onNavigate?.("/app/review");
+  }
+
+  async function handleRefresh() {
+    if (!onRefresh || refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // Suppliers that actually appear in this list's offers — the real choices for
+  // the preferred-supplier filter (toggling them re-ranks the best offer).
+  const supplierOptions = useMemo(() => {
+    const names = new Set();
+    for (const item of items || []) {
+      for (const offer of item.offers || []) {
+        if (offer.supplier) names.add(offer.supplier);
+      }
+    }
+    return [...names].sort();
+  }, [items]);
+
+  const planSummary = useMemo(() => {
+    const totals = computePlanTotals(rows, supplierShipping);
+    const coverage = rows.length ? Math.round((stats.matched / rows.length) * 100) : 0;
+    const savings = rows.reduce((sum, row) => sum + (row.lineSavings || 0), 0);
+    const currentSpend = rows.reduce((sum, row) => sum + (row.currentLineTotal || 0), 0);
+    // Matched lines we could price-compare but don't have the buyer's price for
+    // yet — drives the "add your prices" nudge so scanned items count too.
+    const missingPrice = rows.filter((row) => row.status !== "Not found" && !row.hasPaidPrice).length;
+    return { ...totals, coverage, savings, currentSpend, missingPrice };
+  }, [rows, stats, supplierShipping]);
+
+  // Lowest-landed-cost re-assignment, surfaced as an opt-in suggestion. Only run
+  // it when shipping is fully known for the plan (so an unknown policy can't look
+  // free) and the buyer isn't in brand-match mode (which prioritizes brand over
+  // cost). Non-destructive: it sets per-line selections only when Applied.
+  const optimizedPlan = useMemo(() => {
+    if (!planSummary.shippingComplete || buyingPrefs?.strategy === "brand-match") return null;
+    return optimizeLandedAssignment(rows, supplierShipping, buyingPrefs);
+  }, [rows, supplierShipping, buyingPrefs, planSummary.shippingComplete]);
+
+  // The per-line supplier moves the optimization would make, for the preview
+  // diff. Only lines whose offer actually changes are shown.
+  const consolidationMoves = useMemo(() => {
+    if (!optimizedPlan) return [];
+    const byId = optimizedPlan.assignmentByItemId;
+    const moves = [];
+    for (const row of rows) {
+      const newKey = byId[row.itemId];
+      if (!newKey || newKey === row.selectedOfferKey) continue;
+      const from = (row.offers || []).find((offer) => offer.key === row.selectedOfferKey);
+      const to = (row.offers || []).find((offer) => offer.key === newKey);
+      if (!from || !to) continue;
+      moves.push({
+        itemId: row.itemId,
+        name: row.matchName || row.canonicalName || row.importedName,
+        qty: row.qty,
+        uom: row.uom,
+        fromSupplier: from.supplier,
+        fromLine: (from.price || 0) * (row.qty || 1),
+        toSupplier: to.supplier,
+        toLine: (to.price || 0) * (row.qty || 1),
+      });
+    }
+    return moves;
+  }, [optimizedPlan, rows]);
+
+  // Consolidation / shipping-savings analysis is offered once the buyer has
+  // advanced the list into "Review & optimize" — a deliberate, fully-reviewed
+  // checkpoint, so we don't optimize a moving target. Apply happens from the
+  // preview.
+  const listSettled = listStatus === "review";
+  const [showConsolidate, setShowConsolidate] = useState(false);
+
+  const tabFilter = {
+    all: () => true,
+    possible: (row) => row.status === "Review",
+    confirmed: (row) => row.status === "Matched",
+    nomatch: (row) => row.status === "Not found",
+  };
+  const filtered = rows.filter(tabFilter[tab] || tabFilter.all);
+  const openRow = (row) => setDetail({ row, mode: rowMode(row) });
+
+
+  if (isMobile) {
+    return (
+      <>
+        <MobileReorderList
+          title="Current Reorder List"
+          rows={filtered}
+          stats={stats}
+          totalItems={totalItems}
+          tab={tab}
+          onTab={setTab}
+          onOpenRow={openRow}
+          onToast={onToast}
+          onArchiveList={onArchiveList}
+          onClearList={onClearList}
+          onRemoveItem={onRemoveItem}
+          searchTerm={searchTerm}
+          onSearchTerm={onSearchTerm}
+          searchResults={searchResults}
+          searchLoading={searchLoading}
+          onNavigate={onNavigate}
+          buyerName={buyerName}
+          practiceName={practiceName}
+          buyerInitials={buyerInitials}
+          email={email}
+          onLogout={onLogout}
+        />
+        {detail && (
+          <MobileItemDetail
+            key={detail.row.id}
+            rows={rows}
+            row={detail.row}
+            mode={detail.mode}
+            onClose={() => setDetail(null)}
+            onOpenRow={openRow}
+            onToast={onToast}
+            onConfirmMatch={onConfirmMatch}
+            onLinkProduct={onLinkProduct}
+            onRemoveItem={onRemoveItem}
+            onNavigate={onNavigate}
+          />
+        )}
+        {addMode === "upload" && (
+          <UploadModal
+            uploadFormRef={uploadFormRef}
+            onUpload={onUpload}
+            uploading={uploading}
+            uploadProgress={uploadProgress}
+            uploadElapsed={uploadElapsed}
+            uploadError={uploadError}
+            onCancelUpload={onCancelUpload}
+            onClearUploadError={onClearUploadError}
+            isDraggingInvoice={isDraggingInvoice}
+            onDragStateChange={onDragStateChange}
+            onInvoiceDrop={onInvoiceDrop}
+            onInvoiceFile={onInvoiceFile}
+            selectedInvoiceName={selectedInvoiceName}
+            hasUploadedInvoice={hasUploadedInvoice}
+            lastUpload={lastUpload}
+            buyerName={buyerName}
+            practiceName={practiceName}
+            onClose={onCloseUpload}
+            onUploadAnother={onUploadAnother}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className={`crl ${detail ? "detail-open" : ""}`}>
+      <header className="crl-header">
+        <div className="crl-title crl-title-main">
+          <h2 id="homeHeading">Current Reorder List</h2>
+          <p className="crl-subtitle">
+            <span className="crl-listname-edit">
+              <input
+                ref={listNameRef}
+                className="crl-listname crl-listname-input"
+                value={listName}
+                onChange={(event) => onRenameList?.(event.target.value)}
+                aria-label="Reorder list name"
+                style={{ width: `${Math.max(listName.length, 8)}ch` }}
+              />
+              <button
+                type="button"
+                className="crl-listname-pencil"
+                aria-label="Rename list"
+                title="Rename list"
+                onClick={() => { const el = listNameRef.current; if (el) { el.focus(); el.select(); } }}
+              >
+                <Icon name="icon-edit" className="button-icon" />
+              </button>
+            </span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <ListStatusPill status={listStatus} />
+          </p>
+        </div>
+        <div className="crl-header-actions">
+          <button
+            type="button"
+            className={`crl-add-scan ${addMode === "scan" ? "active" : ""}`}
+            onClick={() => onAddMode(addMode === "scan" ? "" : "scan")}
+          >
+            <Icon name="icon-scan" className="button-icon" />Scan Barcode
+          </button>
+          <button
+            type="button"
+            className="crl-add-scan"
+            onClick={() => onAddMode("upload")}
+          >
+            <Icon name="icon-cloud-upload" className="button-icon" />
+            Upload Invoice
+          </button>
+          {totalItems > 0 && (
+            <button
+              type="button"
+              className="crl-plan-header-btn crl-plan-header-btn--primary"
+              onClick={goToReview}
+              title="Optimize supplier consolidation, shipping, and delivery for this list"
+            >
+              <Icon name="icon-clipboard-check" className="button-icon" />
+              {listStage === "review" ? "Continue in plan" : "Review & optimize"}
+            </button>
+          )}
+          <button className="crl-more crl-more-icon" type="button" aria-label="Archive this list" title="Archive this list" onClick={() => onArchiveList()}>
+            <Icon name="icon-archive-down" className="button-icon" />
+          </button>
+          <button className="crl-more crl-more-icon" type="button" aria-label="Clear this list" title="Clear this list" onClick={() => onClearList()}>
+            <Icon name="icon-trash-ios" className="button-icon" />
+          </button>
+        </div>
+      </header>
+
+      {(addMode === "scan" || addMode === "search") && (
+        <section className="crl-add">
+            {addMode === "scan" && (
+              <div className="crl-add-panel"><DesktopBarcodeScan onScan={onScan} /></div>
+            )}
+            {addMode === "search" && (
+              <div className="crl-add-panel crl-search-panel">
+                <label className="crl-search">
+                  <Icon name="icon-search" className="button-icon" />
+                  <input
+                    type="search"
+                    placeholder="Search the catalog…"
+                    value={searchTerm}
+                    onChange={(event) => onSearchTerm(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && searchTerm.trim()) {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                        onNavigate?.(`/app/catalog/search?q=${encodeURIComponent(searchTerm.trim())}`);
+                      }
+                    }}
+                    autoFocus
+                  />
+                </label>
+                {searchTerm.trim() && (
+                  <SearchResults results={searchResults} loading={searchLoading} query={searchTerm.trim()} onNavigate={onNavigate} />
+                )}
+              </div>
+            )}
+          </section>
+      )}
+
+      <div className={`crl-layout ${detail ? "has-detail" : ""} ${detail && detailWide ? "detail-wide" : ""}`}>
+        <div className="crl-main">
+          <section className="crl-list">
+            <div className="crl-tabs-row">
+              <nav className="crl-tabs" aria-label="Item list filters">
+                {[
+                  ["all", `All Items (${totalItems})`],
+                  ["confirmed", `Matched (${stats.matched})`],
+                  ["possible", `Needs Review (${stats.review})`],
+                  ["nomatch", `No Match (${stats.notFound})`],
+                ].map(([id, label]) => (
+                  <button key={id} type="button" className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+                ))}
+              </nav>
+              {onRefresh && (
+                <button
+                  type="button"
+                  className={`crl-refresh ${refreshing ? "spinning" : ""}`}
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  title="Refresh"
+                  aria-label="Refresh"
+                >
+                  <Icon name="icon-refresh" className="button-icon" />
+                </button>
+              )}
+            </div>
+
+            <div className="crl-table">
+              <div className="crl-row crl-row-head">
+                <span className="crl-h-center">Source</span>
+                <span>Item</span>
+                <span className="crl-h-center">Qty</span>
+                <span className="crl-h-center">Status</span>
+                <span>Matched product</span>
+                <span className="crl-price-h">Price <Icon name="icon-info" className="button-icon" /></span>
+                <span aria-hidden="true" />
+              </div>
+              {isEmpty && (
+                <div className="crl-empty">
+                  <Icon name="icon-cloud-upload" className="button-icon" />
+                  <strong>Your reorder list is empty</strong>
+                  <p>Upload an invoice (PDF or CSV) or scan a barcode to start matching items to the best supplier.</p>
+                </div>
+              )}
+              {filtered.map((row) => {
+                const status = CRL_STATUS[row.status];
+                const notFound = row.status === "Not found";
+                const mode = notFound ? "resolve" : row.status === "Review" ? "review" : "view";
+                return (
+                  <div className={`crl-row crl-row-click ${detail?.row.id === row.id ? "active" : ""}`} key={row.id} onClick={() => setDetail({ row, mode })}>
+                    <span className="crl-source" title={`Imported from ${row.source.toUpperCase()}`}><Icon name={CRL_SOURCE_ICON[row.source] || "icon-file-text"} className="button-icon" /></span>
+                    <span className="crl-item">
+                      <ProductThumb image={row.image} alt={row.canonicalName || row.importedName} />
+                      <span className="crl-item-id">
+                        <strong>{row.canonicalName || row.importedName}</strong>
+                        <small>{row.canonicalName ? `From source: ${row.importedName}` : `SKU on source: ${(row.importedSub || "").replace(/^SKU:\s*/, "") || "—"}`}</small>
+                      </span>
+                    </span>
+                    <span className="crl-qty">
+                      {row.itemId ? (
+                        <span className="crl-qty-inline" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" className="crl-qty-step-btn" aria-label="Decrease quantity" disabled={(row.qty || 1) <= 1} onClick={() => onConfirmMatch?.(row.itemId, { qty: Math.max(1, (row.qty || 1) - 1) })}>&minus;</button>
+                          <strong>{row.qty}</strong>
+                          <button type="button" className="crl-qty-step-btn" aria-label="Increase quantity" onClick={() => onConfirmMatch?.(row.itemId, { qty: (row.qty || 1) + 1 })}>+</button>
+                        </span>
+                      ) : (
+                        <strong>{row.qty}</strong>
+                      )}
+                      {(() => {
+                        const label = row.packLabel || row.uom;
+                        return label && label !== "ea" ? <small>{label}</small> : null;
+                      })()}
+                    </span>
+                    <span className="crl-status-cell">
+                      <span className={`crl-status ${status.cls}`} title={status.label}><Icon name={status.icon} className="button-icon" /><span className="crl-status-label">{status.label}</span></span>
+                      {row.confidence != null && <small className={`crl-conf ${mrConfTone(row.confidence)}`}>{row.confidence}% confidence</small>}
+                    </span>
+                    <span className="crl-match">
+                      {notFound ? (
+                        <>
+                          <strong>No match found</strong>
+                          <small>We couldn&rsquo;t find a match in our catalog.</small>
+                        </>
+                      ) : (
+                        <>
+                          <strong>{row.matchName}</strong>
+                          {row.matchSub && <small>{row.matchSub}</small>}
+                          <MatchSupplier name={row.supplier !== "—" ? row.supplier : row.matchBrand} />
+                        </>
+                      )}
+                    </span>
+                    <span className="crl-price">
+                      {notFound ? <span className="crl-dash">—</span> : row.priceMissing ? (
+                        <span className="crl-noprice">Price not listed<small>Login required</small></span>
+                      ) : (
+                        <>
+                          <strong>{mrMoney(row.price)}</strong>
+                          {showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}
+                          {row.lineSavings > 0 && <small className="crl-save">Save {mrMoney(row.lineSavings)}</small>}
+                        </>
+                      )}
+                    </span>
+                    <span className="crl-actions">
+                      {row.itemId && (
+                        <button className="crl-row-delete" type="button" aria-label="Remove from list" title="Remove from list" onClick={(event) => { event.stopPropagation(); onRemoveItem?.(row.itemId); onToast("Item removed from list"); }}>
+                          <Icon name="icon-trash-ios" className="button-icon" />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {!isEmpty && rows.some((r) => r.lineTotal != null) && (
+                <div className="crl-foot">
+                  <span className="crl-foot-label">List subtotal</span>
+                  <strong className="crl-foot-total">{mrMoney(rows.reduce((sum, r) => sum + (r.lineTotal || 0), 0))}</strong>
+                </div>
+              )}
+            </div>
+
+          </section>
+        </div>
+
+        {detail ? (
+          <MatchPanel
+            key={detail.row.itemId || detail.row.id}
+            row={detail.row}
+            mode={detail.mode}
+            wide={detailWide}
+            onToggleWide={() => setDetailWide((value) => !value)}
+            onClose={() => { setDetail(null); setDetailWide(false); }}
+            onToast={onToast}
+            onConfirmMatch={onConfirmMatch}
+            onLinkProduct={onLinkProduct}
+            onRemoveItem={onRemoveItem}
+            onNavigate={onNavigate}
+          />
+        ) : (
+        <aside className="crl-rail">
+          <BuyingPreferencesCard
+            prefs={buyingPrefs}
+            supplierOptions={supplierOptions}
+            onSave={onBuyingPrefs}
+            onToast={onToast}
+          />
+
+          <section className="crl-card">
+            <h3>Plan Preview</h3>
+            {usingReal ? (
+              <>
+                {planSummary.savings > 0 && (
+                  <div className="crl-savings-hero">
+                    <span className="crl-savings-hero-label">You save</span>
+                    <strong className="crl-savings-hero-amt">{money.format(planSummary.savings)}</strong>
+                    <span className="crl-savings-hero-sub">vs. {money.format(planSummary.currentSpend)} you pay now</span>
+                  </div>
+                )}
+                <div className="crl-plan">
+                  <div><span>Items subtotal</span><strong>{money.format(planSummary.itemsSubtotal)}</strong></div>
+                  <div>
+                    <span>Est. shipping</span>
+                    <strong>
+                      {planSummary.hasShippingData
+                        ? `${planSummary.shippingComplete ? "" : "~"}${money.format(planSummary.shippingTotal)}`
+                        : "Not estimated"}
+                    </strong>
+                  </div>
+                  <div><span>Landed total</span><strong>{money.format(planSummary.landedTotal)}</strong></div>
+                  <div><span>Suppliers</span><strong>{planSummary.suppliers}</strong></div>
+                  <div><span>Coverage</span><strong>{planSummary.coverage}%</strong></div>
+                </div>
+                {planSummary.nudge && (
+                  <p className="crl-ship-nudge">
+                    Add {money.format(planSummary.nudge.remaining)} from {planSummary.nudge.supplier} to unlock free shipping
+                    {planSummary.nudge.saves ? ` (saves ${money.format(planSummary.nudge.saves)})` : ""}.
+                  </p>
+                )}
+                {optimizedPlan && listSettled && (
+                  <div className="crl-optimize">
+                    <div className="crl-optimize-text">
+                      Save <strong>{money.format(optimizedPlan.savings)}</strong>{" "}
+                      {optimizedPlan.suppliers < planSummary.suppliers
+                        ? `by consolidating to ${optimizedPlan.suppliers} supplier${optimizedPlan.suppliers === 1 ? "" : "s"}`
+                        : "by optimizing suppliers for shipping"}.
+                    </div>
+                    <button className="crl-optimize-btn" type="button" onClick={() => setShowConsolidate(true)}>
+                      Review changes
+                    </button>
+                  </div>
+                )}
+                {optimizedPlan && !listSettled && (
+                  <p className="crl-ship-nudge">
+                    {allReviewed
+                      ? `Move to Review & optimize to consolidate suppliers and save ${money.format(optimizedPlan.savings)} on shipping.`
+                      : `Resolve the remaining items to review consolidating suppliers and save ${money.format(optimizedPlan.savings)} on shipping.`}
+                  </p>
+                )}
+                {planSummary.missingPrice > 0 && (
+                  <p className="crl-plan-note">
+                    Add what you pay to {planSummary.missingPrice} item{planSummary.missingPrice === 1 ? "" : "s"} to see your full savings.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="crl-plan">
+                <div><span>Estimated total</span><strong>$5,842.16</strong></div>
+                <div><span>Suppliers</span><strong>5</strong></div>
+                <div><span>Coverage</span><strong>92%</strong></div>
+                <div><span>Potential savings</span><strong className="green">$842.15</strong></div>
+              </div>
+            )}
+            <button className="crl-plan-btn" type="button" onClick={() => onNavigate?.("/app/review")}>Open Review &amp; optimize <Icon name="icon-arrow-right" className="button-icon" /></button>
+          </section>
+        </aside>
+        )}
+      </div>
+
+      {addMode === "upload" && (
+        <UploadModal
+          uploadFormRef={uploadFormRef}
+          onUpload={onUpload}
+          uploading={uploading}
+          uploadProgress={uploadProgress}
+          uploadElapsed={uploadElapsed}
+          uploadError={uploadError}
+          onCancelUpload={onCancelUpload}
+          onClearUploadError={onClearUploadError}
+          isDraggingInvoice={isDraggingInvoice}
+          onDragStateChange={onDragStateChange}
+          onInvoiceDrop={onInvoiceDrop}
+          onInvoiceFile={onInvoiceFile}
+          selectedInvoiceName={selectedInvoiceName}
+          hasUploadedInvoice={hasUploadedInvoice}
+          lastUpload={lastUpload}
+          buyerName={buyerName}
+          practiceName={practiceName}
+          onClose={onCloseUpload}
+          onUploadAnother={onUploadAnother}
+        />
+      )}
+
+      {reviewConfirm && (
+        <ReviewUnresolvedModal
+          unresolved={unresolvedRows}
+          includedCount={totalItems - unresolvedRows.length}
+          onContinue={confirmReview}
+          onClose={() => setReviewConfirm(false)}
+        />
+      )}
+
+      {showConsolidate && optimizedPlan && (
+        <ConsolidatePreviewModal
+          moves={consolidationMoves}
+          savings={optimizedPlan.savings}
+          fromSuppliers={planSummary.suppliers}
+          toSuppliers={optimizedPlan.suppliers}
+          landedBefore={planSummary.landedTotal}
+          landedAfter={planSummary.landedTotal - optimizedPlan.savings}
+          onApply={() => { onApplyOptimized?.(optimizedPlan.assignmentByItemId); setShowConsolidate(false); onToast("Suppliers consolidated to save on shipping"); }}
+          onClose={() => setShowConsolidate(false)}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// Shown when a buyer advances to Review & optimize with items that won't make
+// it into any supplier order (no match, or out of stock everywhere). Warns
+// which items get excluded; Continue advances anyway, Cancel keeps them on the
+// Draft list to resolve.
+// Generic confirmation dialog for destructive whole-list actions (archive /
+// clear). Reuses the crl-modal shell so it matches the other modals.
+
+export function ReviewUnresolvedModal({ unresolved, includedCount, onContinue, onClose }) {
+  const n = unresolved.length;
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="reviewUnresolvedTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="crl-modal">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="reviewUnresolvedTitle">{n} unresolved item{n === 1 ? "" : "s"} won&rsquo;t be included</h3>
+            <p>These items aren&rsquo;t matched to an in-stock supplier, so they won&rsquo;t be part of Review &amp; optimize. {includedCount} item{includedCount === 1 ? "" : "s"} will be included.</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+        <div className="crl-modal-body">
+          <ul className="crl-unresolved-list">
+            {unresolved.map((row) => (
+              <li className="crl-unresolved-item" key={row.id}>
+                <ProductThumb image={row.image} alt={row.canonicalName || row.importedName} />
+                <span className="crl-unresolved-info">
+                  <strong>{row.canonicalName || row.importedName}</strong>
+                  <small>{row.status === "Not found" ? "No match found" : "Out of stock at every supplier"}</small>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <footer className="crl-modal-foot">
+          <button className="crl-ghost-btn" type="button" onClick={onClose}>Back to draft list</button>
+          <button className="primary-action compact" type="button" onClick={onContinue}>Continue to review</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// Consolidation preview: shows exactly which lines the landed-cost optimizer
+// would move to a different supplier (and the before/after landed cost) so the
+// buyer confirms the supplier reassignment rather than having it applied
+// silently. Apply sets the per-line selections via onApplyOptimized.
+
+export function ConsolidatePreviewModal({ moves, savings, fromSuppliers, toSuppliers, landedBefore, landedAfter, onApply, onClose }) {
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="consolidateTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="crl-modal">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="consolidateTitle">Consolidate suppliers</h3>
+            <p>Save {money.format(savings)} on shipping by moving {moves.length} line{moves.length === 1 ? "" : "s"} to a different supplier.</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+        <div className="crl-modal-body">
+          <div className="crl-modal-summary">
+            <span><strong>{fromSuppliers} → {toSuppliers}</strong>Suppliers</span>
+            <span><strong>{money.format(landedBefore)}</strong>Landed now</span>
+            <span className="confirmed"><strong>{money.format(landedAfter)}</strong>Landed after</span>
+          </div>
+          <div className="crl-modal-results">
+            {moves.map((move) => (
+              <div className="crl-modal-result" key={move.itemId}>
+                <div className="crl-modal-result-from">
+                  <strong>{move.fromSupplier}</strong>
+                  <small>{move.name} · Qty {move.qty} {move.uom}</small>
+                </div>
+                <Icon name="icon-arrow-right" className="button-icon crl-modal-arrow" />
+                <div className="crl-modal-result-to">
+                  <strong>{move.toSupplier}</strong>
+                  <small>{money.format(move.toLine)}{move.toLine > move.fromLine ? ` (+${money.format(move.toLine - move.fromLine)} item cost)` : ""}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <footer className="crl-modal-foot">
+          <button className="crl-ghost-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-action compact" type="button" onClick={onApply}>Apply consolidation</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// Upload workspace as a modal: drop a PDF invoice, it's parsed and fuzzy-matched
+// against the canonical catalog (Medusa), the matched products are added to the
+// reorder list, and the modal then shows the per-line match result.
+
+export function UploadModal({
+  uploadFormRef,
+  onUpload,
+  uploading,
+  uploadProgress,
+  uploadElapsed = 0,
+  uploadError = "",
+  onCancelUpload,
+  onClearUploadError,
+  isDraggingInvoice,
+  onDragStateChange,
+  onInvoiceDrop,
+  onInvoiceFile,
+  selectedInvoiceName,
+  hasUploadedInvoice,
+  lastUpload,
+  buyerName = "",
+  practiceName = "",
+  onClose,
+  onUploadAnother,
+}) {
+  const phase = uploadProgress < 35 ? "Reading the invoice…" : "Matching products to the catalog…";
+  const warming = uploading && uploadElapsed > 10000;
+  const resultRows = lastUpload ? deriveMatchRows(lastUpload.items) : [];
+  const matched = resultRows.filter((row) => row.status === "Matched").length;
+  const review = resultRows.filter((row) => row.status === "Review").length;
+  const noMatch = resultRows.filter((row) => row.status === "Not found").length;
+
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle" onClick={(event) => { if (event.target === event.currentTarget && !uploading) onClose(); }}>
+      <div className="crl-modal">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="uploadModalTitle">{lastUpload ? "Invoice matched" : "Upload invoice"}</h3>
+            <p>{lastUpload ? `${lastUpload.items.length} line items from ${lastUpload.name}` : "We read the PDF or CSV, match each line to the canonical catalog, and add the matched products to your list."}</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose} disabled={uploading}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+
+        {!lastUpload ? (
+          <div className="crl-modal-body">
+            <form ref={uploadFormRef} onSubmit={onUpload} className="upload-layout">
+              <div
+                className={`upload-dropzone ${isDraggingInvoice ? "dragging" : ""} ${uploadError ? "has-error" : ""}`}
+                onDragEnter={(event) => { event.preventDefault(); if (!uploading) onDragStateChange(true); }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) onDragStateChange(false); }}
+                onDrop={onInvoiceDrop}
+              >
+                {uploadError && !uploading ? (
+                  <>
+                    <div className="upload-icon error"><Icon name="icon-alert-triangle" /></div>
+                    <h3>Upload didn&rsquo;t finish</h3>
+                    <p className="upload-error-msg">{uploadError}</p>
+                    <button className="primary-action compact" type="button" onClick={onClearUploadError}>
+                      <Icon name="icon-cloud-upload" className="button-icon" />Try again
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="upload-icon"><Icon name="icon-cloud-upload" /></div>
+                    <h3>{uploading ? "Processing invoice…" : isDraggingInvoice ? "Drop your file here" : "Drag and drop your invoice"}</h3>
+                    <p>{uploading ? (selectedInvoiceName || "Your invoice") : selectedInvoiceName || "or"}</p>
+                    {!uploading && <span className="select-file-button"><Icon name="icon-cloud-upload" className="button-icon" />Choose file</span>}
+                    {!uploading && <small>Text-based PDF or CSV invoice · Max 20MB</small>}
+                    {uploading && (
+                      <div className="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(uploadProgress)}>
+                        <div className="processing-track"><div style={{ width: `${uploadProgress}%` }}></div></div>
+                        <span>{phase}{uploadElapsed > 4000 ? ` · ${Math.round(uploadElapsed / 1000)}s` : ""}</span>
+                        {warming && <small className="processing-hint">First match in a while can take up to a minute while the catalog warms up — hang tight.</small>}
+                      </div>
+                    )}
+                  </>
+                )}
+                <input
+                  className="file-input"
+                  data-testid="invoice-file-input"
+                  name="file"
+                  type="file"
+                  accept=".pdf,.csv,application/pdf,text/csv"
+                  required
+                  disabled={uploading}
+                  onChange={(event) => onInvoiceFile(event.currentTarget, event.currentTarget.files?.[0])}
+                />
+                <button className="primary-action compact hidden-submit" data-testid="save-parse-request" type="submit" disabled={uploading}>Add to list</button>
+                <input type="hidden" name="clinic" value={practiceName || "Unknown clinic"} />
+                <input type="hidden" name="buyer" value={buyerName || "Unknown buyer"} />
+                <input type="hidden" name="shippingAddress" value="500 Healthcare Blvd, Nashville, TN" />
+                <input type="hidden" name="preference" value="Exact brand if possible, alternatives allowed" />
+              </div>
+            </form>
+          </div>
+        ) : (
+          <div className="crl-modal-body">
+            <div className="crl-modal-summary">
+              <span className="confirmed"><strong>{matched}</strong>Matched</span>
+              <span className="possible"><strong>{review}</strong>Needs Review</span>
+              <span className="nomatch"><strong>{noMatch}</strong>No match</span>
+            </div>
+            <div className="crl-modal-results">
+              {resultRows.map((row) => {
+                const status = CRL_STATUS[row.status];
+                const notFound = row.status === "Not found";
+                return (
+                  <div className="crl-modal-result" key={row.id}>
+                    <div className="crl-modal-result-from">
+                      <strong>{row.importedName}</strong>
+                      <small>Qty {row.qty} · {row.uom}</small>
+                    </div>
+                    <Icon name="icon-arrow-right" className="button-icon crl-modal-arrow" />
+                    <div className="crl-modal-result-to">
+                      {notFound ? <span className="crl-dash">No catalog match</span> : (<><strong>{row.matchName}</strong><small>{row.supplier}</small></>)}
+                    </div>
+                    <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <footer className="crl-modal-foot">
+          {lastUpload ? (
+            <>
+              <button className="crl-ghost-btn" type="button" onClick={onUploadAnother}>Upload another</button>
+              <button className="primary-action compact" type="button" onClick={onClose}>View list</button>
+            </>
+          ) : uploading ? (
+            <button className="crl-ghost-btn" type="button" onClick={onCancelUpload}>Cancel upload</button>
+          ) : (
+            <button className="crl-ghost-btn" type="button" onClick={onClose}>Cancel</button>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// ── Review & optimize (/app/review) + Supplier Handoff ───────────────────────
+
+// Group derived match rows into per-supplier buckets (heaviest spend first) so
+// the plan and the frozen handoff both present orders supplier-by-supplier.
