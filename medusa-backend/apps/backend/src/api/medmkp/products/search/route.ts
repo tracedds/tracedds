@@ -69,23 +69,35 @@ function gs1Gtin(value: string): string | null {
 async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: string[]): Promise<string[]> {
   if (!variants.length) return []
   const knex = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
+  // UNION of the three paths (not one OR-join): the OR prevents the planner from
+  // using an index, which seq-scans 230k rows with per-row regexp (~80s, enough
+  // to crash a prod backend). As separate branches each path hits a dedicated
+  // functional index (idx_msp_norm_sku / _mfrsku / _brand) or trigram GIN index
+  // (idx_msp_norm_mfrsku_trgm / _name_trgm) — see Migration20260619180000.
   const { rows } = await knex.raw(
-    `select distinct sp.id
-     from medmkp_gtin_reference gr
-     join medmkp_supplier_product sp on (
-       (lower(regexp_replace(gr.company_name, '[^a-z0-9]', '', 'gi')) like 'henryschein%'
-        and sp.supplier_id = 'msup_henryschein_com'
-        and lower(regexp_replace(sp.sku, '[^a-z0-9]', '', 'gi')) = gr.model_norm)
-       or
-       (lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) = gr.brand_norm
-        and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = gr.model_norm)
-       or
-       (length(gr.model_norm) >= 5
-        and length(gr.brand_norm) >= 4
-        and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) like '%' || gr.model_norm
-        and lower(regexp_replace(sp.name, '[^a-z0-9]', '', 'gi')) like '%' || gr.brand_norm || '%')
+    `with ref as (
+       select distinct model_norm, brand_norm, company_name
+       from medmkp_gtin_reference where gtin = ANY(?)
      )
-     where gr.gtin = ANY(?) and sp.deleted_at is null
+     select sp.id
+       from ref join medmkp_supplier_product sp
+         on sp.supplier_id = 'msup_henryschein_com'
+        and lower(regexp_replace(sp.sku, '[^a-z0-9]', '', 'gi')) = ref.model_norm
+      where lower(regexp_replace(ref.company_name, '[^a-z0-9]', '', 'gi')) like 'henryschein%'
+        and sp.deleted_at is null
+     union
+     select sp.id
+       from ref join medmkp_supplier_product sp
+         on lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) = ref.brand_norm
+        and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = ref.model_norm
+      where sp.deleted_at is null
+     union
+     select sp.id
+       from ref join medmkp_supplier_product sp
+         on lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) like '%' || ref.model_norm
+        and lower(regexp_replace(sp.name, '[^a-z0-9]', '', 'gi')) like '%' || ref.brand_norm || '%'
+      where length(ref.model_norm) >= 5 and length(ref.brand_norm) >= 4
+        and sp.deleted_at is null
      limit 25`,
     [variants]
   )
