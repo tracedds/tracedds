@@ -10185,3 +10185,23 @@ th {
   .ho-banner { background: #fff; }
   .crl-card, .ho-summary > div { box-shadow: none; }
 }
+
+/* Re-request the camera after a denied/failed getUserMedia (iOS standalone
+   PWAs have no refresh to re-prompt). Used in all camera-permission overlays. */
+.camera-retry-btn {
+  margin-top: 6px;
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #3974fc;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.camera-retry-btn:hover { background: #2f63db; }
+.camera-retry-btn .button-icon { width: 16px; height: 16px; }

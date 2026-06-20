@@ -17,7 +17,7 @@ export function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResu
     setIsMobile(window.matchMedia("(max-width: 767px)").matches);
   }, []);
 
-  const { videoRef, cameraStatus, autoDetect } = useBarcodeScanner({
+  const { videoRef, cameraStatus, autoDetect, retry } = useBarcodeScanner({
     active: isMobile && mode === "scan",
     onScan: (code) => {
       onScan?.(code);
@@ -46,8 +46,14 @@ export function MobileScanItemView({ onBack, onScan, scanResult, onClearScanResu
             <p>
               {cameraStatus === "requesting"
                 ? "Allow camera access to scan item barcodes."
-                : "Enable camera permissions for this site, or tap Enter code to key it in."}
+                : "Tap Try again to allow the camera, or use Enter code to key it in."}
             </p>
+            {cameraStatus !== "requesting" && (
+              <button type="button" className="camera-retry-btn" onClick={retry}>
+                <Icon name="icon-refresh" className="button-icon" />
+                Try again
+              </button>
+            )}
           </div>
         )}
         <div className="scan-instruction">
@@ -394,7 +400,7 @@ export function PublicScanView({ onScan, scanResult, onClearScanResult, freeScan
     return () => window.clearTimeout(timer);
   }, [exhausted]);
 
-  const { videoRef, cameraStatus, autoDetect, capture } = useBarcodeScanner({
+  const { videoRef, cameraStatus, autoDetect, capture, retry } = useBarcodeScanner({
     active: !exhausted,
     onScan: (code) => {
       onScan?.(code);
@@ -446,8 +452,14 @@ export function PublicScanView({ onScan, scanResult, onClearScanResult, freeScan
                 <p>
                   {cameraStatus === "requesting"
                     ? "Allow camera access to scan a barcode, or type the code below."
-                    : "Enable camera permissions for this site, or type the code below."}
+                    : "Tap Try again to allow the camera, or type the code below."}
                 </p>
+                {cameraStatus !== "requesting" && (
+                  <button type="button" className="camera-retry-btn" onClick={retry}>
+                    <Icon name="icon-refresh" className="button-icon" />
+                    Try again
+                  </button>
+                )}
               </div>
             )}
             <div className="pscan-frame" aria-hidden="true">
