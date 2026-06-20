@@ -173,6 +173,17 @@ function parsePackQtyFromText(text: string): number | null {
   }
   const lowered = text.toLowerCase()
 
+  // Count of measured units: "20 - 0.2g Capsules", "24 x 1.2mL Syringe". The
+  // leading integer is the purchasable count; the trailing measure is the
+  // per-item dose. Matched before the bare-number / measure heuristics so the
+  // per-unit price uses the count, not the dose.
+  const countMeasure = lowered.match(
+    /(?:^|[^0-9.])(\d{1,4})\s*[-x×]\s*\d+(?:\.\d+)?\s*(?:ml|cc|mg|gm|g|oz)\b/
+  )
+  if (countMeasure) {
+    return Number(countMeasure[1])
+  }
+
   const slash = lowered.match(new RegExp(`(\\d{1,5})\\s*\\/\\s*(?:${PACK_UNIT_WORDS})\\b`))
   if (slash) {
     return Number(slash[1])
@@ -242,9 +253,24 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     }
   }
 
-  const shadeRe = /\b([a-d][1-4](?:\.5)?)\b/g
+  // Composite/restorative shade: a color code (A1..D7, optional .5) with an
+  // optional layer letter (B=Body, E=Enamel, T=Translucent). The layer letter
+  // must be consumed here, otherwise "A1B"/"B5B" fail the trailing word
+  // boundary and the shade goes uncaptured — which lets a shade-less product
+  // (e.g. scanned "B5B") bridge otherwise-conflicting shades into one cluster.
+  // The stored value is the color only, so "A1 Body" and "A1B" still agree.
+  const shadeRe = /\b([a-d][1-7](?:\.5)?)(?:[bet])?\b/g
   while ((match = shadeRe.exec(lowered))) {
     add("shade", match[1])
+  }
+
+  // Bare dimension "4x4" / "2x2" (sponges, gauze, matrix bands): two small
+  // integers joined by x with no measure unit. Disjoint dimensions are a hard
+  // conflict, like 25mm vs 31mm. Excludes decimals and unit-suffixed forms so
+  // "24x1.2mL" (a count x volume) and "5 x 30ml" are not mistaken for a size.
+  const dimRe = /\b(\d{1,2})\s*x\s*(\d{1,2})\b(?!\s*(?:mm|cm|ml|cc|oz|in|g|x|\.|\/))/g
+  while ((match = dimRe.exec(lowered))) {
+    add("dim", `${match[1]}x${match[2]}`)
   }
 
   const taperRe = /(?:^|[^0-9.])\.(\d{2})\b/g

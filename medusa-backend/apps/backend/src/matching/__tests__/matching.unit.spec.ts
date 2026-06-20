@@ -1,6 +1,7 @@
 import { runMatching } from "../engine"
 import { buildOffers } from "../line-items"
 import {
+  extractNumericAttrs,
   extractSkuLikeTokens,
   normalizeBrand,
   normalizeProduct,
@@ -188,6 +189,42 @@ describe("identity matching (golden pairs from production data)", () => {
         manufacturer_sku: "AB1234",
         brand: "Acme",
         name: "Diamond Bur Round 31mm",
+      }
+    )
+    expect(decision.status).toBe("reject")
+  })
+
+  it("rejects composite refills that differ on shade, including B5 and layer-lettered codes", () => {
+    // Regression: the shade regex missed B5 (digit range) and any shade with a
+    // trailing layer letter (A1B/B5B failed the word boundary), so a scanned
+    // "B5B" carried no shade and bridged distinct shades into one cluster.
+    const decision = score(
+      { brand: "3M", name: "3M Filtek Supreme Ultra Universal Composite B5B Body Capsule Refill 20/Bt" },
+      {
+        supplier_id: "msup_other_com",
+        brand: "3M",
+        name: "3M Filtek Supreme Ultra A1 Body Caps 20/Pack",
+      }
+    )
+    expect(decision.status).toBe("reject")
+  })
+
+  it("reads the same shade from both 'A1 Body' and the layer-lettered 'A1B', so they don't conflict", () => {
+    // The layer letter (B=Body) must not change the stored shade value, or the
+    // same shade written two ways would falsely hard-conflict.
+    const plain = extractNumericAttrs("3M Filtek Supreme Ultra A1 Body Caps 20/Pack").get("shade")
+    const lettered = extractNumericAttrs("3M Filtek Supreme Ultra Composite A1B Capsule Refill").get("shade")
+    expect([...(plain ?? [])]).toEqual(["a1"])
+    expect([...(lettered ?? [])]).toEqual(["a1"])
+  })
+
+  it("rejects non-woven sponges that differ on bare dimension (4x4 vs 2x2)", () => {
+    const decision = score(
+      { brand: "Henry Schein", name: 'Essentials Rayon/Poly Blend Non-Woven Sponge 4x4" 4 Ply Non-Sterile' },
+      {
+        supplier_id: "msup_other_com",
+        brand: "Henry Schein",
+        name: 'Essentials Rayon/Poly Blend Non-Woven Sponge 2x2" 4 Ply Non-Sterile',
       }
     )
     expect(decision.status).toBe("reject")
@@ -453,5 +490,16 @@ describe("offer availability", () => {
     const members = [product({ name: "Nitrile Exam Gloves Large", price_cents: 1200 })]
     const [offer] = buildOffers(ctx, item, members)
     expect(offer.availability).toBe("unknown")
+  })
+
+  it("does not recommend a backordered offer over an orderable one, even if cheaper", () => {
+    const item = normalizeProduct(product({ name: "Nitrile Exam Gloves Large", price_cents: 1500 }))
+    const members = [
+      product({ supplier_id: "msup_test_com", name: "Nitrile Exam Gloves Large", price_cents: 1000, availability: "backordered" }),
+      product({ supplier_id: "msup_test_com", name: "Nitrile Exam Gloves Large", price_cents: 1200, availability: "in_stock" }),
+    ]
+    const offers = buildOffers(ctx, item, members)
+    expect(offers[0].availability).toBe("in_stock")
+    expect(offers[0].price_cents).toBe(1200)
   })
 })
