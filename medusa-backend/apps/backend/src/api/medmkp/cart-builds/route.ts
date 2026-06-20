@@ -119,7 +119,7 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
         username: inlineUser,
         username_hint: maskHint(inlineUser),
         password_encrypted: encryptSecret(inlinePass),
-        last_status: "unverified",
+        last_status: "unverified" as const,
         last_verified_at: null,
         last_error: null,
       }
