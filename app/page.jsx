@@ -4860,19 +4860,23 @@ function CandidateSub({ supplier, sub }) {
 // name links out to the supplier's store (new tab) so the buyer can inspect the
 // real listing. stopPropagation keeps the click from toggling the radio.
 function CandidateName({ name, productUrl }) {
-  if (!productUrl) return <strong>{name}</strong>;
   return (
-    <a
-      className="crl-cand-name-link"
-      href={productUrl}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => event.stopPropagation()}
-      title="View on supplier store"
-    >
-      {name}
-      <Icon name="icon-link" className="button-icon" />
-    </a>
+    <span className="crl-cand-name">
+      <strong>{name}</strong>
+      {productUrl && (
+        <a
+          className="crl-cand-name-link"
+          href={productUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          aria-label="View on supplier store"
+          title="View on supplier store"
+        >
+          <Icon name="icon-link" className="button-icon" />
+        </a>
+      )}
+    </span>
   );
 }
 
@@ -5005,7 +5009,7 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
   const selectedIndex = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
   const recommendedIndex = candidates.findIndex((candidate) => candidate.recommended);
   const [selected, setSelected] = useState(selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex));
-  const [qty, setQty] = useState(row.qty || 1);
+  const [qty] = useState(row.qty || 1);
   const [notes, setNotes] = useState(row.note || "");
   // What the practice currently pays per pack — the savings anchor. Editable
   // here so scanned items (which carry no price) and price-less invoice lines
@@ -5079,19 +5083,6 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
     }
   }
 
-  function removeItem() {
-    if (row.itemId) onRemoveItem?.(row.itemId);
-    onToast("Item removed from list");
-    onClose();
-  }
-
-  // Step the quantity and persist it live so the table row stays in sync without
-  // waiting for the "Update Match" confirm.
-  function setStepQty(next) {
-    setQty(next);
-    if (row.itemId) onConfirmMatch?.(row.itemId, { qty: next });
-  }
-
   return (
     <aside className="crl-detail" role="region" aria-label={title}>
       <header className="crl-drawer-head">
@@ -5126,12 +5117,6 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
                 <strong>{row.matchName || row.importedName}</strong>
               )}
               <small>{row.importedName}</small>
-              <div className="crl-qty-step">
-                <span>Qty:</span>
-                <button type="button" aria-label="Decrease quantity" onClick={() => setStepQty(Math.max(1, qty - 1))}>−</button>
-                <em>{qty} {row.uom}</em>
-                <button type="button" aria-label="Increase quantity" onClick={() => setStepQty(qty + 1)}>+</button>
-              </div>
               <div className="crl-imported-status">Status: <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span></div>
             </div>
           </div>
@@ -5229,11 +5214,6 @@ function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirm
           <div className="crl-drawer-notes-count">{notes.length} / 500</div>
         </section>
 
-        {row.itemId && (
-          <section className="crl-drawer-section">
-            <button className="crl-drawer-remove" type="button" onClick={removeItem}><Icon name="icon-trash" className="button-icon" />Remove item from list</button>
-          </section>
-        )}
       </div>
 
       <footer className="crl-drawer-foot">
