@@ -9218,6 +9218,8 @@ th {
 .list-pill-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; }
 .list-pill--draft { background: var(--surface-2); color: var(--muted); }
 .list-pill--review { background: var(--blue-2, #e7efff); color: var(--blue, #2563eb); }
+.list-pill--ordering { background: #fcf0db; color: var(--gold); }
+.list-pill--ordered { background: #e3f6ed; color: var(--green); }
 .list-pill--handoff { background: var(--blue-2); color: var(--blue); }
 
 /* Inline rename field in the History detail header (mirrors .crl-listname-input). */

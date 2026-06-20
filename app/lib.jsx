@@ -886,15 +886,23 @@ export function deriveMatchRows(items, prefs) {
   });
 }
 
-// Derive a reorder list's lifecycle status from its rows + whether a supplier
-// handoff has been prepared for it. Draft → Review & optimize (buyer advanced
-// the list — allowed at any point; unresolved items are simply excluded) →
-// Handed off (a handoff snapshot exists). An empty list is always "draft". Used
-// for the live list and archives.
+// Derive a reorder list's lifecycle status from its rows, which supplier orders
+// have been submitted, and whether a (legacy) handoff was prepared. Progression:
+// Draft → Review & optimize (buyer advanced the list) → Ordering (≥1 supplier
+// order submitted) → Ordered (every supplier order submitted). Submitting an
+// order outranks review/handoff. An empty list is always "draft". Used for the
+// live list and archives.
 
-export function deriveListStatus(rows, hasHandoff, stage = "draft") {
-  if (hasHandoff) return "handoff";
+export function deriveListStatus(rows, hasHandoff, stage = "draft", submittedSuppliers = []) {
   if (!rows.length) return "draft";
+  // Only count submissions for suppliers still in the plan, so a stale entry
+  // (e.g. the buyer reassigned every line off a submitted supplier) can't claim
+  // the list is ordered.
+  const planSuppliers = [...new Set(rows.filter(isPlanIncluded).map((row) => row.supplier))];
+  const submittedInPlan = planSuppliers.filter((supplier) => submittedSuppliers.includes(supplier));
+  if (planSuppliers.length && submittedInPlan.length >= planSuppliers.length) return "ordered";
+  if (submittedInPlan.length) return "ordering";
+  if (hasHandoff) return "handoff";
   return stage === "review" ? "review" : "draft";
 }
 
@@ -927,6 +935,8 @@ export const CRL_STATUS = {
 export const LIST_STATUS = {
   draft: { label: "Draft", cls: "draft" },
   review: { label: "Review", cls: "review" },
+  ordering: { label: "Ordering", cls: "ordering" },
+  ordered: { label: "Ordered", cls: "ordered" },
   handoff: { label: "Handed off", cls: "handoff" },
 };
 
