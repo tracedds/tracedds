@@ -1243,7 +1243,7 @@ export function CurrentReorderList({
             title={totalItems === 0 ? "Add items to your list before you can review" : "Optimize supplier consolidation, shipping, and delivery for this list"}
           >
             <Icon name="icon-clipboard-check" className="button-icon" />
-            {listStage === "review" ? "Continue in plan" : "Review"}
+            Review
           </button>
           <div className="crl-add-menu-wrap">
             <button
