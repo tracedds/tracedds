@@ -416,8 +416,38 @@ def build_henry_schein_dag() -> DAG:
     return dag
 
 
+def build_patterson_dag() -> DAG:
+    # Patterson is sitemap-driven (~120k /Supplies/ItemDetail pages); keep the
+    # fetch pool modest so the single-box NUC isn't saturated.
+    ingest_args = " -- --concurrency=6"
+    if COMMIT_ENABLED:
+        ingest_args += " --commit"
+
+    with DAG(
+        dag_id="patterson",
+        description=(
+            "Import the Patterson Dental public identity catalog (name/brand/MPN/pack) "
+            "from its sitemap; prices remain login-gated, so no price snapshots."
+        ),
+        start_date=datetime(2026, 1, 1),
+        schedule="0 21 * * 0",
+        catchup=False,
+        max_active_runs=1,
+        tags=["medmkp", "supplier-ingestion", "msup_pattersondental_com"],
+    ) as dag:
+        BashOperator(
+            task_id="ingest",
+            bash_command=backend_command(f"npm run patterson:ingest{ingest_args}"),
+            pool=POOL,
+            retries=1,
+        )
+
+    return dag
+
+
 for supplier in SUPPLIERS:
     globals()[supplier["name"]] = build_supplier_dag(supplier)
 
 henry_schein = build_henry_schein_dag()
+patterson = build_patterson_dag()
 match_products = build_product_matching_dag()
