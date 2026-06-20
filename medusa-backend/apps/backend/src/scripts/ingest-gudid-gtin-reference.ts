@@ -2,7 +2,7 @@ import fs from "fs"
 import path from "path"
 import readline from "readline"
 import { Client } from "pg"
-import { extractGudidReferenceRows, GtinReferenceRow } from "../ingestion/gudid"
+import { extractGudidReferenceRows, GtinReferenceRow, normalizeGudidKey } from "../ingestion/gudid"
 import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
 
 /**
@@ -13,10 +13,12 @@ import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
  * <device>...</device> blocks, and batch-insert the distilled rows. TRUNCATE +
  * reinsert, so a remote DATABASE_URL requires ALLOW_REMOTE_DB_DESTRUCTIVE=true.
  *
- * By default this is CATALOG-SCOPED: only GUDID rows whose model matches a
- * manufacturer SKU we actually carry are stored (a few thousand), so the table
- * doesn't fill prod with unrelated cardiac/ortho/surgical GTINs. Pass --full to
- * load the entire GS1 GUDID set.
+ * By default this is CATALOG-SCOPED: a GUDID row is kept when its model matches
+ * a manufacturer SKU we carry OR its brand_name/company_name contains a brand we
+ * carry, so the table doesn't fill prod with unrelated cardiac/ortho/surgical
+ * GTINs. The brand path restores rows the scan route's soft-brand join can use
+ * but that pure model-scoping dropped. Pass --full to load the entire GS1 GUDID
+ * set.
  *
  *   DATABASE_URL=... ts-node src/scripts/ingest-gudid-gtin-reference.ts \
  *     --dir /path/to/gudid_full_release_YYYYMMDD [--full]
@@ -54,6 +56,36 @@ async function loadCatalogModelKeys(client: Client): Promise<Set<string>> {
      where length(model_norm) >= 4`
   )
   return new Set(rows.map((r) => r.model_norm))
+}
+
+// The set of normalized brands we carry, for the brand-scoped keep path. Model-
+// scoping alone drops a GUDID row whenever its model number isn't stored as one
+// of our manufacturer SKUs — which loses real matches the soft-brand join in the
+// scan route could otherwise make (GUDID's brand_name is often a sub-brand like
+// "Premier Curettes" while we store "Premier"). Keeping rows whose brand_name or
+// company_name contains a brand we carry restores that coverage. The join still
+// enforces model agreement, so the extra rows can only ever *enable* a correct
+// match, never fabricate one — they just cost table size.
+//
+// Length >= 4 keeps the substring test meaningful: 2-3 char brands ("gc", "3m")
+// match far too much as a substring. Those products still come in via the model-
+// scoped path, so they aren't lost.
+async function loadCatalogBrandKeys(client: Client): Promise<string[]> {
+  const { rows } = await client.query<{ brand_norm: string }>(
+    `select distinct lower(regexp_replace(brand, '[^a-z0-9]', '', 'gi')) brand_norm
+       from medmkp_supplier_product
+      where deleted_at is null and brand is not null and brand <> ''`
+  )
+  return rows.map((r) => r.brand_norm).filter((b) => b.length >= 4)
+}
+
+// Compile the carried brands into one alternation so each GUDID row is one regex
+// test instead of thousands of substring scans over a 19GB stream.
+function buildBrandMatcher(brands: string[]): (haystack: string) => boolean {
+  if (!brands.length) return () => false
+  const escaped = brands.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  const re = new RegExp(escaped.join("|"))
+  return (haystack: string) => haystack.length >= 4 && re.test(haystack)
 }
 
 async function ensureTable(client: Client) {
@@ -107,14 +139,18 @@ async function main() {
     await client.query(`truncate table "medmkp_gtin_reference"`)
 
     const catalogModels = catalogOnly ? await loadCatalogModelKeys(client) : null
+    const catalogBrands = catalogOnly ? await loadCatalogBrandKeys(client) : []
+    const brandMatches = buildBrandMatcher(catalogBrands)
     console.log(
       catalogModels
-        ? `Catalog-scoped: keeping only GUDID rows matching ${catalogModels.size} catalog MPNs (pass --full to load everything)`
+        ? `Catalog-scoped: keeping GUDID rows matching ${catalogModels.size} catalog MPNs OR ${catalogBrands.length} carried brands (pass --full to load everything)`
         : `Full load: keeping every GS1 GUDID device`
     )
 
     let devices = 0
     let inserted = 0
+    let keptByModel = 0
+    let keptByBrand = 0
     let pending: GtinReferenceRow[] = []
     // Dedupe ids within a batch window so the multi-row insert never lists the
     // same primary key twice (Postgres rejects that even with ON CONFLICT).
@@ -133,7 +169,16 @@ async function main() {
           buf = buf.slice(end + "</device>".length)
           devices++
           for (const row of extractGudidReferenceRows(block)) {
-            if (catalogModels && !catalogModels.has(row.model_norm)) continue
+            if (catalogModels) {
+              const byModel = catalogModels.has(row.model_norm)
+              const byBrand =
+                !byModel &&
+                (brandMatches(row.brand_norm) ||
+                  brandMatches(normalizeGudidKey(row.company_name)))
+              if (!byModel && !byBrand) continue
+              if (byModel) keptByModel++
+              else keptByBrand++
+            }
             if (pendingIds.has(row.id)) continue
             pendingIds.add(row.id)
             pending.push(row)
@@ -157,6 +202,8 @@ async function main() {
         {
           devices_scanned: devices,
           rows_inserted_attempted: inserted,
+          kept_by_model: keptByModel,
+          kept_by_brand: keptByBrand,
           rows_in_table: countRows[0].n,
           distinct_brands: countRows[0].brands,
           seconds: Math.round((Date.now() - started) / 1000),
