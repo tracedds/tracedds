@@ -1418,6 +1418,9 @@ export default function Home() {
   const [canonicalSource, setCanonicalSource] = useState("idle");
   const [searchLoading, setSearchLoading] = useState(false);
   const [archivedLists, setArchivedLists] = useState([]);
+  // Pending confirmation for a destructive whole-list action (archive / clear).
+  // Null when no dialog is open; otherwise holds the modal copy + onConfirm.
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [handoffs, setHandoffs] = useState([]);
   // Id of the handoff prepared for the live list, or null. Drives the live
   // list's "Handed off" status and links the archive entry to its handoff.
@@ -2263,6 +2266,35 @@ export default function Home() {
     showToast("List archived to History");
   }
 
+  // Both whole-list actions are guarded by a confirmation modal so a buyer can't
+  // wipe or archive their list with a single stray menu tap.
+  function requestArchiveList() {
+    if (!activeDraftItems.length) {
+      showToast("Nothing to archive yet");
+      return;
+    }
+    setConfirmDialog({
+      title: "Archive this list?",
+      body: "The current reorder list will be moved to History and a fresh, empty list will start. Archived lists stay viewable but can't be edited.",
+      confirmLabel: "Archive list",
+      onConfirm: archiveCurrentList,
+    });
+  }
+
+  function requestClearList() {
+    if (!activeDraftItems.length) {
+      showToast("List is already empty");
+      return;
+    }
+    setConfirmDialog({
+      title: "Clear this list?",
+      body: "Every item will be removed from your current reorder list. This can't be undone — to keep a copy, archive the list instead.",
+      confirmLabel: "Clear list",
+      destructive: true,
+      onConfirm: clearCurrentList,
+    });
+  }
+
   function clearCurrentList() {
     if (!activeDraftItems.length) {
       showToast("List is already empty");
@@ -2550,8 +2582,8 @@ export default function Home() {
                 supplierShipping={supplierShipping}
                 onBuyingPrefs={setBuyingPrefs}
                 onApplyOptimized={applyOptimizedPlan}
-                onArchiveList={archiveCurrentList}
-                onClearList={clearCurrentList}
+                onArchiveList={requestArchiveList}
+                onClearList={requestClearList}
                 onConfirmMatch={applyMatchDecision}
                 onLinkProduct={linkProductToItem}
                 onRemoveItem={removeDraftItem}
@@ -2649,6 +2681,14 @@ export default function Home() {
           onStockResults={recordLiveStock}
           onSwitchOffer={applyMatchDecision}
           onToast={showToast}
+        />
+      )}
+
+      {confirmDialog && (
+        <ConfirmModal
+          {...confirmDialog}
+          onConfirm={() => { confirmDialog.onConfirm?.(); setConfirmDialog(null); }}
+          onClose={() => setConfirmDialog(null)}
         />
       )}
 
@@ -6426,6 +6466,28 @@ function CurrentReorderList({
 // it into any supplier order (no match, or out of stock everywhere). Warns
 // which items get excluded; Continue advances anyway, Cancel keeps them on the
 // Draft list to resolve.
+// Generic confirmation dialog for destructive whole-list actions (archive /
+// clear). Reuses the crl-modal shell so it matches the other modals.
+function ConfirmModal({ title, body, confirmLabel = "Confirm", destructive = false, onConfirm, onClose }) {
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="crl-modal crl-modal-confirm">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="confirmModalTitle">{title}</h3>
+            <p>{body}</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+        <footer className="crl-modal-foot">
+          <button className="crl-ghost-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className={`primary-action compact${destructive ? " danger" : ""}`} type="button" onClick={onConfirm}>{confirmLabel}</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function ReviewUnresolvedModal({ unresolved, includedCount, onContinue, onClose }) {
   const n = unresolved.length;
   return (

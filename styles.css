@@ -8809,6 +8809,10 @@ th {
 /* Upload modal */
 .crl-modal-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(11, 21, 51, 0.45); backdrop-filter: blur(2px); }
 .crl-modal { display: flex; flex-direction: column; width: min(580px, 94vw); max-height: 88vh; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 24px 60px rgba(11, 21, 51, 0.28); overflow: hidden; }
+.crl-modal-confirm { width: min(440px, 94vw); }
+.crl-modal-confirm .crl-modal-head { border-bottom: none; padding-bottom: 4px; }
+.primary-action.danger { background: var(--red); border-color: var(--red); }
+.primary-action.danger:hover { filter: brightness(0.94); }
 .crl-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 16px; border-bottom: 1px solid var(--line); }
 .crl-modal-head h3 { font-size: 17px; font-weight: 800; color: var(--ink); }
 .crl-modal-head p { margin-top: 4px; color: var(--muted); font-size: 13px; }
