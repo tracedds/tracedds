@@ -47,7 +47,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
   }
 
   const status = body.status === "failed" || body.status === "needs_auth" ? body.status : "done"
-  await medmkp.updateCartBuildJobs({
+  // Typed as Record<string, unknown> so the `results` array is accepted by the
+  // model's json() field (see the sibling enqueue route's jobData).
+  const updateData: Record<string, unknown> = {
     id: jobId,
     status,
     results: Array.isArray(body.results) ? body.results : null,
@@ -57,7 +59,8 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     // Discard any ephemeral on-the-fly login now that the build is done.
     credentials_encrypted: null,
     credentials_username: null,
-  })
+  }
+  await medmkp.updateCartBuildJobs(updateData)
 
   // Reflect the login result onto the credential record.
   if (body.credential_status) {
