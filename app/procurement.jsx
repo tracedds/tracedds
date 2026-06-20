@@ -1,0 +1,732 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { Icon } from "./icons";
+import { AGENT_SUPPLIERS, ARCHIVED_LISTS, CRL_STATUS, STRATEGY_LABELS, availabilityBadge, buildHandoffCsv, buildSupplierOrderText, deriveMatchRows, downloadTextFile, groupRowsBySupplier, isAgentSupplier, isOrderable, isPlanIncluded, isStrandedOutOfStock, money, mrEa, mrMoney, pickBestOffer, planSlug, shopifyStockKey, showPerEa, supplierSiteUrl } from "./lib";
+import { BuyingPreferencesCard, ListStatusPill, MatchSupplier, ProductThumb } from "./ui";
+
+export function CartBuilderModal({ group, buyingPrefs, onClose, onStockResults, onSwitchOffer, onToast }) {
+  const [state, setState] = useState({ status: "loading", result: null });
+  const rows = group.rows || [];
+  const linkable = rows.filter((row) => row.productUrl);
+  const missing = rows.length - linkable.length;
+
+  useEffect(() => {
+    if (!linkable.length) {
+      setState({ status: "empty", result: null });
+      return;
+    }
+    let cancelled = false;
+    setState({ status: "loading", result: null });
+    fetch("/api/cart-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        supplier: group.supplier,
+        items: linkable.map((row) => ({
+          name: row.matchName || row.canonicalName || "",
+          qty: row.qty,
+          productUrl: row.productUrl,
+        })),
+      }),
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
+      .then((result) => {
+        if (cancelled) return;
+        setState({ status: "ready", result });
+        onStockResults?.(result.stock || []);
+      })
+      .catch(() => { if (!cancelled) setState({ status: "error", result: null }); });
+    return () => { cancelled = true; };
+    // group identity is stable per open; re-resolve only when the supplier changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group]);
+
+  // Headless buying-agent path. For suppliers we can drive (AGENT_SUPPLIERS), we
+  // either build with a saved login or prompt for one on the fly. `agent.phase`:
+  // checking → available (saved login) | prompt (ask on the fly) | off, then
+  // queued → running → done/failed/needs_auth once a build is enqueued.
+  const [agent, setAgent] = useState({ phase: "checking", job: null });
+  const [login, setLogin] = useState({ username: "", password: "", save: false });
+  const supplierId = group.supplierId || null;
+  const agentEnabled = isAgentSupplier(group.supplier);
+
+  useEffect(() => {
+    if (!supplierId || !agentEnabled) { setAgent({ phase: "off", job: null }); return; }
+    let cancelled = false;
+    setAgent({ phase: "checking", job: null });
+    fetch("/api/supplier-credentials")
+      .then((r) => (r.ok ? r.json() : { credentials: [] }))
+      .then(({ credentials }) => {
+        if (cancelled) return;
+        const has = (credentials || []).some((c) => c.supplier_id === supplierId);
+        // Saved login → one-click; otherwise prompt for it on the fly.
+        setAgent({ phase: has ? "available" : "prompt", job: null });
+      })
+      .catch(() => { if (!cancelled) setAgent({ phase: "prompt", job: null }); });
+    return () => { cancelled = true; };
+  }, [supplierId, agentEnabled]);
+
+  // Poll a queued/running job until it settles.
+  useEffect(() => {
+    if (agent.phase !== "queued" && agent.phase !== "running") return;
+    const jobId = agent.job?.id;
+    if (!jobId) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      fetch(`/api/cart-builds?id=${encodeURIComponent(jobId)}`)
+        .then((r) => (r.ok ? r.json() : { jobs: [] }))
+        .then(({ jobs }) => {
+          if (cancelled) return;
+          const job = (jobs || [])[0];
+          if (!job) return;
+          if (job.status === "done") setAgent({ phase: "done", job });
+          else if (job.status === "failed") setAgent({ phase: "failed", job });
+          else if (job.status === "needs_auth") setAgent({ phase: "needs_auth", job });
+          else if (job.status === "running") setAgent((a) => ({ ...a, phase: "running", job }));
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [agent.phase, agent.job?.id]);
+
+  // `creds` carries an on-the-fly login (prompt path); omitted when a saved
+  // login already exists.
+  function startAgentBuild(creds) {
+    const prevPhase = agent.phase;
+    setAgent((a) => ({ ...a, phase: "queued" }));
+    fetch("/api/cart-builds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        supplier_id: supplierId,
+        lines: linkable.map((row) => ({
+          name: row.matchName || row.canonicalName || "",
+          qty: row.qty,
+          productUrl: row.productUrl,
+          sku: row.sku || "",
+        })),
+        ...(creds ? { username: creds.username, password: creds.password, save: creds.save } : {}),
+      }),
+    })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok || !data.job) {
+          onToast(data?.error === "needs_credentials" ? "Enter your supplier login to build the cart" : "Couldn’t start the cart build");
+          setAgent((a) => ({ ...a, phase: prevPhase }));
+          return;
+        }
+        setAgent({ phase: "running", job: data.job });
+      })
+      .catch(() => { onToast("Couldn’t start the cart build"); setAgent((a) => ({ ...a, phase: prevPhase })); });
+  }
+
+  function submitLoginAndBuild(e) {
+    e.preventDefault();
+    if (!login.username.trim() || !login.password) { onToast("Enter your username and password"); return; }
+    startAgentBuild({ username: login.username.trim(), password: login.password, save: login.save });
+  }
+
+  const result = state.result;
+  const isShopify = state.status === "ready" && result?.kind === "shopify-cart";
+
+  // Best-effort multi-tab open for the page-by-page path. Browsers block all but
+  // the first pop-up, so we nudge the buyer to allow them (per-item links below
+  // always work as the reliable fallback).
+  function openAll() {
+    let opened = 0;
+    for (const row of linkable) {
+      if (window.open(row.productUrl, "_blank", "noopener")) opened += 1;
+    }
+    if (opened < linkable.length) onToast("Allow pop-ups to open every product page at once");
+  }
+
+  return (
+    <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cartModalTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="crl-modal cart-modal">
+        <header className="crl-modal-head">
+          <div>
+            <h3 id="cartModalTitle">Build cart · {group.supplier}</h3>
+            <p>{isShopify
+              ? "We can prefill this supplier’s cart in one click — quantities included."
+              : "Open each product on the supplier’s site and add it to your cart."}</p>
+          </div>
+          <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
+        </header>
+
+        <div className="crl-modal-body cart-modal-body">
+          {/* Headless buying-agent path — one-click when a login is saved. */}
+          {agent.phase === "available" && (
+            <div className="cart-agent cart-agent-offer">
+              <div className="cart-prefill-icon"><Icon name="icon-bolt" /></div>
+              <strong>Build this cart for you</strong>
+              <small>We’ll sign in to {group.supplier} with your saved login and add all {linkable.length} item{linkable.length === 1 ? "" : "s"} to your cart.</small>
+              <button className="primary-action compact" type="button" onClick={() => startAgentBuild()}>
+                <Icon name="icon-cart" className="button-icon" />Build my {group.supplier} cart
+              </button>
+            </div>
+          )}
+
+          {/* On-the-fly login: build without saving the password. */}
+          {agent.phase === "prompt" && (
+            <form className="cart-agent cart-agent-prompt" onSubmit={submitLoginAndBuild}>
+              <div className="cart-prefill-icon"><Icon name="icon-bolt" /></div>
+              <strong>Build this cart for you</strong>
+              <small>Enter your {group.supplier} login and we’ll add all {linkable.length} item{linkable.length === 1 ? "" : "s"} to your cart. We use it for this order only — it isn’t saved unless you ask.</small>
+              <input type="text" autoComplete="off" placeholder={`${group.supplier} username or email`} value={login.username} onChange={(e) => setLogin((l) => ({ ...l, username: e.target.value }))} />
+              <input type="password" autoComplete="off" placeholder="Password" value={login.password} onChange={(e) => setLogin((l) => ({ ...l, password: e.target.value }))} />
+              <label className="cart-agent-save">
+                <input type="checkbox" checked={login.save} onChange={(e) => setLogin((l) => ({ ...l, save: e.target.checked }))} />
+                Save this login so I don’t have to re-enter it
+              </label>
+              <button className="primary-action compact" type="submit">
+                <Icon name="icon-cart" className="button-icon" />Build my {group.supplier} cart
+              </button>
+            </form>
+          )}
+
+          {(agent.phase === "queued" || agent.phase === "running") && (
+            <div className="cart-status"><span className="cart-spinner" aria-hidden="true" />Signing in to {group.supplier} and adding your items… this can take a minute.</div>
+          )}
+
+          {agent.phase === "needs_auth" && (
+            <div className="cart-status">That {group.supplier} login didn’t work. Double-check it (or that you have a {group.supplier} account) and try again.</div>
+          )}
+
+          {agent.phase === "failed" && (
+            <div className="cart-status">Couldn’t finish building your {group.supplier} cart{agent.job?.error ? ` (${agent.job.error})` : ""}. You can open the products below instead.</div>
+          )}
+
+          {agent.phase === "done" && (
+            <div className="cart-agent cart-agent-done">
+              <div className="cart-prefill-icon"><Icon name="icon-cart" /></div>
+              <strong>Your {group.supplier} cart is ready</strong>
+              {(() => {
+                const added = (agent.job?.results || []).filter((r) => r.status === "added").length;
+                const issues = (agent.job?.results || []).filter((r) => r.status !== "added");
+                return (
+                  <>
+                    <small>{added} of {agent.job?.results?.length || 0} item{(agent.job?.results?.length || 0) === 1 ? "" : "s"} added to your cart on {group.supplier}.</small>
+                    {agent.job?.cart_url && (
+                      <a className="primary-action compact" href={agent.job.cart_url} target="_blank" rel="noreferrer" onClick={() => onToast(`Opening your ${group.supplier} cart`)}>
+                        <Icon name="icon-cart" className="button-icon" />Open your cart
+                      </a>
+                    )}
+                    {issues.length > 0 && (
+                      <ul className="cart-agent-issues">
+                        {issues.map((r, i) => (
+                          <li key={i}>{r.status === "out_of_stock" ? "Out of stock" : r.status === "not_found" ? "Couldn’t find" : "Couldn’t add"}: {linkable.find((row) => row.productUrl === r.productUrl)?.matchName || r.productUrl}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {state.status === "loading" && (
+            <div className="cart-status"><span className="cart-spinner" aria-hidden="true" />Finding the best way to fill your {group.supplier} cart…</div>
+          )}
+
+          {state.status === "empty" && (
+            <div className="cart-status">No supplier product links are available for these items yet.</div>
+          )}
+
+          {state.status === "error" && (
+            <div className="cart-status">Couldn’t reach {group.supplier} to prefill the cart — open each product below instead.</div>
+          )}
+
+          {isShopify && (
+            <div className="cart-prefill">
+              <div className="cart-prefill-icon"><Icon name="icon-cart" /></div>
+              <strong>Your {group.supplier} cart is ready</strong>
+              <small>{result.count} item{result.count === 1 ? "" : "s"} with quantities, added to the cart on {group.supplier}.</small>
+              <a className="primary-action compact" href={result.url} target="_blank" rel="noreferrer" onClick={() => onToast(`Opening your ${group.supplier} cart`)}>
+                <Icon name="icon-cart" className="button-icon" />Open prefilled cart
+              </a>
+              {result.leftovers?.length > 0 && (
+                <small className="cart-leftover-note">{result.leftovers.length} item{result.leftovers.length === 1 ? "" : "s"} couldn’t be added automatically — review {result.leftovers.length === 1 ? "it" : "them"} below.</small>
+              )}
+            </div>
+          )}
+
+          {(state.status === "error" || (state.status === "ready" && !isShopify && !result?.stock?.length)) && linkable.length > 0 && (
+            <button className="primary-action compact cart-openall" type="button" onClick={openAll}>
+              <Icon name="icon-link" className="button-icon" />Open all {linkable.length} product page{linkable.length === 1 ? "" : "s"}
+            </button>
+          )}
+
+          {state.status !== "loading" && rows.length > 0 && (
+            <ul className="cart-item-list">
+              {rows.map((row, index) => {
+                const liveResult = result?.stock?.find(
+                  (entry) => shopifyStockKey(entry.productUrl) === shopifyStockKey(row.productUrl)
+                );
+                const liveOutOfStock = liveResult?.available === false;
+                const switchTarget = row.switchTarget || (liveOutOfStock
+                  ? pickBestOffer((row.offers || []).filter((offer) => offer.key !== row.selectedOfferKey && isOrderable(offer)), buyingPrefs, row)
+                  : null);
+                return (
+                  <li className="cart-item" key={row.id ?? index}>
+                    <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+                    <span className="cart-item-name">
+                      <strong>{row.matchName || row.canonicalName}</strong>
+                      <small>{liveOutOfStock ? "Out of stock at this supplier" : `Qty ${row.qty} ${row.uom}${row.matchSub ? ` · ${row.matchSub}` : ""}`}</small>
+                    </span>
+                    {liveOutOfStock && switchTarget && row.itemId && onSwitchOffer ? (
+                      <button
+                        className="crl-ghost-btn cart-item-open"
+                        type="button"
+                        onClick={() => {
+                          onSwitchOffer(row.itemId, { selectedOfferKey: switchTarget.key });
+                          onToast(`Switched to ${switchTarget.supplier}`);
+                          onClose();
+                        }}
+                      >
+                        <Icon name="icon-shuffle" className="button-icon" />Switch
+                      </button>
+                    ) : liveOutOfStock ? (
+                      <span className="cart-item-nolink">Unavailable</span>
+                    ) : row.productUrl ? (
+                      <a className="crl-ghost-btn cart-item-open" href={row.productUrl} target="_blank" rel="noreferrer"><Icon name="icon-link" className="button-icon" />Open</a>
+                    ) : (
+                      <span className="cart-item-nolink">No link</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {missing > 0 && state.status !== "loading" && (
+            <small className="cart-missing-note">{missing} item{missing === 1 ? "" : "s"} on this order ha{missing === 1 ? "s" : "ve"} no supplier link — add {missing === 1 ? "it" : "them"} from the supplier’s site directly.</small>
+          )}
+        </div>
+
+        <footer className="crl-modal-foot">
+          <button className="crl-ghost-btn" type="button" onClick={onClose}>Done</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// One supplier's order block — shared by the live plan (full rows) and the
+// frozen handoff (slim rows). `actions` injects the handoff's copy/open buttons.
+
+export function SupplierGroupCard({ group, onNavigate, onBuildCart, onSwitchOffer, onToast, actions = null }) {
+  const buildable = group.rows.some((row) => row.productUrl);
+  return (
+    <section className="crl-card pp-group">
+      <div className="pp-group-head">
+        <MatchSupplier name={group.supplier} />
+        <span className="pp-group-meta">{group.count} item{group.count === 1 ? "" : "s"} · <strong>{money.format(group.subtotal)}</strong></span>
+      </div>
+      {(onBuildCart || actions) && (
+        <div className="ho-group-actions">
+          {onBuildCart && (
+            <button className="crl-ghost-btn pp-buildcart-btn" type="button" disabled={!buildable} onClick={() => onBuildCart(group)} title={buildable ? "" : "No supplier product links for these items"}>
+              <Icon name="icon-cart" className="button-icon" />Build cart
+            </button>
+          )}
+          {actions}
+        </div>
+      )}
+      <div className="pp-group-lines">
+        {group.rows.map((row) => {
+          const clickable = Boolean(row.canonicalHandle);
+          return (
+            <div className="pp-line-wrap" key={row.id}>
+              <div
+                className={`pp-line ${clickable ? "clickable" : ""}`}
+                onClick={clickable ? () => onNavigate?.(`/app/product/${row.canonicalHandle}`) : undefined}
+              >
+                <ProductThumb image={row.image} alt={row.matchName || row.canonicalName} />
+                <span className="pp-line-name">
+                  <strong>{row.matchName || row.canonicalName}</strong>
+                  <span className="pp-line-sub">
+                    {row.matchSub && <small>{row.matchSub}</small>}
+                    {(() => {
+                      const badge = availabilityBadge(row.availability, row.liveAvailable);
+                      return badge ? (
+                        <span
+                          className={`pp-stock-badge stock-${badge.tone}`}
+                          title={typeof row.liveAvailable === "boolean" ? "Live stock checked this session" : "Stock as of last catalog sync — verify before ordering"}
+                        >
+                          {badge.label}
+                        </span>
+                      ) : null;
+                    })()}
+                  </span>
+                </span>
+                <span className="pp-line-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+                <span className="pp-line-ea">{showPerEa(row.perEa, row.price) ? `$${mrEa(row.perEa)} / ea` : ""}</span>
+                <span className="pp-line-total">{mrMoney(row.lineTotal || 0)}</span>
+              </div>
+              {row.outOfStock && row.switchTarget && onSwitchOffer && (
+                <div className="pp-line-switch">
+                  <span className="pp-switch-msg"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock at {row.supplier}</span>
+                  <button
+                    className="pp-switch-btn"
+                    type="button"
+                    onClick={() => { onSwitchOffer(row.itemId, { selectedOfferKey: row.switchTarget.key }); onToast?.(`Switched to ${row.switchTarget.supplier}`); }}
+                  >
+                    <Icon name="icon-shuffle" className="button-icon" />Switch to {row.switchTarget.supplier} · {mrMoney(row.switchTarget.price)}
+                  </button>
+                </div>
+              )}
+              {row.outOfStock && !row.switchTarget && (
+                <div className="pp-line-switch">
+                  <span className="pp-switch-msg pp-switch-none"><Icon name="icon-alert-triangle" className="button-icon" />Out of stock — no in-stock supplier carries this item</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+
+export function ProcurementPlanView({ items, listName, listStatus = "draft", onBackToDraft, buyingPrefs, onBuyingPrefs, onPrepareHandoff, onBuildCart, onSwitchOffer, onNavigate, onToast }) {
+  const rows = deriveMatchRows(items || [], buyingPrefs);
+  const included = rows.filter(isPlanIncluded);
+  // No-match lines plus "out of stock everywhere" lines both land here so the
+  // buyer sees why they're not in any supplier order.
+  const unresolved = rows.filter((row) => !isPlanIncluded(row) && (row.status === "Not found" || !row.supplier || row.supplier === "—" || isStrandedOutOfStock(row)));
+  const groups = groupRowsBySupplier(included);
+  const total = included.reduce((sum, row) => sum + (row.lineTotal || 0), 0);
+  const coverage = rows.length ? Math.round((included.length / rows.length) * 100) : 0;
+  // Lines out of stock at their selected supplier that DO have an in-stock
+  // alternative — the bulk "reassign all" banner targets these.
+  const oosReassignable = included.filter((row) => row.outOfStock && row.switchTarget);
+
+  const supplierOptions = useMemo(() => {
+    const names = new Set();
+    for (const item of items || []) {
+      for (const offer of item.offers || []) {
+        if (offer.supplier) names.add(offer.supplier);
+      }
+    }
+    return [...names].sort();
+  }, [items]);
+
+  return (
+    <div className="crl pp">
+      <header className="crl-header pp-header">
+        <div className="crl-title crl-title-main">
+          <button className="history-back" type="button" onClick={() => onNavigate("/app")}><Icon name="icon-chevron-left" className="button-icon" />Current Reorder List</button>
+          <h2>Review &amp; optimize</h2>
+          <p className="crl-subtitle">
+            <span className="crl-listname">{listName}</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <ListStatusPill status={listStatus} />
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span>{included.length} item{included.length === 1 ? "" : "s"} · {groups.length} supplier{groups.length === 1 ? "" : "s"}</span>
+          </p>
+        </div>
+        <div className="crl-header-actions">
+          {listStatus === "review" && onBackToDraft && (
+            <button className="text-action compact" type="button" onClick={onBackToDraft} title="Return to Draft to keep editing this list">
+              <Icon name="icon-chevron-left" className="button-icon" />Back to draft
+            </button>
+          )}
+          <button className="secondary-action compact pp-hide-mobile" type="button" onClick={() => onNavigate("/app")}>Back to list</button>
+          <button className="primary-action compact pp-header-handoff" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
+            <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
+          </button>
+        </div>
+      </header>
+
+      <div className="pp-layout">
+        <div className="pp-main">
+          {groups.length === 0 ? (
+            <div className="crl-card pp-empty">
+              <Icon name="icon-package" className="button-icon" />
+              <strong>No matched items yet</strong>
+              <p>Match items on your reorder list to review and optimize suppliers, grouped by supplier.</p>
+              <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app")}>Go to reorder list</button>
+            </div>
+          ) : (
+            <>
+              <div className="pp-section-head">
+                <h3>Included items</h3>
+                <small>Grouped by supplier · best offer per line</small>
+              </div>
+              {oosReassignable.length > 0 && (
+                <div className="pp-oos-banner">
+                  <span className="pp-oos-banner-msg">
+                    <Icon name="icon-alert-triangle" className="button-icon" />
+                    <strong>{oosReassignable.length} item{oosReassignable.length === 1 ? " is" : "s are"} out of stock</strong>
+                    <span>— reassign to the next in-stock supplier.</span>
+                  </span>
+                  <button
+                    className="pp-oos-banner-btn"
+                    type="button"
+                    onClick={() => {
+                      oosReassignable.forEach((row) => onSwitchOffer?.(row.itemId, { selectedOfferKey: row.switchTarget.key }));
+                      onToast?.(`Reassigned ${oosReassignable.length} item${oosReassignable.length === 1 ? "" : "s"} to in-stock suppliers`);
+                    }}
+                  >
+                    <Icon name="icon-shuffle" className="button-icon" />Reassign all
+                  </button>
+                </div>
+              )}
+              {groups.map((group) => (
+                <SupplierGroupCard key={group.supplier} group={group} onNavigate={onNavigate} onBuildCart={onBuildCart} onSwitchOffer={onSwitchOffer} onToast={onToast} />
+              ))}
+            </>
+          )}
+
+          {unresolved.length > 0 && (
+            <section className="crl-card pp-unresolved">
+              <div className="crl-card-head">
+                <h3>Unresolved items ({unresolved.length})</h3>
+                <button className="crl-edit-link" type="button" onClick={() => onNavigate("/app")}>Resolve on list</button>
+              </div>
+              <p className="pp-unresolved-note">These items aren&rsquo;t in any supplier order and won&rsquo;t be included in the supplier handoff.</p>
+              <ul className="pp-unresolved-list">
+                {unresolved.map((row) => {
+                  const stranded = isStrandedOutOfStock(row);
+                  return (
+                    <li key={row.id}>
+                      <ProductThumb image={row.image} alt={row.importedName} />
+                      <span className="pp-unresolved-name">
+                        <strong>{row.canonicalName || row.importedName}</strong>
+                        <small>{stranded ? "Out of stock at every supplier" : `Qty ${row.qty} ${row.uom}`}</small>
+                      </span>
+                      <span className={`pp-unresolved-tag ${stranded ? "tag-oos" : ""}`}>{stranded ? "Out of stock" : "No match"}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        <aside className="pp-rail">
+          <BuyingPreferencesCard
+            prefs={buyingPrefs}
+            supplierOptions={supplierOptions}
+            onSave={onBuyingPrefs}
+            onToast={onToast}
+          />
+          <section className="crl-card">
+            <h3>Plan Summary</h3>
+            <div className="crl-plan">
+              <div><span>Estimated total</span><strong>{money.format(total)}</strong></div>
+              <div><span>Suppliers</span><strong>{groups.length}</strong></div>
+              <div><span>Coverage</span><strong>{coverage}%</strong></div>
+              <div><span>Included items</span><strong>{included.length}</strong></div>
+            </div>
+            <button className="primary-action compact pp-handoff-btn" type="button" disabled={!included.length} onClick={onPrepareHandoff}>
+              <Icon name="icon-handshake" className="button-icon" />Prepare Supplier Handoff
+            </button>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+
+export function SupplierHandoffView({ handoff, onArchive, onBuildCart, onNavigate, onToast }) {
+  if (!handoff) {
+    return (
+      <div className="crl ho">
+        <header className="crl-header"><div className="crl-title crl-title-main"><h2>Supplier Handoff</h2></div></header>
+        <div className="crl-card pp-empty">
+          <Icon name="icon-handshake" className="button-icon" />
+          <strong>No handoff prepared yet</strong>
+          <p>Open Review &amp; optimize and prepare a supplier handoff to see frozen order details here.</p>
+          <button className="secondary-action compact" type="button" onClick={() => onNavigate("/app/review")}>Open Review &amp; optimize</button>
+        </div>
+      </div>
+    );
+  }
+
+  function copyGroup(group) {
+    const text = buildSupplierOrderText(group, handoff);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => onToast(`${group.supplier} order details copied`))
+        .catch(() => onToast("Couldn’t copy — try again"));
+    } else {
+      onToast("Clipboard unavailable in this browser");
+    }
+  }
+
+  function exportCsv() {
+    downloadTextFile(`${planSlug(handoff.listName)}-handoff.csv`, buildHandoffCsv(handoff), "text/csv");
+    onToast("CSV exported");
+  }
+
+  function exportPdf() {
+    onToast("Opening print dialog — choose “Save as PDF”");
+    setTimeout(() => window.print(), 350);
+  }
+
+  return (
+    <div className="crl ho">
+      <header className="crl-header ho-header">
+        <div className="crl-title crl-title-main">
+          <button className="history-back" type="button" onClick={() => onNavigate("/app/review")}><Icon name="icon-chevron-left" className="button-icon" />Review &amp; optimize</button>
+          <h2>Supplier Handoff</h2>
+          <p className="crl-subtitle">
+            <span className="ho-frozen-pill"><Icon name="icon-lock" className="button-icon" />Frozen snapshot</span>
+            <span className="crl-dot" aria-hidden="true">·</span>
+            <span>{handoff.createdLabel}</span>
+          </p>
+        </div>
+        <div className="crl-header-actions ho-export">
+          <button className="secondary-action compact" type="button" onClick={exportCsv}><Icon name="icon-table" className="button-icon" />Export CSV</button>
+          <button className="secondary-action compact" type="button" onClick={exportPdf}><Icon name="icon-file-text" className="button-icon" />Export PDF</button>
+        </div>
+      </header>
+
+      <div className="ho-banner">
+        <Icon name="icon-lock" className="button-icon" />
+        <span>Frozen snapshot of <strong>{handoff.listName}</strong>, captured {handoff.createdLabel}. Prices and selections are locked so your order details won&rsquo;t drift.</span>
+      </div>
+
+      <div className="ho-summary">
+        <div><small>Suppliers</small><strong>{handoff.supplierCount}</strong></div>
+        <div><small>Items</small><strong>{handoff.itemCount}</strong></div>
+        <div><small>Estimated total</small><strong>{money.format(handoff.total)}</strong></div>
+        <div><small>Strategy</small><strong>{STRATEGY_LABELS[handoff.prefs?.strategy] || "Best price"}</strong></div>
+      </div>
+
+      <div className="ho-groups">
+        {handoff.groups.map((group) => (
+          <SupplierGroupCard
+            key={group.supplier}
+            group={group}
+            onNavigate={onNavigate}
+            onBuildCart={onBuildCart}
+            actions={(
+              <>
+                <button className="crl-ghost-btn" type="button" onClick={() => copyGroup(group)}><Icon name="icon-clipboard" className="button-icon" />Copy order details</button>
+                <a className="crl-ghost-btn" href={supplierSiteUrl(group.supplier)} target="_blank" rel="noreferrer"><Icon name="icon-store" className="button-icon" />Open website</a>
+              </>
+            )}
+          />
+        ))}
+      </div>
+
+      <footer className="ho-footer">
+        <div className="ho-footer-copy">
+          <strong>Order placed?</strong>
+          <small>Archive this list to move it to History and start a fresh reorder list. This frozen handoff stays available.</small>
+        </div>
+        <button className="primary-action compact" type="button" onClick={onArchive}><Icon name="icon-clipboard" className="button-icon" />Archive list &amp; start new</button>
+      </footer>
+    </div>
+  );
+}
+
+
+export function HistoryView({ onOpen, archivedLists = [] }) {
+  const lists = [...archivedLists, ...ARCHIVED_LISTS];
+  return (
+    <div className="crl">
+      <header className="crl-header">
+        <div className="crl-title"><h2>History / Past Lists</h2></div>
+      </header>
+      <div className="history-list">
+        {lists.map((list) => (
+          <button className="history-row" type="button" key={list.id} onClick={() => onOpen(list.id)}>
+            <span className="history-icon"><Icon name="icon-clock" className="button-icon" /></span>
+            <span className="history-info">
+              <strong>{list.name}</strong>
+              <small>Archived {list.date} · {list.items} items · {list.suppliers} suppliers</small>
+            </span>
+            <ListStatusPill status={list.status} />
+            <span className="history-total">{list.total}</span>
+            <Icon name="icon-chevron-right" className="button-icon history-chev" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+export function HistoryDetail({ id, onBack, archivedLists = [], handoffs = [], onRename, onDuplicate, onViewHandoff }) {
+  const lists = [...archivedLists, ...ARCHIVED_LISTS];
+  const list = lists.find((entry) => entry.id === id) || lists[0];
+  const rows = list?.rows || [];
+  // Renaming only persists for real archived entries (not the demo samples).
+  const isReal = archivedLists.some((entry) => entry.id === list.id);
+  const linkedHandoff = list.handoffId ? handoffs.find((h) => h.id === list.handoffId) : null;
+  return (
+    <div className="crl">
+      <header className="crl-header">
+        <div className="crl-title">
+          <button className="history-back" type="button" onClick={onBack}><Icon name="icon-chevron-left" className="button-icon" />History</button>
+          {isReal ? (
+            <input
+              className="history-rename-input"
+              value={list.name}
+              onChange={(event) => onRename?.(list.id, event.target.value)}
+              aria-label="List name"
+              style={{ width: `${Math.max(list.name.length, 8)}ch` }}
+            />
+          ) : (
+            <h2>{list.name}</h2>
+          )}
+          <ListStatusPill status={list.status} />
+        </div>
+      </header>
+      <div className="history-detail-stats">
+        <div><small>Archived</small><strong>{list.date}</strong></div>
+        <div><small>Items</small><strong>{list.items}</strong></div>
+        <div><small>Suppliers</small><strong>{list.suppliers}</strong></div>
+        <div><small>Total</small><strong>{list.total}</strong></div>
+      </div>
+      {rows.length > 0 && (
+        <div className="crl-table history-detail-table">
+          <div className="crl-row crl-row-head">
+            <span>Item</span>
+            <span>Status</span>
+            <span>Qty</span>
+            <span>Matched product</span>
+            <span className="crl-price-h">Price</span>
+          </div>
+          {rows.map((row) => {
+            const status = CRL_STATUS[row.status];
+            const notFound = row.status === "Not found";
+            return (
+              <div className="crl-row" key={row.id}>
+                <span className="crl-item">
+                  <ProductThumb image={row.image} alt={row.canonicalName || row.importedName} />
+                  <span className="crl-item-id">
+                    <strong>{row.canonicalName || row.importedName}</strong>
+                    {row.canonicalName && <small>From source: {row.importedName}</small>}
+                  </span>
+                </span>
+                <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span>
+                <span className="crl-qty"><strong>{row.qty}</strong><small>{row.uom}</small></span>
+                <span className="crl-match">
+                  {notFound ? <strong>No match found</strong> : (<><strong>{row.matchName}</strong><MatchSupplier name={row.supplier} /></>)}
+                </span>
+                <span className="crl-price">
+                  {notFound ? <span className="crl-dash">—</span> : (<><strong>{mrMoney(row.price)}</strong>{showPerEa(row.perEa, row.price) && <small>${mrEa(row.perEa)} / ea</small>}</>)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="history-detail-note">This reorder list is archived and read-only. Duplicate it to start a new reorder{linkedHandoff ? ", or revisit the supplier handoff" : ""}.</p>
+      <div className="history-detail-actions">
+        <button className="primary-action compact" type="button" onClick={() => onDuplicate?.(list)}><Icon name="icon-file-plus" className="button-icon" />Duplicate to new list</button>
+        {linkedHandoff && (
+          <button className="secondary-action compact" type="button" onClick={() => onViewHandoff?.(list.handoffId)}><Icon name="icon-handshake" className="button-icon" />View handoff</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
