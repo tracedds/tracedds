@@ -52,6 +52,21 @@ type Extracted = { quantity: number; basis: PackBasis; base_unit: string; kind: 
 function extract(text: string, allowDims: boolean): Extracted | null {
   const t = text.toLowerCase()
 
+  // Count of measured units: "20 - 0.2g Capsules", "24 x 1.2mL Syringe",
+  // "50 x 0.25g". The leading integer is the purchasable count (base "each");
+  // the trailing measure is the per-item dose, not the pack quantity. Without
+  // this, the plain measure rule below grabs the dose ("0.2 g" -> qty 0.2) and
+  // the per-unit price collapses, so the offer shows no comparable $/ea.
+  const countMeasure = t.match(
+    /(?:^|[^0-9.])(\d{1,4})\s*[-x×]\s*\d+(?:\.\d+)?\s*(?:ml|cc|mg|gm|g|oz)\b/
+  )
+  if (countMeasure) {
+    const quantity = Number(countMeasure[1])
+    if (quantity > 0 && quantity <= 100000) {
+      return { quantity, basis: "pack", base_unit: "each", kind: "countmeasure" }
+    }
+  }
+
   if (allowDims) {
     const nx = t.match(/(?:^|[^0-9.])(\d{1,4})\s*[x×]\s*(\d{1,5})(?:[^0-9.]|$)/)
     if (nx) {

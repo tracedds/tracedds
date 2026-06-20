@@ -353,7 +353,21 @@ export function buildOffers(
       availability: memberRow.availability ?? "unknown",
     })
   }
-  return offers.sort((a, b) => a.comparable_price_cents - b.comparable_price_cents)
+  // Definitively-unavailable offers (backordered / out of stock) rank below
+  // available ones so the recommended pick (offers[0]) isn't something the buyer
+  // can't actually order. "unknown" and "limited" are treated as orderable —
+  // most snapshots carry no stock signal, so penalizing unknown would bury good
+  // offers. Within each tier, comparable per-unit price still decides.
+  const unorderable = (a: string): boolean =>
+    a === "backordered" || a === "out_of_stock" || a === "outofstock"
+  return offers.sort((a, b) => {
+    const aBad = unorderable(a.availability) ? 1 : 0
+    const bBad = unorderable(b.availability) ? 1 : 0
+    if (aBad !== bBad) {
+      return aBad - bBad
+    }
+    return a.comparable_price_cents - b.comparable_price_cents
+  })
 }
 
 async function finalize(

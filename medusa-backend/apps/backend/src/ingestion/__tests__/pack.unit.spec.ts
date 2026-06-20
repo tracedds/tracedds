@@ -8,6 +8,22 @@ describe("parsePack", () => {
     expect(parsePack("200/Box", "")).toMatchObject({ pack_quantity: 200, basis: "box" })
   })
 
+  it("parses a count of measured units (capsules / syringes) as the count, not the dose", () => {
+    // The leading integer is the purchasable count; the trailing measure is the
+    // per-item dose. Without this the bare measure rule grabbed "0.2 g" -> 0.2
+    // and the offer showed no comparable per-unit price.
+    expect(parsePack("", "3M Filtek Supreme Ultra Restorative 6029A2B 20 - 0.2g Capsules A2B")).toMatchObject({
+      pack_quantity: 20,
+      base_unit: "each",
+    })
+    expect(parsePack("", "Etch-Rite 24x1.2mL Syringe ET-24")).toMatchObject({
+      pack_quantity: 24,
+      base_unit: "each",
+    })
+    // A standalone measure (no count) still parses as a per-measure pack.
+    expect(parsePack("", "Lidocaine Topical Ointment 5% Jar 50gm")).toMatchObject({ base_unit: "g" })
+  })
+
   it("parses 'Word of N' formats", () => {
     expect(parsePack("Pkg of 10", "")).toMatchObject({ pack_quantity: 10, basis: "pack" })
     expect(parsePack("Pkg of 100", "")).toMatchObject({ pack_quantity: 100, basis: "pack" })
