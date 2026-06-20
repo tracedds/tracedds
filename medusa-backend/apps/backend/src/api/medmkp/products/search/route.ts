@@ -119,6 +119,28 @@ async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: s
         and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = ref.model_norm
       where length(regexp_replace(ref.company_name, '[^a-z0-9]', '', 'gi')) >= 4
         and sp.deleted_at is null
+     union
+     -- Soft brand agreement: GUDID brand_name is often a sub-brand/product line
+     -- (e.g. "Premier Curettes", "Young Core", "3M ESPE") while we store the
+     -- parent brand ("Premier", "Young", "3M"), so the exact brand_norm = brand
+     -- branch above misses real matches. Here the exact model match on a *real*
+     -- MPN (manufacturer_sku <> sku) carries the identity, and we only require
+     -- the stored brand to appear within the GUDID brand or company name (either
+     -- direction), guarding on length to avoid spurious substring hits. The model
+     -- equality keeps this on the idx_msp_norm_mfrsku functional index; the brand
+     -- containment is a filter on the already-narrowed rows.
+     select sp.id
+       from ref join medmkp_supplier_product sp
+         on lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = ref.model_norm
+      where sp.deleted_at is null
+        and sp.manufacturer_sku <> sp.sku
+        and length(ref.model_norm) >= 4
+        and length(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) >= 3
+        and (
+             ref.brand_norm like '%' || lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) || '%'
+          or lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) like '%' || ref.brand_norm || '%'
+          or lower(regexp_replace(ref.company_name, '[^a-z0-9]', '', 'gi')) like '%' || lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) || '%'
+        )
      limit 25`,
     [variants]
   )

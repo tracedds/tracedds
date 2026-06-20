@@ -34,6 +34,8 @@ function makeService(overrides: Record<string, any> = {}) {
     listCanonicalProducts: jest.fn(async () => []),
     listSupplierPriceSnapshots: jest.fn(async () => []),
     listSuppliers: jest.fn(async () => []),
+    // knex (PG_CONNECTION) used by the GUDID-reference fallback; default to no rows.
+    raw: jest.fn(async () => ({ rows: [] })),
     ...overrides,
   }
   return { service, calls }
@@ -120,6 +122,26 @@ describe("GET /medmkp/products/search — HIBC scan path", () => {
     )
     expect(body.kind).toBe("barcode")
     expect(body.products[0].name).toBe("Digital Link product")
+  })
+
+  it("resolves a scanned GTIN through the GUDID reference bridge when no product stores the barcode", async () => {
+    // Real Premier Curette GTIN: not on any supplier_product.barcode, but the
+    // GUDID reference resolves it to a product we carry (sub-brand "Premier
+    // Curettes" vs stored brand "Premier" — the soft-brand join branch). Here we
+    // stub the knex result the SQL produces; the SQL itself is verified against
+    // prod data.
+    const refHit = { ...ER24_HIT, id: "sp_ref", barcode: "", brand: "Premier", name: "Curette Columbia DE 13/14" }
+    const { service } = makeService({
+      raw: jest.fn(async () => ({ rows: [{ id: "sp_ref" }] })),
+      listSupplierProducts: jest.fn(async (filter: any) =>
+        filter.id?.includes("sp_ref") ? [refHit] : []
+      ),
+    })
+    const body = await run(service, "barcode=00348783007473")
+
+    expect(service.raw).toHaveBeenCalled()
+    expect(body.kind).toBe("barcode")
+    expect(body.products[0].name).toBe("Curette Columbia DE 13/14")
   })
 
   it("does not treat a needs-review canonical link as the scanned product", async () => {
