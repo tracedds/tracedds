@@ -56,16 +56,19 @@ function gs1Gtin(value: string): string | null {
 // medmkp_gtin_reference table (FDA GUDID, brand+model -> GTIN). This catches
 // products we couldn't pre-write a barcode for. Because the scanned GTIN is
 // exact (it identifies one product family), fuzzier supplier matching is safe.
-// Three resolution paths, all keyed off the exact scanned GTIN:
+// Four resolution paths, all keyed off the exact scanned GTIN:
 //   1. Henry Schein house brand — companyName "HENRY SCHEIN, INC." + HS item
 //      number (= sku).
-//   2. Exact brand + manufacturer SKU.
+//   2. Exact brandName + manufacturer SKU.
 //   3. Product-line fallback — for vendors GUDID lists under a product line
 //      (brandName "Filtek", "Cotton Tipped...") with the real maker in
 //      companyName, and where our supplier MPN carries a vendor prefix
 //      ("US-3M-6029A2B" vs GUDID "6029A2B"): match when the supplier MPN ends
 //      with the model number AND the product-line name appears in the product
 //      name. Length guards keep short/generic models from colliding.
+//   4. companyName + manufacturer SKU — GUDID often puts a description in
+//      brandName ("Cotton Tipped Wood Applicators...") and the real brand in
+//      companyName ("Dynarex Corporation"), which equals our supplier brand.
 async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: string[]): Promise<string[]> {
   if (!variants.length) return []
   const knex = scope.resolve(ContainerRegistrationKeys.PG_CONNECTION) as any
@@ -73,7 +76,7 @@ async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: s
   // using an index, which seq-scans 230k rows with per-row regexp (~80s, enough
   // to crash a prod backend). As separate branches each path hits a dedicated
   // functional index (idx_msp_norm_sku / _mfrsku / _brand) or trigram GIN index
-  // (idx_msp_norm_mfrsku_trgm / _name_trgm) — see Migration20260619180000.
+  // (idx_msp_norm_mfrsku_trgm / _name_trgm) — see Migration20260619190000.
   const { rows } = await knex.raw(
     `with ref as (
        select distinct model_norm, brand_norm, company_name
@@ -97,6 +100,13 @@ async function resolveByGtinReference(scope: MedusaRequest["scope"], variants: s
          on lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) like '%' || ref.model_norm
         and lower(regexp_replace(sp.name, '[^a-z0-9]', '', 'gi')) like '%' || ref.brand_norm || '%'
       where length(ref.model_norm) >= 5 and length(ref.brand_norm) >= 4
+        and sp.deleted_at is null
+     union
+     select sp.id
+       from ref join medmkp_supplier_product sp
+         on lower(regexp_replace(sp.brand, '[^a-z0-9]', '', 'gi')) = lower(regexp_replace(ref.company_name, '[^a-z0-9]', '', 'gi'))
+        and lower(regexp_replace(sp.manufacturer_sku, '[^a-z0-9]', '', 'gi')) = ref.model_norm
+      where length(regexp_replace(ref.company_name, '[^a-z0-9]', '', 'gi')) >= 4
         and sp.deleted_at is null
      limit 25`,
     [variants]
