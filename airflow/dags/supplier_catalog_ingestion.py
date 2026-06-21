@@ -404,6 +404,21 @@ def build_product_matching_dag() -> DAG:
     return dag
 
 
+# Fire-and-forget global re-match chained after a bespoke ingest task. Mirrors
+# the manual-generic-supplier branch in build_supplier_dag: an off-cycle or
+# manual run must not depend on the Sunday 23:00 batch to get matched, or its
+# products never become servable canonical offers until the next Sunday.
+# match_products is max_active_runs=1, so concurrent triggers queue serially.
+def rematch_after(ingest_task: BashOperator) -> None:
+    rematch = TriggerDagRunOperator(
+        task_id="trigger_match_products",
+        trigger_dag_id="match_products",
+        wait_for_completion=False,
+        reset_dag_run=True,
+    )
+    ingest_task >> rematch
+
+
 def build_henry_schein_dag() -> DAG:
     ingest_args = " -- --max-pages=12000 --max-pages-per-category=500 --concurrency=4"
     if COMMIT_ENABLED:
@@ -421,12 +436,13 @@ def build_henry_schein_dag() -> DAG:
         max_active_runs=1,
         tags=["medmkp", "supplier-ingestion", "msup_henryschein_com"],
     ) as dag:
-        BashOperator(
+        ingest = BashOperator(
             task_id="ingest",
             bash_command=backend_command(f"npm run henryschein:ingest{ingest_args}"),
             pool=POOL,
             retries=1,
         )
+        rematch_after(ingest)
 
     return dag
 
@@ -450,12 +466,13 @@ def build_patterson_dag() -> DAG:
         max_active_runs=1,
         tags=["medmkp", "supplier-ingestion", "msup_pattersondental_com"],
     ) as dag:
-        BashOperator(
+        ingest = BashOperator(
             task_id="ingest",
             bash_command=backend_command(f"npm run patterson:ingest{ingest_args}"),
             pool=POOL,
             retries=1,
         )
+        rematch_after(ingest)
 
     return dag
 
