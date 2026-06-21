@@ -5,10 +5,40 @@ import {
   parseJsonLdResults,
   parseMoney,
   parseProximityCards,
+  parseSplitPriceSpans,
   titleOverlapConfidence,
 } from "../parse"
 import { ALIBABA_DETAIL_PATTERN } from "../providers/alibaba"
 import { AMAZON_DETAIL_PATTERN } from "../providers/amazon"
+
+describe("parseSplitPriceSpans", () => {
+  // Amazon's no-JS price markup, split across spans (no clean a-offscreen).
+  const split = (symbol: string, whole: string, frac: string) =>
+    `<span class="a-price-symbol">${symbol}</span>` +
+    `<span class="a-price-whole">${whole}<span class="a-price-decimal">.</span></span>` +
+    `<span class="a-price-fraction">${frac}</span>`
+
+  it("reconstructs whole+fraction (keeps the cents stripTags would drop)", () => {
+    expect(parseSplitPriceSpans(split("$", "86", "98"))).toMatchObject({
+      price_cents: 8698,
+      currency: "USD",
+    })
+  })
+
+  it("handles thousands separators", () => {
+    expect(parseSplitPriceSpans(split("$", "1,299", "50"))).toMatchObject({
+      price_cents: 129950,
+    })
+  })
+
+  it("ignores non-USD symbols so a mis-geo'd exit yields no price", () => {
+    expect(parseSplitPriceSpans(split("NOK", "86", "98"))).toBeUndefined()
+  })
+
+  it("returns undefined when there is no split price", () => {
+    expect(parseSplitPriceSpans("<div>no price here</div>")).toBeUndefined()
+  })
+})
 
 describe("parseMoney", () => {
   it("parses a single US dollar price to cents", () => {
