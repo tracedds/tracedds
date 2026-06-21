@@ -86,6 +86,34 @@ export function parseMoney(text: string): ParsedMoney | undefined {
   return undefined
 }
 
+// Amazon splits its price across spans when JS hasn't run, so there's no clean
+// `a-offscreen` "$9.99" for parseMoney to read — only:
+//   <span class="a-price-symbol">$</span>
+//   <span class="a-price-whole">9<span class="a-price-decimal">.</span></span>
+//   <span class="a-price-fraction">99</span>
+// stripTags collapses that to "$ 9 . 99", which parseMoney truncates to "$9"
+// (cents dropped). Reconstruct whole+fraction straight from the raw HTML so the
+// free, no-JS fetch (e.g. direct from the NUC) yields a correct price. Restricted
+// to USD ($) so a mis-geo'd exit (e.g. NOK) yields no price, not a wrong currency.
+const SPLIT_PRICE_RE =
+  /a-price-symbol"[^>]*>\s*\$[^<]*<\/span>\s*<span[^>]*\ba-price-whole"[^>]*>\s*([0-9][0-9,]*)[\s\S]{0,60}?\ba-price-fraction"[^>]*>\s*([0-9]{2})/i
+
+export function parseSplitPriceSpans(html: string): ParsedMoney | undefined {
+  const match = html.match(SPLIT_PRICE_RE)
+  if (!match) {
+    return undefined
+  }
+  const amount = Number(`${match[1].replace(/,/g, "")}.${match[2]}`)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return undefined
+  }
+  return {
+    price_cents: Math.round(amount * 100),
+    price_text: `$${match[1]}.${match[2]}`,
+    currency: "USD",
+  }
+}
+
 const ASIN_RE = /\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?]|$)/
 const ALIBABA_ID_RE = /_(\d{6,})\.html/
 
@@ -290,7 +318,10 @@ export function parseProximityCards(
         image = findFirstImage(windowHtml, baseUrl)
       }
       if (!money) {
-        money = parseMoney(stripTags(windowHtml))
+        // Prefer Amazon's split price spans: on a no-JS fetch parseMoney would
+        // read "$ 9 . 99" and drop the cents, so reconstruct it exactly first,
+        // then fall back to the generic text price (Alibaba, rendered pages).
+        money = parseSplitPriceSpans(windowHtml) ?? parseMoney(stripTags(windowHtml))
       }
     }
 

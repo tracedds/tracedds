@@ -26,6 +26,15 @@ describe("resolveScraperTemplate", () => {
   it("returns empty string when nothing is configured", () => {
     expect(resolveScraperTemplate("amazon", {} as NodeJS.ProcessEnv)).toBe("")
   })
+
+  it("treats 'direct' as a free fetch and ignores the shared template", () => {
+    expect(
+      resolveScraperTemplate("amazon", {
+        MARKETPLACE_SCRAPER_URL: "https://shared/?url={url}",
+        MARKETPLACE_SCRAPER_URL_AMAZON: "direct",
+      } as NodeJS.ProcessEnv)
+    ).toBe("")
+  })
 })
 
 describe("detectAntiBot", () => {

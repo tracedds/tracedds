@@ -77,6 +77,12 @@ export function resolveScraperTemplate(
 ): string {
   const key = `MARKETPLACE_SCRAPER_URL_${providerId.toUpperCase()}`
   const perProvider = env[key]?.trim()
+  // An explicit "direct" (or "none") forces a free, no-proxy fetch and does NOT
+  // fall back to the shared MARKETPLACE_SCRAPER_URL — so e.g. Amazon can be
+  // fetched free from a US IP (the NUC) while a paid proxy stays set for Alibaba.
+  if (perProvider && /^(direct|none)$/i.test(perProvider)) {
+    return ""
+  }
   return perProvider || env.MARKETPLACE_SCRAPER_URL?.trim() || ""
 }
 
