@@ -561,8 +561,8 @@ export default function Home() {
   // status. listStage only promotes the pill to "review" while every item is
   // reviewed — the derivation, not the stored flag, is the source of truth.
   const liveListStatus = useMemo(
-    () => deriveListStatus(deriveMatchRows(activeDraftItems, buyingPrefs), Boolean(currentHandoffId), listStage),
-    [activeDraftItems, buyingPrefs, currentHandoffId, listStage]
+    () => deriveListStatus(deriveMatchRows(activeDraftItems, buyingPrefs), Boolean(currentHandoffId), listStage, submittedSuppliers),
+    [activeDraftItems, buyingPrefs, currentHandoffId, listStage, submittedSuppliers]
   );
 
   // Auto-revert to "draft" if the list empties out while in "review" (e.g. every
@@ -1001,7 +1001,7 @@ export default function Home() {
       suppliers: totals.suppliers,
       total: money.format(totals.landedTotal),
       // Final lifecycle status + the handoff it was tied to, for the History pill.
-      status: deriveListStatus(rows, Boolean(currentHandoffId), listStage),
+      status: deriveListStatus(rows, Boolean(currentHandoffId), listStage, submittedSuppliers),
       handoffId: currentHandoffId,
       rows,
       // Raw inputs so Duplicate can rebuild a working, visible list (items are
@@ -1131,7 +1131,11 @@ export default function Home() {
   // Unlock a submitted order so its items can be edited again — the only way out
   // of the locked state.
   function reopenSupplierOrder(supplier) {
-    setSubmittedSuppliers((list) => list.filter((name) => name !== supplier));
+    const remaining = submittedSuppliers.filter((name) => name !== supplier);
+    setSubmittedSuppliers(remaining);
+    // Undoing the last submitted order takes the whole list back to Draft so the
+    // buyer reworks it from scratch, rather than landing back in Review.
+    if (!remaining.length) setListStage("draft");
     showToast(`Reopened ${supplier} — order no longer marked submitted`);
   }
 
