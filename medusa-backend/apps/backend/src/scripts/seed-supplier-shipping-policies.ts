@@ -47,6 +47,12 @@ const PUBLISHED_POLICIES: Policy[] = [
     flat_shipping_cents: 800,
     shipping_policy_notes:
       "Published policy: $8 minimum handling fee includes shipping (dcdental.com/terms-conditions, retrieved 2026-06-19).",
+    // Single Windsor Mill, MD distribution center → per-destination ground estimate.
+    order_cutoff_local: "15:00 ET",
+    ships_same_day: true,
+    dist_center_zips: "21244",
+    shipping_time_notes:
+      "Same-day shipping on orders placed by 3pm ET; ships from the Windsor Mill, MD distribution center (dcdental.com/warehouse, retrieved 2026-06-22).",
   },
   {
     slug: "carolina-dental-supply",
@@ -54,6 +60,11 @@ const PUBLISHED_POLICIES: Policy[] = [
     flat_shipping_cents: null,
     shipping_policy_notes:
       "Published policy: free standard shipping on US orders over $250; under $250 calculated at checkout (carolinadental.com/policies/shipping-policy, retrieved 2026-06-19).",
+    // Single High Point, NC location → per-destination ground estimate.
+    ships_same_day: true,
+    dist_center_zips: "27260",
+    shipping_time_notes:
+      "Same-day shipping on in-stock orders; ships from High Point, NC (carolinadental.com, retrieved 2026-06-22).",
   },
   {
     slug: "darby-dental",
