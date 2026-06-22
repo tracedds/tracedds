@@ -152,24 +152,121 @@ function DesktopScanTray({ result, onNavigate }) {
   );
 }
 
-// Scan workspace as a modal: a live desktop camera on the left, and a tray on
-// the right that reflects the item just scanned (added to the list on the spot).
-export function ScanModal({ onScan, scanResult, scanCount = 0, onNavigate, onClose }) {
+// Phone-handoff QR: encodes the absolute /app/scan URL so the buyer can point
+// their phone's camera at it and run the scanner there (where the camera is far
+// better than a desktop webcam). Rendered with @zxing/library — already a
+// dependency for reading barcodes — and lazy-loaded so it stays out of the
+// initial bundle. Black modules on a forced-white card so it scans in any theme.
+function ScanHandoffQr({ url }) {
+  const ref = useRef(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!url) return;
+    let alive = true;
+    (async () => {
+      try {
+        const { BrowserQRCodeSvgWriter, EncodeHintType } = await import("@zxing/library");
+        if (!alive || !ref.current) return;
+        const hints = new Map();
+        hints.set(EncodeHintType.ERROR_CORRECTION, "M");
+        hints.set(EncodeHintType.MARGIN, 1);
+        const svg = new BrowserQRCodeSvgWriter().write(url, 240, 240, hints);
+        const size = svg.getAttribute("width") || 240;
+        svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+        svg.setAttribute("class", "scan-qr-svg");
+        ref.current.replaceChildren(svg);
+      } catch {
+        if (alive) setFailed(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [url]);
+
+  if (failed) {
+    return <p className="scan-qr-fallback">Couldn&rsquo;t render the code. Open <strong>{url}</strong> on your phone.</p>;
+  }
+  return <div className="scan-qr-canvas" ref={ref} role="img" aria-label="QR code — scan it with your phone to open the barcode scanner" />;
+}
+
+// Scan workspace as a modal. Desktop default: a QR code that hands scanning off
+// to the buyer's phone — they point a phone camera at it to open /app/scan and
+// scan there; items sync back to this list (server-side, last-write-wins), so
+// we poll while it's open to surface them live. A "use this computer's camera"
+// fallback keeps the old webcam scanner one tap away.
+export function ScanModal({ onScan, scanResult, scanCount = 0, itemCount = 0, onNavigate, onRefresh, onClose }) {
+  const [mode, setMode] = useState("qr"); // "qr" = phone handoff | "camera" = desktop webcam
+  const baselineRef = useRef(itemCount);
+  const scanUrl = typeof window !== "undefined" ? `${window.location.origin}/app/scan` : "";
+  // Items that have landed on the list since the QR was opened — these arrive
+  // from the paired phone session, pulled in by the poll below.
+  const phoneAdds = Math.max(0, itemCount - baselineRef.current);
+
+  // While the handoff QR is shown, pull the practice's server list on an
+  // interval so items scanned on the phone (a separate, last-write-wins synced
+  // session) appear on this screen without a manual refresh.
+  useEffect(() => {
+    if (mode !== "qr" || !onRefresh) return;
+    const id = window.setInterval(() => { onRefresh(); }, 3000);
+    return () => window.clearInterval(id);
+  }, [mode, onRefresh]);
+
   return (
     <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="scanModalTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="crl-modal crl-modal--scan">
+      <div className={`crl-modal ${mode === "camera" ? "crl-modal--scan" : "crl-modal--scanqr"}`}>
         <header className="crl-modal-head">
           <div>
-            <h3 id="scanModalTitle">Scan barcode</h3>
-            <p>Point an item barcode at your camera. Each match is added to your reorder list automatically.</p>
+            <h3 id="scanModalTitle">{mode === "camera" ? "Scan barcode" : "Scan with your phone"}</h3>
+            <p>
+              {mode === "camera"
+                ? "Point an item barcode at your camera. Each match is added to your reorder list automatically."
+                : "Point your phone’s camera at the code to open the scanner. Items you scan are added to this list automatically."}
+            </p>
           </div>
           <button className="crl-modal-close" type="button" aria-label="Close" onClick={onClose}><Icon name="icon-x" className="button-icon" /></button>
         </header>
-        <div className="crl-modal-body crl-modal-body--scan">
-          <DesktopBarcodeScan onScan={onScan} scanResult={scanResult} onNavigate={onNavigate} />
-        </div>
+
+        {mode === "qr" ? (
+          <div className="crl-modal-body scan-qr">
+            <div className="scan-qr-code">
+              <ScanHandoffQr url={scanUrl} />
+            </div>
+            <div className="scan-qr-side">
+              <ol className="scan-qr-steps">
+                <li><span>1</span> Open your phone&rsquo;s camera and point it at the code.</li>
+                <li><span>2</span> Tap the link it shows &mdash; sign in on your phone if asked.</li>
+                <li><span>3</span> Scan each item&rsquo;s barcode; matches land on this list automatically.</li>
+              </ol>
+              <div className={`scan-qr-status ${phoneAdds > 0 ? "active" : ""}`}>
+                <span className="scan-qr-dot" aria-hidden="true" />
+                {phoneAdds > 0
+                  ? `${phoneAdds} item${phoneAdds === 1 ? "" : "s"} added from your phone`
+                  : "Waiting for scans from your phone…"}
+              </div>
+              <button type="button" className="scan-qr-camera-link" onClick={() => setMode("camera")}>
+                <Icon name="icon-scan" className="button-icon" />
+                Use this computer&rsquo;s camera instead
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="crl-modal-body crl-modal-body--scan">
+            <DesktopBarcodeScan onScan={onScan} scanResult={scanResult} onNavigate={onNavigate} />
+          </div>
+        )}
+
         <footer className="crl-modal-foot">
-          <span className="crl-scan-count">{scanCount > 0 ? `${scanCount} item${scanCount === 1 ? "" : "s"} scanned` : "No items scanned yet"}</span>
+          {mode === "camera" ? (
+            <button type="button" className="scan-qr-back" onClick={() => setMode("qr")}>
+              <Icon name="icon-chevron-left" className="button-icon" />Scan with phone
+            </button>
+          ) : null}
+          <span className="crl-scan-count">
+            {mode === "camera"
+              ? (scanCount > 0 ? `${scanCount} item${scanCount === 1 ? "" : "s"} scanned` : "No items scanned yet")
+              : (phoneAdds > 0 ? `${phoneAdds} item${phoneAdds === 1 ? "" : "s"} added` : "Items appear here as you scan")}
+          </span>
           <button className="primary-action compact" type="button" onClick={onClose}>Done</button>
         </footer>
       </div>
@@ -1490,6 +1587,8 @@ export function CurrentReorderList({
           onScan={onScan}
           scanResult={scanResult}
           scanCount={scanCount}
+          itemCount={totalItems}
+          onRefresh={onRefresh}
           onNavigate={onNavigate}
           onClose={() => { onAddMode(""); onClearScanResult?.(); }}
         />
