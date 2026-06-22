@@ -8912,7 +8912,11 @@ th {
    mode (.detail-wide) keeps filling. */
 .crl-layout.has-detail:not(.detail-wide) { max-width: 1829px; }
 
-.crl-detail { position: static; display: flex; flex-direction: column; max-height: clamp(370px, calc(100vh - 170px), 770px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+/* Sticky like .crl-rail so the match drawer follows the scroll. On the review
+   page the stacked per-supplier tables make the page tall; without this the
+   statically-placed drawer scrolls out of view. top:26px matches the rail and
+   the .app-main top padding. Reset to static on mobile below (≤1080px). */
+.crl-detail { position: sticky; top: 26px; display: flex; flex-direction: column; max-height: clamp(370px, calc(100vh - 170px), 770px); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
 
 .crl-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 18px 16px; border-bottom: 1px solid var(--line); }
 .crl-drawer-title { display: flex; align-items: flex-start; gap: 10px; }
