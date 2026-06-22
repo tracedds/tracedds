@@ -143,6 +143,7 @@ def build_marketplace_dag(marketplace: dict[str, str]) -> DAG:
         schedule=schedule,
         catchup=False,
         max_active_runs=1,
+        is_paused_upon_creation=True,
         tags=["medmkp", "marketplace-ingestion", marketplace["provider"]],
     ) as dag:
         ingest = BashOperator(
