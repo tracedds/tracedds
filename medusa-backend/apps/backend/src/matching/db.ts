@@ -62,6 +62,26 @@ function mostCommon(values: string[]): string {
   return best
 }
 
+// "Dental supplies" is the catch-all that Patterson and the marketplace default
+// stamp on otherwise-uncategorized products (it is the single most common
+// category in the catalog). Treat it (and empty) as a fallback only.
+const GENERIC_CATEGORIES = new Set(["", "dental supplies"])
+
+/**
+ * Choose a canonical's category from its members' supplier categories,
+ * preferring a specific one over the generic catch-all: a specific category on
+ * any member wins even when the catch-all is more numerous. Without this, the
+ * same product's size variants land on different categories purely because the
+ * specific-vs-catch-all member ratio differs per size (e.g. Nitrile Utility
+ * Gloves: "Gloves" on Small but "Dental supplies" on the others).
+ */
+export function pickCategory(categories: string[]): string {
+  const specific = categories.filter(
+    (category) => !GENERIC_CATEGORIES.has(category.trim().toLowerCase())
+  )
+  return specific.length ? mostCommon(specific) : mostCommon(categories)
+}
+
 export async function batchInsert(
   client: Client,
   table: string,
@@ -112,9 +132,32 @@ export async function commitMatchRun(client: Client, result: MatchRunResult): Pr
     )
     await client.query(`DELETE FROM medmkp_canonical_product WHERE id LIKE 'mcp_auto_%'`)
 
+    // Family-wide category consensus: all variants of one product (e.g. every
+    // glove size) must share a category, so aggregate every member's category
+    // across the family's clusters and pick once.
+    const familyCategoryMembers = new Map<string, string[]>()
+    for (const cluster of result.clusters) {
+      const family = result.families.get(cluster.key)
+      if (!family) {
+        continue
+      }
+      const list = familyCategoryMembers.get(family.familyId) ?? []
+      for (const member of cluster.members) {
+        list.push(member.row.category)
+      }
+      familyCategoryMembers.set(family.familyId, list)
+    }
+    const familyCategory = new Map<string, string>()
+    for (const [familyId, categories] of familyCategoryMembers) {
+      familyCategory.set(familyId, pickCategory(categories))
+    }
+
     const canonicalRows = result.clusters.map((cluster) => {
       const rep = cluster.representative
       const family = result.families.get(cluster.key) ?? null
+      const category = family
+        ? familyCategory.get(family.familyId)!
+        : pickCategory(cluster.members.map((m) => m.row.category))
       const attributes = {
         brands: [...new Set(cluster.members.map((m) => m.row.brand).filter(Boolean))],
         manufacturer_skus: [...new Set(cluster.members.map((m) => m.row.manufacturer_sku).filter(Boolean))],
@@ -130,7 +173,7 @@ export async function commitMatchRun(client: Client, result: MatchRunResult): Pr
         canonicalId(cluster),
         `auto-${slugify(rep.row.name)}-${cluster.key.toString(36)}`,
         rep.row.name,
-        mostCommon(cluster.members.map((m) => m.row.category)),
+        category,
         "",
         mostCommon(cluster.members.map((m) => m.row.unit_of_measure)),
         JSON.stringify(attributes),
