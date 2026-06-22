@@ -8,10 +8,10 @@ import { model } from "@medusajs/framework/utils"
 // missing lot or expiration) is derived in the API, not stored.
 const InventoryItem = model.define("medmkp_inventory_item", {
   id: model.id({ prefix: "inv" }).primaryKey(),
-  location_id: model.text().searchable(),
+  location_id: model.text(),
   canonical_product_id: model.text().nullable(),
   supplier_product_id: model.text().nullable(),
-  name: model.text().searchable(),
+  name: model.text(),
   quantity_on_hand: model.number().default(0),
   par_level: model.number().nullable(),
   shelf_area: model.text().nullable(),

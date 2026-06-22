@@ -9,8 +9,8 @@ import { model } from "@medusajs/framework/utils"
 // (validated at the API layer, stored as text for forward flexibility).
 const Location = model.define("medmkp_location", {
   id: model.id({ prefix: "loc" }).primaryKey(),
-  practice_id: model.text().searchable(),
-  name: model.text().searchable(),
+  practice_id: model.text(),
+  name: model.text(),
   type: model.text(),
   qr_code: model.text().unique(),
   layout_x: model.number().nullable(),
