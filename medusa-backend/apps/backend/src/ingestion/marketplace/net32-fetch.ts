@@ -5,7 +5,11 @@ import type {
 } from "./types"
 
 const DEFAULT_SIDECAR_URL = "http://127.0.0.1:8791"
-const DEFAULT_TIMEOUT_MS = 60000
+// A Net32 browser search (navigate + clear challenge + getBestPrice) routinely
+// takes 20-35s. The marketplace CLI defaults --timeout-ms to 20s (fine for proxy
+// fetches), which would abort legitimate Net32 searches — so this fetcher floors
+// the timeout at this value regardless of what the caller passes.
+const DEFAULT_TIMEOUT_MS = 90000
 
 export type Net32SidecarOptions = {
   /** Base URL of the net32-harvester sidecar (NUC, headful Chromium under xvfb). */
@@ -60,9 +64,11 @@ export function createNet32SidecarFetcher(
     const sidecar = `${baseUrl}/search?q=${encodeURIComponent(query)}&max=${maxResults}`
 
     const controller = new AbortController()
+    // Floor (don't just default) the timeout: a caller passing a short timeout
+    // (the CLI's 20s) must not abort a legitimately-slow browser search.
     const timer = setTimeout(
       () => controller.abort(),
-      fetchOptions.timeoutMs ?? defaultTimeoutMs
+      Math.max(fetchOptions.timeoutMs ?? 0, defaultTimeoutMs)
     )
 
     try {
