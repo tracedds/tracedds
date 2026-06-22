@@ -8804,8 +8804,10 @@ th {
 .crl-price-h { display: inline-flex; align-items: center; gap: 5px; }
 .crl-price-h .button-icon { width: 14px; height: 14px; }
 
-.crl-item { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
-.crl-item .crl-thumb { width: 64px; height: 64px; }
+.crl-item { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; }
+.crl-item .crl-thumb { width: 56px; height: 56px; border: none; background: transparent; }
+.crl-item .crl-thumb.crl-thumb-empty { background: var(--surface-2); }
+.crl-item .crl-thumb img { padding: 0; }
 .crl-thumb { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); overflow: hidden; }
 .crl-thumb-empty { background: var(--surface-2); }
 .crl-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
