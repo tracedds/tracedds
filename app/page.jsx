@@ -875,11 +875,35 @@ export default function Home() {
     setDraftItems((items) => items.map((item) => (item.id === id ? { ...item, included: false } : item)));
   }
 
+  // Push any debounced (not-yet-sent) save immediately and wait for it to land.
+  // refreshFromServer unions the server list over local and takes the server's
+  // copy for shared items; if a local edit (e.g. a just-trashed item set to
+  // included:false) is still inside the 800ms save debounce, the server holds
+  // the stale included:true copy and the union would resurrect it. Flushing
+  // first makes the server reflect local edits before we read it back.
+  async function flushPendingSave() {
+    if (!pendingSaveRef.current || !latestBlobRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    pendingSaveRef.current = false;
+    try {
+      await fetch("/api/reorder-list", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(latestBlobRef.current),
+      });
+    } catch {
+      // offline — server stays stale; the refresh below keeps current state.
+    }
+  }
+
   // Pull the practice's latest list from the server on demand — lets a buyer at
   // their desk see items just scanned on a phone (the list is last-write-wins
   // synced, so a manual refresh is the safe way to merge in cross-device work).
   async function refreshFromServer() {
     if (authed !== true) return;
+    // Persist local edits (deletes, qty/offer changes) before reading the server
+    // back, else the union below would overwrite them with the server's stale copy.
+    await flushPendingSave();
     try {
       const response = await fetch("/api/reorder-list", { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
