@@ -1,0 +1,13 @@
+{
+  "name": "medmkp-net32-harvester",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Net32 ingestion sidecar: a long-lived headful (xvfb) Chromium on the NUC that clears Cloudflare and drives Net32's /rest/neo JSON API (getBestPrice). The Medusa backend's net32 marketplace fetcher calls it over localhost, so Playwright never ships in the Render backend.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

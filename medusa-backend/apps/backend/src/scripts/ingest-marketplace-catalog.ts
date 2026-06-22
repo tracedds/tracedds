@@ -4,6 +4,7 @@ import {
   createMarketplaceFetcher,
   resolveScraperTemplate,
 } from "../ingestion/marketplace/fetch"
+import { createNet32SidecarFetcher } from "../ingestion/marketplace/net32-fetch"
 import { buildMarketplaceIngestion } from "../ingestion/marketplace/persist"
 import {
   reconcileSupplierCatalog,
@@ -278,7 +279,7 @@ export default async function ingestMarketplaceCatalog({
   // so prefer a provider-specific MARKETPLACE_SCRAPER_URL_<PROVIDER> over the
   // shared one. The DAG runs each provider as its own task off the same env file.
   const scraperTemplate = resolveScraperTemplate(provider.id)
-  if (!scraperTemplate) {
+  if (!scraperTemplate && provider.id !== "net32") {
     console.log(
       `[marketplace-ingestion] NOTE: no scraper template for ${provider.id} ` +
         `(set MARKETPLACE_SCRAPER_URL_${provider.id.toUpperCase()} or MARKETPLACE_SCRAPER_URL) — ` +
@@ -299,7 +300,12 @@ export default async function ingestMarketplaceCatalog({
     )
   }
 
-  const fetcher = createMarketplaceFetcher({ scraperUrlTemplate: scraperTemplate })
+  // Net32 is Cloudflare-fronted with a POST pricing API, so it's fetched via the
+  // net32-harvester browser sidecar (NUC) rather than the proxy/URL-template seam.
+  const fetcher =
+    provider.id === "net32"
+      ? createNet32SidecarFetcher()
+      : createMarketplaceFetcher({ scraperUrlTemplate: scraperTemplate })
   const startedAt = Date.now()
   const progress = { done: 0, listings: 0, blocked: 0, errored: 0, withResults: 0 }
   const searches: SearchCanonicalResult[] = await mapWithConcurrency(
