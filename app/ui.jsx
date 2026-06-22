@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Icon } from "./icons";
-import { CRL_STATUS, LIST_STATUS, STRATEGY_LABELS, SUBSTITUTION_LABELS, availabilityBadge, candidateSub, cap, formatNeedBy, mrEa, mrMoney, mrPriceLabel, supplierInitials, supplierLogoSrc } from "./lib";
+import { CRL_STATUS, LIST_STATUS, STRATEGY_LABELS, SUBSTITUTION_LABELS, availabilityBadge, candidateSub, cap, formatNeedBy, listingNameDiffers, mrEa, mrMoney, mrPriceLabel, supplierInitials, supplierLogoSrc } from "./lib";
 
 export function useBarcodeScanner({ active, onScan }) {
   const videoRef = useRef(null);
@@ -314,28 +314,39 @@ export function CandidateSub({ supplier, sub }) {
   );
 }
 
-// Candidate product name. When the offer carries a supplier product URL, the
-// name links out to the supplier's store (new tab) so the buyer can inspect the
-// real listing. stopPropagation keeps the click from toggling the radio.
+// Supplier-led candidate label. The canonical product name is the single
+// headline shown above the offer list, so each row leads with the supplier
+// (logo + name) rather than repeating a near-identical listing title. We surface
+// the supplier's own title only as a muted "Listed as:" when it meaningfully
+// differs from the canonical name — that divergence is the buyer's signal to
+// double-check the match. When the offer carries a product URL, the supplier
+// links out to its store (new tab); stopPropagation keeps the click from
+// toggling the radio.
 
-export function CandidateName({ name, productUrl }) {
+export function CandidateName({ supplier, name, canonicalName, productUrl }) {
+  const logo = supplierLogoSrc(supplier);
+  const listedAs = listingNameDiffers(canonicalName, name) ? name : null;
   return (
-    <span className="crl-cand-name">
-      <strong>{name}</strong>
-      {productUrl && (
-        <a
-          className="crl-cand-name-link"
-          href={productUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => event.stopPropagation()}
-          aria-label="View on supplier store"
-          title="View on supplier store"
-        >
-          <Icon name="icon-link" className="button-icon" />
-        </a>
-      )}
-    </span>
+    <>
+      <span className="crl-cand-name">
+        {logo && <img className="crl-cand-supplier-logo" src={logo} alt="" />}
+        <strong>{supplier || name}</strong>
+        {productUrl && (
+          <a
+            className="crl-cand-name-link"
+            href={productUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            aria-label="View on supplier store"
+            title="View on supplier store"
+          >
+            <Icon name="icon-link" className="button-icon" />
+          </a>
+        )}
+      </span>
+      {listedAs && <small className="crl-cand-listed">Listed as: {listedAs}</small>}
+    </>
   );
 }
 
