@@ -54,26 +54,14 @@ async function loadCategories(limit: number): Promise<CategoriesResponse> {
   // (/medmkp/canonical-products?category=) lists deduped, family-grouped
   // canonical products that have at least one priced offer. Showing the SKU
   // count on the landing made the two pages disagree wildly (Laboratory read
-  // 1,577 SKUs but only 84 browsable products). Count those priced canonical
-  // families per category here — the same set, counted the same way as the
-  // drill-down query — so the landing and the drill-down always agree.
+  // 1,577 SKUs but only 84 browsable products). The priced canonical-family
+  // count per category — the same set, counted the same way as the drill-down
+  // query — is precomputed in the medmkp_category_priced_count read model
+  // (refreshed by refresh-catalog-read-models). Computing it live here meant a
+  // join over the full match + current-price tables on every request, which at
+  // prod's tiny work_mem spilled to disk and timed out the catalog landing.
   const pricedCounts = await pool.query<{ category: string; product_count: number }>(
-    `WITH cat AS (
-       SELECT id, lower(btrim(category)) AS catkey, COALESCE(family_id, id) AS grp
-       FROM medmkp_canonical_product
-       WHERE category <> '' AND deleted_at IS NULL
-     ),
-     priced AS (
-       SELECT DISTINCT cat.catkey, cat.grp
-       FROM medmkp_canonical_product_match m
-       JOIN medmkp_supplier_current_price cp
-         ON cp.supplier_product_id = m.supplier_product_id
-       JOIN cat ON cat.id = m.canonical_product_id
-       WHERE m.match_status <> 'unmatched' AND m.deleted_at IS NULL
-     )
-     SELECT catkey AS category, COUNT(*)::int AS product_count
-     FROM priced
-     GROUP BY catkey`
+    `SELECT category, product_count FROM medmkp_category_priced_count`
   )
   const pricedByCategory = new Map(
     pricedCounts.rows.map((row) => [row.category, Number(row.product_count)])
