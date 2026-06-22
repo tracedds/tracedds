@@ -8990,6 +8990,8 @@ th {
 .crl-cand-info strong { display: block; color: var(--ink); font-size: 13px; }
 .crl-cand-info small { display: block; margin-top: 1px; color: var(--muted); font-size: 12px; }
 .crl-cand-supplier-logo { height: 13px; width: auto; max-width: 46px; object-fit: contain; vertical-align: -2px; margin-right: 4px; border-radius: 2px; }
+.crl-cand-listed { font-style: italic; }
+.m-match-info .crl-cand-listed { font-style: italic; }
 .crl-cand-right { text-align: right; }
 .crl-cand-right strong { display: block; color: var(--ink); font-size: 13px; }
 .crl-cand-per { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }

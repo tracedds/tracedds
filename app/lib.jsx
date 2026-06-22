@@ -1147,6 +1147,33 @@ export function candidateSub(supplier, sub) {
   return [supplier, sub].filter(Boolean).join(" · ");
 }
 
+// True when a supplier's own listing title says something meaningfully different
+// from the canonical product name — beyond case, punctuation, word order, and
+// pack-size wording (counts and unit words already live in the SKU/pack line).
+// Drives a muted "Listed as:" hint shown only when it carries real verification
+// signal, so identical-after-normalization names don't repeat as noise.
+const PACK_WORDS = new Set(["box", "bx", "boxes", "bag", "bags", "pack", "packs", "pk", "pkg", "case", "cs", "ea", "each", "ct", "count", "pc", "pcs", "piece", "pieces", "set", "sets", "of", "per", "x", "ml", "l", "mm", "cm", "g", "gm", "gr", "oz", "mg", "kg", "in", "ft", "gauge", "ga"]);
+function nameTokens(value) {
+  return new Set(
+    String(value || "").toLowerCase()
+      // split counts/units glued to a number ("5ml", "160ct") but keep
+      // letter+digit codes intact ("A2", "A3.5") so shade/size stays a signal.
+      .replace(/(\d)([a-z])/g, "$1 $2")
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .filter((token) => token && !/^\d+$/.test(token) && !PACK_WORDS.has(token))
+  );
+}
+export function listingNameDiffers(canonical, listing) {
+  if (!canonical || !listing) return false;
+  const a = nameTokens(canonical);
+  const b = nameTokens(listing);
+  if (!a.size || !b.size) return false;
+  for (const token of a) if (!b.has(token)) return true;
+  for (const token of b) if (!a.has(token)) return true;
+  return false;
+}
+
 // Supplier + SKU sub-line for offer candidates in the match drawer, prefixed
 // with the supplier's small logo when we have one.
 
@@ -1183,7 +1210,7 @@ export function offerCandidates(row) {
   }));
   if (fromOffers.length) return fromOffers;
   if (row.matchName) {
-    return [{ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" }];
+    return [{ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, packLabel: row.packLabel, price: row.price, perEa: row.perEa, image: row.image, recommended: true, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" }];
   }
   return [];
 }
