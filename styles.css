@@ -113,7 +113,7 @@ p {
 
 .brand-mark {
   display: block;
-  width: 132px;
+  width: 164px;
   height: auto;
   flex: 0 0 auto;
 }
@@ -201,6 +201,31 @@ p {
   color: var(--blue);
 }
 
+/* "Soon" rail items: visible roadmap stubs for unbuilt TraceDDS surfaces.
+   Muted, non-interactive, with a small badge that hides when the rail collapses. */
+.nav-tab-soon {
+  position: relative;
+  color: #9aa6bb;
+  cursor: default;
+}
+.nav-tab-soon .nav-icon {
+  color: #b6bfce;
+}
+.nav-soon-badge {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef1f6;
+  color: #8a93a6;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 /* Collapse toggle lives at the very bottom of the rail as a quiet utility — not
    in the nav's prime real estate. Collapsing shrinks the sidebar to a narrow
    icon-only rail rather than hiding it. */
@@ -254,6 +279,10 @@ p {
   }
 
   .app-shell.nav-collapsed .nav-tab strong {
+    display: none;
+  }
+
+  .app-shell.nav-collapsed .nav-soon-badge {
     display: none;
   }
 
@@ -361,7 +390,7 @@ p {
 }
 
 .landing-brand .brand-mark {
-  width: 140px;
+  width: 174px;
   height: auto;
 }
 
@@ -6088,7 +6117,7 @@ th {
   }
 
   .landing-brand .brand-mark {
-    width: 118px;
+    width: 146px;
     height: auto;
   }
 
@@ -8293,7 +8322,7 @@ th {
   background: var(--surface);
 }
 .topbar-brand { display: flex; align-items: center; flex: 0 0 auto; padding: 0; border: 0; background: none; }
-.topbar-brand .brand-mark { width: 118px; }
+.topbar-brand .brand-mark { width: 146px; }
 .topbar-right { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; }
 
 .topbar-search { flex: 1 1 auto; max-width: 480px; margin: 0 auto; display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 10px 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
@@ -9144,7 +9173,7 @@ th {
 .m-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font: inherit; font-size: 15px; color: var(--ink); }
 .m-search-wrap { position: relative; }
 .m-search-wrap .search-results { position: absolute; top: calc(100% + 8px); left: 0; right: 0; width: auto; max-width: none; z-index: 30; }
-.m-brandbar .brand-mark { width: 112px; }
+.m-brandbar .brand-mark { width: 139px; }
 .m-iconbtn .m-brand-badge { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 2px solid var(--surface); border-radius: 999px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; }
 
 /* Account avatar sits to the right of the alerts bell in the mobile top bar:

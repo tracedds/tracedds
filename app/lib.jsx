@@ -1421,7 +1421,7 @@ export const SETTINGS_TABS = [
 
 export const SETTINGS_TAB_STUBS = {
   users: { icon: "icon-users", title: "Team & users", body: "Invite teammates, assign buyer or approver roles, and manage who can place orders for your practice." },
-  billing: { icon: "icon-credit-card", title: "Billing & payment", body: "Manage payment methods, billing contacts, and download invoices for your MedMKP subscription." },
+  billing: { icon: "icon-credit-card", title: "Billing & payment", body: "Manage payment methods, billing contacts, and download invoices for your TraceDDS subscription." },
   notifications: { icon: "icon-bell", title: "Notifications", body: "Choose which emails and alerts you receive. Order-related email toggles live under Profile → Preferences for now." },
   integrations: { icon: "icon-plug", title: "Integrations", body: "Connect your practice-management system and accounting tools to sync orders and invoices automatically." },
   security: { icon: "icon-shield-check", title: "Security", body: "Two-factor authentication, active sessions, and audit history. Password changes live under Profile → Change password." },

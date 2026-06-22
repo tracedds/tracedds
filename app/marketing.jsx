@@ -161,7 +161,7 @@ export function LoggedOutLanding({ onNavigate, authed = false }) {
   return (
     <main className="landing-page">
       <header className="landing-nav">
-        <a className="landing-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="MedMKP home">
+        <a className="landing-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="TraceDDS home">
           <BrandMark />
         </a>
         <nav aria-label="Landing navigation">
@@ -183,8 +183,8 @@ export function LoggedOutLanding({ onNavigate, authed = false }) {
 
       <section className="landing-main">
         <div className="landing-copy">
-          <h1>Scan your dental supplies and spot <span>possible savings</span> in seconds</h1>
-          <p>Point your phone at a barcode or enter a SKU to identify the item, compare typical price ranges, and save it to a free starter reorder list. No login required to try it.</p>
+          <h1>Scan your shelves. Trace every supply from <span>cabinet to audit</span>.</h1>
+          <p>TraceDDS turns a quick barcode scan into a live inventory for your practice — what&rsquo;s on hand, what&rsquo;s running low, and what&rsquo;s about to expire. Lot numbers and SDS/IFU proof stay audit-ready. And it flags where you&rsquo;re overpaying.</p>
           <div className="landing-actions">
             <button className="primary-action" type="button" onClick={() => onNavigate(authed ? "/app" : "/scan")}>
               <Icon name="icon-scan" className="button-icon" />
@@ -192,13 +192,13 @@ export function LoggedOutLanding({ onNavigate, authed = false }) {
             </button>
             <button className="secondary-action" type="button" onClick={() => onNavigate("/sample")}>
               <Icon name="icon-play" className="button-icon" />
-              See sample result
+              See a sample report
             </button>
           </div>
           <div className="landing-assurances">
-            <span ><Icon name="icon-lock" className="button-icon" style={{ background: '#5fc08a' }} />No login</span>
-            <span><Icon name="icon-book" className="button-icon" />Dental supply catalog</span>
-            <span><Icon name="icon-bolt" className="button-icon" />Fast barcode match</span>
+            <span ><Icon name="icon-lock" className="button-icon" style={{ background: '#5fc08a' }} />No login to try</span>
+            <span><Icon name="icon-clipboard-check" className="button-icon" />Tracks lots &amp; expirations</span>
+            <span><Icon name="icon-shield-check" className="button-icon" />Built for dental audits</span>
           </div>
         </div>
 
@@ -208,38 +208,38 @@ export function LoggedOutLanding({ onNavigate, authed = false }) {
             <div className="instant-grid">
               <div>
                 <Icon name="icon-check-circle" className="landing-instant-icon green" />
-                <strong>Product match</strong>
+                <strong>Instant product match</strong>
                 <span>High confidence<br />92%</span>
               </div>
               <div>
+                <Icon name="icon-clipboard-check" className="landing-instant-icon" />
+                <strong>Lot &amp; expiration capture</strong>
+                <span>Flag expiring or expired stock</span>
+              </div>
+              <div>
+                <Icon name="icon-shield-check" className="landing-instant-icon" />
+                <strong>Compliance proof</strong>
+                <span>Link SDS &amp; IFU for audits</span>
+              </div>
+              <div>
                 <Icon name="icon-tag" className="landing-instant-icon" />
-                <strong>Typical price range</strong>
-                <span>$11.80 &ndash; $13.50<br />per bag</span>
-              </div>
-              <div>
-                <Icon name="icon-shuffle" className="landing-instant-icon" />
-                <strong>Possible lower-cost alternatives</strong>
-                <span>See 3-6 matches</span>
-              </div>
-              <div>
-                <Icon name="icon-list" className="landing-instant-icon" />
-                <strong>Starter reorder list</strong>
-                <span>Save items and build your list</span>
+                <strong>Price benchmark</strong>
+                <span>Typical range + lower-cost matches</span>
               </div>
             </div>
             <p className="landing-instant-note">
               <Icon name="icon-info" className="button-icon" />
-              Exact savings require your invoice, last paid price, or office order history. Public scan results show benchmark estimates.
+              Full inventory, compliance tracking, and exact savings unlock when you add your practice. Public scans show the product, a benchmark price, and what TraceDDS captures.
             </p>
           </div>
         </div>
 
         <div className="landing-col-right">
           <div className="landing-cta">
-            <h2>Want office-specific savings?</h2>
+            <h2>Turn one scan into your whole practice</h2>
             <div className="landing-cta-body">
               <div>
-                <p>Upload one invoice or tell us your last paid price to unlock exact savings comparisons, reorder memory, and supplier-aware recommendations.</p>
+                <p>Add your office to build a live inventory across every operatory and cabinet — par levels that reorder before you run out, lot and expiration tracking, and an audit binder that&rsquo;s always current. Savings comparisons come standard.</p>
                 <div className="landing-actions">
                   <button className="primary-action" type="button" onClick={() => onNavigate("/signup")}>
                     <Icon name="icon-cloud-upload" className="button-icon" />
@@ -262,22 +262,22 @@ export function LoggedOutLanding({ onNavigate, authed = false }) {
             <article>
               <span className="landing-step-number">1</span>
               <Icon name="icon-scan" className="landing-step-icon" />
-              <strong>Scan a barcode</strong>
-              <p>Use your phone camera to scan any product barcode.</p>
+              <strong>Scan a shelf</strong>
+              <p>Point your phone at any barcode. We identify the item and capture its lot and expiration.</p>
             </article>
             <Icon name="icon-arrow-right" className="landing-step-arrow" />
             <article>
               <span className="landing-step-number">2</span>
-              <Icon name="icon-chart" className="landing-step-icon" />
-              <strong>See the item and benchmark</strong>
-              <p>We identify the item and show typical price ranges and matches.</p>
+              <Icon name="icon-map-pin" className="landing-step-icon" />
+              <strong>Build your inventory</strong>
+              <p>Every scan lands in a location &mdash; operatory, cabinet, steri &mdash; with on-hand counts and par levels.</p>
             </article>
             <Icon name="icon-arrow-right" className="landing-step-arrow" />
             <article>
               <span className="landing-step-number">3</span>
-              <Icon name="icon-list" className="landing-step-icon" />
-              <strong>Save it or continue free</strong>
-              <p>Add it to your starter reorder list or keep scanning.</p>
+              <Icon name="icon-shield-check" className="landing-step-icon" />
+              <strong>Stay ready</strong>
+              <p>TraceDDS reorders before you run out, flags expiring stock, keeps your audit binder current &mdash; and shows where you&rsquo;re overpaying.</p>
             </article>
           </div>
         </div>
@@ -285,8 +285,8 @@ export function LoggedOutLanding({ onNavigate, authed = false }) {
 
       <footer className="trusted-strip">
         <div>
-          <span><Icon name="icon-handshake" className="button-icon" />Works with Henry Schein, Patterson, Darby, and generic barcodes</span>
-          <span><Icon name="icon-building" className="button-icon" />Built for dental offices<br /><small>Designed around how your office buys.</small></span>
+          <span><Icon name="icon-handshake" className="button-icon" />Works with Henry Schein, Patterson, Darby, Net32, and generic barcodes</span>
+          <span><Icon name="icon-building" className="button-icon" />Built for dental offices<br /><small>And the audits they have to pass.</small></span>
         </div>
       </footer>
     </main>
@@ -313,7 +313,7 @@ export function SampleReorderList({ onNavigate, authed = false }) {
   return (
     <div className="app-shell sample-shell">
       <header className="sample-topbar">
-        <button className="topbar-brand" type="button" onClick={() => onNavigate("/")} aria-label="MedMKP home">
+        <button className="topbar-brand" type="button" onClick={() => onNavigate("/")} aria-label="TraceDDS home">
           <BrandMark />
         </button>
         <span className="sample-tag">Sample reorder list — explore freely</span>
@@ -421,7 +421,7 @@ export function PublicScanView({ onScan, scanResult, onClearScanResult, freeScan
   return (
     <main className="pscan-page">
       <header className="pscan-header">
-        <button className="landing-brand" type="button" onClick={onHome} aria-label="MedMKP home">
+        <button className="landing-brand" type="button" onClick={onHome} aria-label="TraceDDS home">
           <BrandMark />
         </button>
         <div className="pscan-header-actions">
@@ -533,7 +533,7 @@ export function PublicScanView({ onScan, scanResult, onClearScanResult, freeScan
 export function PublicNav({ onNavigate, active, authed = false }) {
   return (
     <header className="landing-nav">
-      <a className="landing-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="MedMKP home">
+      <a className="landing-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="TraceDDS home">
         <BrandMark />
       </a>
       <nav aria-label="Marketing navigation">
@@ -596,8 +596,8 @@ export function AboutPage({ onNavigate, authed = false }) {
       <PublicNav onNavigate={onNavigate} active="about" authed={authed} />
       <div className="public-body">
         <section className="public-hero">
-          <h1>We help dental offices buy supplies smarter</h1>
-          <p>MedMKP turns your invoices and barcodes into a clean, matched reorder list, so you can compare prices across suppliers and reorder in minutes instead of hours.</p>
+          <h1>We help dental offices trace every supply &mdash; and stay audit-ready</h1>
+          <p>TraceDDS turns a barcode scan into a live inventory: what&rsquo;s on hand, what&rsquo;s expiring, and the lot and compliance records you need when an inspector walks in. It flags where you&rsquo;re overpaying, too.</p>
         </section>
         <section className="about-grid">
           <div><Icon name="icon-scan" className="about-icon" /><strong>Scan or upload</strong><p>Capture items by barcode, photo, or invoice upload.</p></div>
@@ -618,7 +618,7 @@ export function AuthShell({ subtitle, children, onNavigate }) {
   return (
     <main className="auth-page">
       <div className="auth-card">
-        <a className="auth-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="MedMKP home">
+        <a className="auth-brand" href="/" onClick={(event) => { event.preventDefault(); onNavigate("/"); }} aria-label="TraceDDS home">
           <BrandMark />
         </a>
         {children}
@@ -658,7 +658,7 @@ export function LoginPage({ onNavigate, onAuthed }) {
   }
 
   return (
-    <AuthShell title="Welcome back" subtitle="Sign in to your MedMKP workspace." onNavigate={onNavigate}>
+    <AuthShell title="Welcome back" subtitle="Sign in to your TraceDDS workspace." onNavigate={onNavigate}>
       <form className="auth-form" onSubmit={handleSubmit}>
         <label><span>Email</span><input type="email" placeholder="you@practice.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
         <label><span>Password</span><input type="password" placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
@@ -666,7 +666,7 @@ export function LoginPage({ onNavigate, onAuthed }) {
         <button className="primary-action" type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
       </form>
       <p className="auth-alt"><a href="/forgot-password" onClick={(event) => { event.preventDefault(); onNavigate("/forgot-password"); }}>Forgot your password?</a></p>
-      <p className="auth-alt">New to MedMKP? <a href="/signup" onClick={(event) => { event.preventDefault(); onNavigate("/signup"); }}>Create an account</a></p>
+      <p className="auth-alt">New to TraceDDS? <a href="/signup" onClick={(event) => { event.preventDefault(); onNavigate("/signup"); }}>Create an account</a></p>
     </AuthShell>
   );
 }

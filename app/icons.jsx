@@ -268,7 +268,7 @@ export function IconSprite() {
 
 export function BrandMark() {
   return (
-    <img className="brand-mark" src="/logo.svg" alt="MedMKP" />
+    <img className="brand-mark" src="/logo.svg" alt="TraceDDS" />
   );
 }
 
