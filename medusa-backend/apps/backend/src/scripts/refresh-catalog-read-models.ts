@@ -10,6 +10,10 @@ async function main() {
   const client = new Client({
     connectionString: databaseUrl,
     ssl: /localhost|127\.0\.0\.1/.test(databaseUrl) ? undefined : { rejectUnauthorized: false },
+    // Matview refreshes run for minutes against remote prod; without TCP
+    // keepalive a dropped connection leaves node-pg hanging instead of erroring.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 30000,
   })
 
   await client.connect()

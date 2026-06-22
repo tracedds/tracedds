@@ -94,6 +94,12 @@ export async function batchInsert(
 export async function commitMatchRun(client: Client, result: MatchRunResult): Promise<void> {
   await client.query("BEGIN")
   try {
+    // The prod DB is memory-starved; a parallel seq scan over the large
+    // delete/reset queries can OOM-crash it. Keep this transaction single-
+    // threaded (work_mem stays at the server default on purpose — raising it is
+    // the documented OOM trigger). Scoped to the transaction (LOCAL), so it
+    // never affects the app's sessions.
+    await client.query(`SET LOCAL max_parallel_workers_per_gather = 0`)
     await client.query(`DELETE FROM medmkp_canonical_product_match WHERE id LIKE 'mcpm_auto_%'`)
     // Reset rows the matcher wrote, plus any rows other writers (e.g. the
     // ingestion pipeline's deterministic matcher) pointed at auto canonical
