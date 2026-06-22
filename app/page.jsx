@@ -6,7 +6,7 @@ import { BrandMark, Icon, IconSprite } from "./icons";
 import { APP_STATE_KEY, DEFAULT_BUYING_PREFS, FREE_SCAN_KEY, FREE_SCAN_LIMIT, NAV_COLLAPSED_KEY, SHOPIFY_STOCK_MAX_ITEMS, SHOPIFY_STOCK_SESSION_KEY, UPLOAD_TIMEOUT_MS, applyLiveStock, buildShippingByName, computePlanTotals, deriveListStatus, deriveMatchRows, groupRowsBySupplier, isPlanIncluded, lookupScannedProduct, makeScanDraftItem, mapSearchOffer, money, newItemId, parseAttributes, pathForView, shopifyStockKey, slimHandoffRow, statusFromItem, viewFromPath } from "./lib";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, MobileBottomNav, MobileScanItemView, PricingPage, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
 import { CartBuilderModal, HistoryDetail, HistoryView, ProcurementPlanView, SupplierHandoffView } from "./procurement";
-import { CurrentReorderList } from "./reorder";
+import { CurrentReorderList, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
 import { ConfirmModal } from "./ui";
 
@@ -15,6 +15,7 @@ export default function Home() {
   const searchRef = useRef(null);
   const searchWrapRef = useRef(null);
   const userWrapRef = useRef(null);
+  const alertsWrapRef = useRef(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authed, setAuthed] = useState(null);
   const [me, setMe] = useState(null);
@@ -28,6 +29,7 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -422,10 +424,13 @@ export default function Home() {
   // like a normal UI. (A fixed backdrop alone is unreliable here because the
   // sticky/blurred topbar forms its own stacking context.)
   useEffect(() => {
-    if (!userMenuOpen && !searchTerm.trim()) return undefined;
+    if (!userMenuOpen && !alertsOpen && !searchTerm.trim()) return undefined;
     const onPointerDown = (event) => {
       if (userMenuOpen && userWrapRef.current && !userWrapRef.current.contains(event.target)) {
         setUserMenuOpen(false);
+      }
+      if (alertsOpen && alertsWrapRef.current && !alertsWrapRef.current.contains(event.target)) {
+        setAlertsOpen(false);
       }
       if (searchTerm.trim() && searchWrapRef.current && !searchWrapRef.current.contains(event.target)) {
         setSearchTerm("");
@@ -434,6 +439,7 @@ export default function Home() {
     const onKeyDown = (event) => {
       if (event.key !== "Escape") return;
       if (userMenuOpen) setUserMenuOpen(false);
+      if (alertsOpen) setAlertsOpen(false);
       if (searchTerm.trim()) setSearchTerm("");
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -442,7 +448,7 @@ export default function Home() {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [userMenuOpen, searchTerm]);
+  }, [userMenuOpen, alertsOpen, searchTerm]);
 
   // Honest progress: creep toward — but never reach — 100% while the request is
   // in flight, so the bar only completes when the server actually responds
@@ -496,7 +502,7 @@ export default function Home() {
   // Successful and failed attempts are cached for the tab session so revisiting
   // either view does not repeatedly hit supplier storefronts.
   useEffect(() => {
-    if (view !== "plan" && view !== "home") return undefined;
+    if (view !== "plan" && view !== "home" && view !== "savings") return undefined;
 
     if (!liveStockHydratedRef.current) {
       liveStockHydratedRef.current = true;
@@ -566,6 +572,39 @@ export default function Home() {
     () => deriveListStatus(deriveMatchRows(activeDraftItems, buyingPrefs), Boolean(currentHandoffId), listStage, submittedSuppliers),
     [activeDraftItems, buyingPrefs, currentHandoffId, listStage, submittedSuppliers]
   );
+
+  // Real alerts derived from the live list — no fabricated badge. Two honest
+  // signals we already compute per line: a selected supplier that's out of stock
+  // (urgent, listed first), and a captured "what you pay now" that the cheapest
+  // option beats (a savings opportunity). Empty list ⇒ no alerts, no badge.
+  const alerts = useMemo(() => {
+    const rows = deriveMatchRows(activePlanItems, buyingPrefs);
+    const nameOf = (row) => row.canonicalName || row.matchName || row.importedName || "Item";
+    const oos = [];
+    const drops = [];
+    for (const row of rows) {
+      if (row.outOfStock) {
+        oos.push({
+          id: `oos-${row.itemId || row.id}`,
+          type: "oos",
+          name: nameOf(row),
+          supplier: row.supplier,
+          switchTo: row.switchTarget?.supplier || null,
+        });
+      } else if (row.hasPaidPrice && row.lineSavings > 0 && row.paidUnitPrice != null) {
+        drops.push({
+          id: `drop-${row.itemId || row.id}`,
+          type: "drop",
+          name: nameOf(row),
+          supplier: row.supplier,
+          now: row.comparableUnitPrice ?? null,
+          was: row.paidUnitPrice,
+          save: row.lineSavings,
+        });
+      }
+    }
+    return [...oos, ...drops];
+  }, [activePlanItems, buyingPrefs]);
 
   // Auto-revert to "draft" if the list empties out while in "review" (e.g. every
   // item removed), so a freshly-repopulated list starts as a Draft again.
@@ -1057,7 +1096,7 @@ export default function Home() {
     }
     setConfirmDialog({
       title: "Save this list?",
-      body: "The current reorder list will be saved to Saved lists and a fresh, empty list will start. You can reopen or duplicate a saved list any time.",
+      body: "The current reorder list will be saved to History and a fresh, empty list will start. You can reopen or duplicate a saved list any time.",
       confirmLabel: "Save list",
       onConfirm: saveCurrentList,
     });
@@ -1182,7 +1221,7 @@ export default function Home() {
     const n = activeDraftItems.length;
     setConfirmDialog({
       title: `${verb} "${entryName}"?`,
-      body: `Your current reorder list has ${n} unsaved item${n === 1 ? "" : "s"}. Save them to Saved lists first so you don't lose them, or discard them to continue.`,
+      body: `Your current reorder list has ${n} unsaved item${n === 1 ? "" : "s"}. Save them to History first so you don't lose them, or discard them to continue.`,
       confirmLabel: "Save current first",
       secondaryLabel: "Discard current",
       onConfirm: () => { saveCurrentList(); proceed(); },
@@ -1248,9 +1287,10 @@ export default function Home() {
   }
 
   const navItems = [
-    ["home", "icon-home", "Home"],
-    ["catalog", "icon-grid", "Catalog"],
-    ["history", "icon-clock", "Saved lists"],
+    ["home", "icon-list", "Reorder list"],
+    ["catalog", "icon-store", "Catalog"],
+    ["savings", "icon-dollar-circle", "Savings"],
+    ["history", "icon-clock", "History"],
     ["settings", "icon-settings", "Settings"],
   ];
 
@@ -1322,10 +1362,66 @@ export default function Home() {
             )}
           </div>
           <div className="topbar-right">
-            <button className="topbar-alerts" type="button" aria-label="Alerts">
-              <Icon name="icon-bell" className="button-icon" />
-              <span className="topbar-badge">3</span>
-            </button>
+            <div className="topbar-alerts-wrap" ref={alertsWrapRef}>
+              <button
+                className={`topbar-alerts ${alerts.length ? "has-alerts" : ""}`}
+                type="button"
+                aria-label={alerts.length ? `Alerts (${alerts.length})` : "Alerts"}
+                aria-haspopup="menu"
+                aria-expanded={alertsOpen}
+                onClick={() => setAlertsOpen((open) => !open)}
+              >
+                <Icon name="icon-bell" className="button-icon" />
+                {alerts.length > 0 && <span className="topbar-badge">{alerts.length > 9 ? "9+" : alerts.length}</span>}
+              </button>
+              {alertsOpen && (
+                <div className="topbar-alerts-menu" role="menu">
+                  <div className="topbar-menu-head">
+                    <strong>Alerts</strong>
+                    <small>{alerts.length ? `${alerts.length} on your reorder list` : "Nothing needs attention"}</small>
+                  </div>
+                  {alerts.length === 0 ? (
+                    <div className="topbar-alerts-empty">
+                      <Icon name="icon-check-circle" className="button-icon" />
+                      <span>You&rsquo;re all caught up.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <ul className="topbar-alerts-list">
+                        {alerts.slice(0, 6).map((alert) => (
+                          <li key={alert.id} className={`topbar-alert topbar-alert-${alert.type}`}>
+                            <Icon name={alert.type === "oos" ? "icon-alert-triangle" : "icon-tag"} className="button-icon" />
+                            <div className="topbar-alert-body">
+                              {alert.type === "oos" ? (
+                                <>
+                                  <strong>{alert.name}</strong>
+                                  <small>Out of stock at {alert.supplier}{alert.switchTo ? ` — ${alert.switchTo} has it` : ""}</small>
+                                </>
+                              ) : (
+                                <>
+                                  <strong>{alert.name}</strong>
+                                  <small>
+                                    {alert.now != null ? `Now ${money.format(alert.now)}` : "Cheaper now"} · was {money.format(alert.was)} · save {money.format(alert.save)}
+                                  </small>
+                                </>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        className="topbar-alerts-cta"
+                        type="button"
+                        onClick={() => { setAlertsOpen(false); setView("home"); }}
+                      >
+                        {alerts.length > 6 ? `View all ${alerts.length} on your list` : "Open reorder list"}
+                        <Icon name="icon-arrow-right" className="button-icon" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="topbar-user-wrap" ref={userWrapRef}>
               <button
                 className="topbar-user"
@@ -1359,17 +1455,6 @@ export default function Home() {
         </header>
         <div className="app-body">
         <aside className="sidebar">
-          <div className="sidebar-head">
-            <button
-              className="nav-collapse-btn"
-              type="button"
-              onClick={() => setNavCollapsed((collapsed) => !collapsed)}
-              aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              <Icon name="icon-sidebar" className="button-icon" />
-            </button>
-          </div>
           <nav className="nav-tabs" aria-label="Primary navigation">
             {navItems.map(([target, icon, label]) => (
               <button
@@ -1384,6 +1469,16 @@ export default function Home() {
               </button>
             ))}
           </nav>
+          <button
+            className="nav-collapse-btn"
+            type="button"
+            onClick={() => setNavCollapsed((collapsed) => !collapsed)}
+            aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <Icon name={navCollapsed ? "icon-chevron-right" : "icon-chevron-left"} className="button-icon" />
+            <span>Collapse</span>
+          </button>
         </aside>
 
         <main className="app-main">
@@ -1507,6 +1602,15 @@ export default function Home() {
               onDuplicate={duplicateList}
               onDelete={deleteSavedList}
               onViewHandoff={(hid) => navigate(`/app/review/handoff?ho=${hid}`)}
+            />
+          )}
+
+          {view === "savings" && (
+            <SavingsView
+              rows={deriveMatchRows(activePlanItems, buyingPrefs)}
+              archivedLists={archivedLists}
+              onNavigate={navigate}
+              onImportInvoice={() => { setAddMode("upload"); navigate("/app"); }}
             />
           )}
 

@@ -50,6 +50,7 @@ export const routeByView = {
   home: "/app",
   plan: "/app/review",
   catalog: "/app/catalog",
+  savings: "/app/savings",
   history: "/app/history",
   settings: "/app/settings",
 };
@@ -79,6 +80,7 @@ export function viewFromPath(pathname = "/") {
   if (path === "/app/review" || path === "/app/plan") return { view: "plan", isLoggedIn: true };
   if (path === "/app/history") return { view: "history", isLoggedIn: true };
   if (path.startsWith("/app/history/")) return { view: "historyDetail", isLoggedIn: true, historyId: path.split("/")[3] || "" };
+  if (path === "/app/savings") return { view: "savings", isLoggedIn: true };
   if (path === "/app/catalog") return { view: "catalog", isLoggedIn: true };
   if (path === "/app/catalog/search") return { view: "catalogSearch", isLoggedIn: true, searchQuery: query.get("q") || "" };
   if (path.startsWith("/app/catalog/supplier/")) return { view: "catalogSupplier", isLoggedIn: true, supplierId: decodeURIComponent(path.split("/")[4] || "") };
@@ -1071,6 +1073,10 @@ export function deriveMatchRows(items, prefs) {
       lineTotal: notFound || priceMissing ? null : (best ? best.price * qty : price * qty),
       paidUnitPrice: hasPaidPrice ? paidUnitPrice : null,
       hasPaidPrice,
+      // The cheapest option normalized to the SAME basis as paidUnitPrice (the
+      // pack-comparable price the savings math uses), so "was vs now" compares
+      // like for like. perEa above is per individual unit — a different basis.
+      comparableUnitPrice: compareUnitPrice,
       currentLineTotal: hasPaidPrice ? paidUnitPrice * qty : null,
       lineSavings,
       others,
