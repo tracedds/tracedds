@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TraceDDS">
+  <defs>
+    <linearGradient id="td-mark" gradientUnits="userSpaceOnUse" x1="13" y1="13" x2="51" y2="51">
+      <stop offset="0" stop-color="#6E97F2"/>
+      <stop offset="1" stop-color="#2F5BD6"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#td-mark)" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 28 L13 22 Q13 13 22 13 L28 13"/>
+    <path d="M36 13 L42 13 Q51 13 51 22 L51 28"/>
+    <path d="M13 36 L13 42 Q13 51 22 51 L28 51"/>
+  </g>
+  <circle cx="46" cy="46" r="6.4" fill="url(#td-mark)"/>
+</svg>

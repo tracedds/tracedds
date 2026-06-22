@@ -2,11 +2,11 @@ import "../styles.css";
 import DevBadge from "./DevBadge";
 
 export const metadata = {
-  title: "MedMKP",
-  description: "Concierge procurement MVP for healthcare supply reorders.",
+  title: "TraceDDS",
+  description: "Supply traceability and audit-readiness for dental practices — scan your shelves, stay compliant, spend less.",
   appleWebApp: {
     capable: true,
-    title: "MedMKP",
+    title: "TraceDDS",
     statusBarStyle: "default",
   },
   // Legacy alias so older iOS (pre-Safari 16.4) also launches standalone.

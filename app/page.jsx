@@ -1286,10 +1286,19 @@ export default function Home() {
     });
   }
 
+  // New TraceDDS rail (supply-management IA). Items flagged `soon` are visible
+  // but disabled until their phase lands. Catalog + History stay live so nothing
+  // from the old IA becomes unreachable (Savings is kept but demoted).
   const navItems = [
+    ["dashboard", "icon-grid", "Dashboard", true],
+    ["needs-attention", "icon-alert-triangle", "Needs attention", true],
     ["home", "icon-list", "Reorder list"],
-    ["catalog", "icon-store", "Catalog"],
+    ["locations", "icon-map-pin", "Locations", true],
+    ["scan-sessions", "icon-scan", "Scan sessions", true],
     ["savings", "icon-dollar-circle", "Savings"],
+    ["evidence", "icon-shield-check", "Evidence", true],
+    ["reports", "icon-chart", "Reports", true],
+    ["catalog", "icon-store", "Catalog"],
     ["history", "icon-clock", "History"],
     ["settings", "icon-settings", "Settings"],
   ];
@@ -1328,7 +1337,7 @@ export default function Home() {
     <>
       <div className={`app-shell ${menuOpen ? "menu-open" : ""} ${navCollapsed ? "nav-collapsed" : ""} ${mobileAddItemRoute ? "mobile-add-item-shell" : ""}`}>
         <header className="topbar">
-          <button className="topbar-brand" type="button" onClick={() => setView("home")} aria-label="MedMKP home">
+          <button className="topbar-brand" type="button" onClick={() => setView("home")} aria-label="TraceDDS home">
             <BrandMark />
           </button>
           <div className="topbar-search-wrap" ref={searchWrapRef}>
@@ -1456,16 +1465,19 @@ export default function Home() {
         <div className="app-body">
         <aside className="sidebar">
           <nav className="nav-tabs" aria-label="Primary navigation">
-            {navItems.map(([target, icon, label]) => (
+            {navItems.map(([target, icon, label, soon]) => (
               <button
                 key={target}
-                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target ? "active" : ""}`}
+                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target ? "active" : ""} ${soon ? "nav-tab-soon" : ""}`}
                 type="button"
-                onClick={() => setView(target)}
+                onClick={() => { if (!soon) setView(target); }}
+                disabled={soon}
+                aria-disabled={soon || undefined}
                 title={navCollapsed ? label : undefined}
               >
                 <Icon name={icon} />
                 <strong>{label}</strong>
+                {soon && <span className="nav-soon-badge">Soon</span>}
               </button>
             ))}
           </nav>
