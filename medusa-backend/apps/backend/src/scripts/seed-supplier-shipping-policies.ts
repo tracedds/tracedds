@@ -74,6 +74,48 @@ const PUBLISHED_POLICIES: Policy[] = [
     shipping_time_notes:
       "Published: 1–2 business day delivery to most of the US via regional distribution centers + automated/barcode picking (darbydental.com/about-us, retrieved 2026-06-21).",
   },
+  {
+    slug: "dental-city",
+    free_shipping_threshold_cents: 20000,
+    flat_shipping_cents: 1000,
+    shipping_policy_notes:
+      "Published policy: $10 flat shipping on orders under $200; free shipping on orders $200+ for Keys to the City members (dentalcity.com, retrieved 2026-06-22).",
+    // Single Green Bay DC → per-destination ground estimate (no published transit window).
+    order_cutoff_local: "16:00 CT",
+    ships_same_day: true,
+    dist_center_zips: "54311",
+    shipping_time_notes:
+      "Same-day shipping on in-stock orders placed by 4pm CT; ships from the Green Bay, WI distribution center (dentalcity.com, retrieved 2026-06-22).",
+  },
+  {
+    slug: "practicon",
+    free_shipping_threshold_cents: 14999,
+    flat_shipping_cents: 1033,
+    shipping_policy_notes:
+      "Published policy: $10.33 flat shipping on orders under $149.99; free shipping on orders $149.99+ (practicon.com/shipping-returns, retrieved 2026-06-22).",
+    // Single Greenville, NC location → per-destination ground estimate (ships within 24h).
+    dist_center_zips: "27834",
+    shipping_time_notes:
+      "Orders ship within 24 hours; ships from Greenville, NC (practicon.com/shipping-returns, retrieved 2026-06-22).",
+  },
+  {
+    slug: "american-dental-accessories",
+    // Shipping calculated at checkout by weight — no published flat or free threshold.
+    free_shipping_threshold_cents: null,
+    flat_shipping_cents: null,
+    shipping_policy_notes:
+      "Shipping calculated at checkout (ground / USPS Ground Advantage by weight); no published flat or free-shipping threshold (amerdental.com/pages/shipping, retrieved 2026-06-22).",
+    // Single Minneapolis warehouse → per-destination ground estimate; published
+    // door-to-door cap of 4 business days (lower 48) is the fallback when the
+    // buyer's ship-to state is unknown.
+    transit_days_max: 4,
+    order_cutoff_local: "16:30 ET",
+    ships_same_day: true,
+    dist_center_zips: "55426",
+    ship_carrier: "ground",
+    shipping_time_notes:
+      "Most orders ship same day if ordered by 4:30pm ET; delivered in 4 business days or less to the lower 48 via ground/USPS; ships from Minneapolis, MN. Back-orders ship free; some items drop-ship separately (amerdental.com/pages/shipping, retrieved 2026-06-22).",
+  },
 ]
 
 const usd = (cents: number | null) => (cents == null ? "—" : `$${(cents / 100).toFixed(2)}`)
