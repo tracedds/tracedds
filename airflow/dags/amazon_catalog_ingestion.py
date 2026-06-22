@@ -119,7 +119,7 @@ with DAG(
     schedule=schedule,
     catchup=False,
     max_active_runs=1,
-    is_paused_upon_creation=False,
+    is_paused_upon_creation=True,
     tags=["medmkp", "marketplace-ingestion", "amazon", "full-catalog"],
 ) as dag:
     ingest = BashOperator(

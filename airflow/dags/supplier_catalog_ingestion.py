@@ -1,11 +1,20 @@
 """Airflow DAGs for MedMKP supplier catalog ingestion.
 
 Generates one DAG per supplier so each catalog import can be scheduled,
-paused, retried, and backfilled independently. Schedules are staggered
-across Sunday morning; assign a small Airflow pool via
-medmkp_supplier_ingest_pool to cap how many ingests run concurrently
-(size it to 1 on the single-box NUC host: each ingest is a Node process
-doing thousands of fetches).
+paused, retried, and backfilled independently. Schedules are staggered across
+the week with the heaviest suppliers (Patterson, DC Dental, Darby, Henry
+Schein) each isolated on their own day so the single-box NUC never runs two
+big crawls at once; assign a small Airflow pool via medmkp_supplier_ingest_pool
+to cap how many ingests run concurrently (size it to 1 on the single-box NUC
+host: each ingest is a Node process doing thousands of fetches).
+
+Cross-supplier matching is NOT chained onto each ingest. products:match is a
+global rebuild (it re-clusters every supplier, not just the one that ran), so
+coupling it per-supplier would run the same global job N times a week against a
+half-updated catalog. Instead a single match_products DAG runs nightly and
+picks up whichever supplier(s) ingested that day, then refreshes the catalog
+read models. That daily batch is the coalescing point; a day-staggered fleet is
+fully reflected within 24h.
 
 Each DAG runs the ingestion as separate stage tasks
 (discover >> index >> extract >> commit >> cleanup_state) so the UI shows
@@ -13,6 +22,9 @@ which stage is running. Stages share intermediate state through JSON files
 in a per-run state directory; a failed stage can be retried without
 re-running earlier stages, and cleanup_state removes the directory once
 the run succeeds (it is kept on failure for debugging).
+
+All DAGs land paused (is_paused_upon_creation=True): the catalog refresh
+cadence is dormant until we onboard customers; unpause the fleet then.
 
 Expected Airflow Variables:
 - medmkp_backend_dir: absolute path to medusa-backend/apps/backend
@@ -36,7 +48,6 @@ from datetime import datetime
 from airflow import DAG
 from airflow.models import Variable
 from airflow.operators.bash import BashOperator
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 BACKEND_DIR = Variable.get("medmkp_backend_dir", default_var="/opt/medmkp/medusa-backend/apps/backend")
 ENV_FILE = Variable.get("medmkp_env_file", default_var=".env")
@@ -52,11 +63,19 @@ STATE_ROOT = Variable.get(
 STAGES = ["discover", "index", "extract", "commit"]
 STATE_DIR_TEMPLATE = STATE_ROOT + "/{{ dag.dag_id }}/{{ ts_nodash }}"
 
+# Day-staggered weekly schedules (cron: m h * * DOW; DOW 0=Sun..6=Sat). The four
+# heaviest crawls get their own day; mediums and light Shopify stores share the
+# lighter days, hours apart. The NUC ingest pool is size 1, so same-day jobs run
+# serially regardless — the hour offsets are for clear retry windows.
+#   Mon: patterson        Tue: dc_dental       Wed: darby
+#   Thu: henry_schein     Fri: dental_city, pearson
+#   Sat: shasta, sky, safco
+#   Sun: amerdental, carolina, unimedusa, young_specialties, zirc
 SUPPLIERS = [
     {
         "name": "dc_dental",
         "supplier_id": "msup_dcdental_com",
-        "schedule": "0 3 * * 0",
+        "schedule": "0 3 * * 2",
         "args": [
             "--max-links-per-source=500",
             # supplier:ingest:db is delete-and-replace, so the page cap must
@@ -85,7 +104,7 @@ SUPPLIERS = [
     {
         "name": "carolina_dental",
         "supplier_id": "msup_carolinadental_com",
-        "schedule": "0 5 * * 0",
+        "schedule": "0 6 * * 0",
         "args": [
             "--max-sitemaps-per-supplier=10",
             "--sitemap-concurrency=4",
@@ -98,7 +117,7 @@ SUPPLIERS = [
     {
         "name": "sky_dental",
         "supplier_id": "msup_skydentalsupply_com",
-        "schedule": "0 6 * * 0",
+        "schedule": "0 6 * * 6",
         "args": [
             "--max-sitemaps-per-supplier=3",
             "--sitemap-concurrency=4",
@@ -109,7 +128,7 @@ SUPPLIERS = [
     {
         "name": "shasta_dental",
         "supplier_id": "msup_shastadentalsupply_com",
-        "schedule": "0 7 * * 0",
+        "schedule": "0 3 * * 6",
         "args": [
             "--max-shasta-catalog-pages=5000",
             "--product-concurrency=6",
@@ -119,7 +138,7 @@ SUPPLIERS = [
     {
         "name": "dental_city",
         "supplier_id": "msup_dentalcity_com",
-        "schedule": "0 8 * * 0",
+        "schedule": "0 3 * * 5",
         "args": [
             "--max-sitemaps-per-supplier=5000",
             "--sitemap-concurrency=8",
@@ -209,7 +228,7 @@ SUPPLIERS = [
     {
         "name": "pearson_dental",
         "supplier_id": "msup_pearsondental_com",
-        "schedule": "0 15 * * 0",
+        "schedule": "0 9 * * 5",
         "args": [
             "--max-sitemaps-per-supplier=3",
             # Pearson's legacy catalog crawl is broad; keep the scheduled job
@@ -235,7 +254,7 @@ SUPPLIERS = [
     {
         "name": "safco_dental",
         "supplier_id": "msup_safcodental_com",
-        "schedule": "0 17 * * 0",
+        "schedule": "0 8 * * 6",
         "args": [
             "--max-sitemaps-per-supplier=3",
             "--sitemap-concurrency=4",
@@ -246,7 +265,7 @@ SUPPLIERS = [
     {
         "name": "unimedusa",
         "supplier_id": "msup_unimedusa_com",
-        "schedule": "0 18 * * 0",
+        "schedule": "0 8 * * 0",
         "args": [
             "--max-sitemaps-per-supplier=3",
             "--sitemap-concurrency=4",
@@ -257,7 +276,7 @@ SUPPLIERS = [
     {
         "name": "young_specialties",
         "supplier_id": "msup_youngspecialties_com",
-        "schedule": "0 19 * * 0",
+        "schedule": "0 10 * * 0",
         "args": [
             "--max-sitemaps-per-supplier=3",
             "--sitemap-concurrency=4",
@@ -268,7 +287,7 @@ SUPPLIERS = [
     {
         "name": "zirc_dental_products",
         "supplier_id": "msup_zirc_com",
-        "schedule": "0 20 * * 0",
+        "schedule": "0 12 * * 0",
         "args": [
             "--max-sitemaps-per-supplier=3",
             "--sitemap-concurrency=4",
@@ -329,6 +348,7 @@ def build_supplier_dag(supplier: dict[str, object]) -> DAG:
         schedule=supplier["schedule"],
         catchup=False,
         max_active_runs=1,
+        is_paused_upon_creation=True,
         tags=["medmkp", "supplier-ingestion", supplier["supplier_id"]],
     ) as dag:
         previous = None
@@ -348,22 +368,6 @@ def build_supplier_dag(supplier: dict[str, object]) -> DAG:
             bash_command=f'rm -rf "{STATE_DIR_TEMPLATE}"',
         )
         previous >> cleanup
-
-        # Scheduled suppliers are covered by the nightly match_products batch
-        # (Sunday 23:00), which runs after every scheduled ingest has landed.
-        # Manual/ad-hoc suppliers have no batch window, so chain a global
-        # re-match onto them directly to keep cross-supplier matches fresh.
-        if supplier["schedule"] is None:
-            rematch = TriggerDagRunOperator(
-                task_id="trigger_match_products",
-                trigger_dag_id="match_products",
-                # Fire-and-forget: don't block the supplier DAG (or hold a worker)
-                # on the rebuild. match_products is max_active_runs=1, so concurrent
-                # manual ingests queue their rebuilds serially rather than overlap.
-                wait_for_completion=False,
-                reset_dag_run=True,
-            )
-            cleanup >> rematch
     return dag
 
 
@@ -372,36 +376,37 @@ def build_product_matching_dag() -> DAG:
 
     with DAG(
         dag_id="match_products",
-        description="Rebuild auto canonical products and cross-supplier product matches after catalog ingestion.",
+        description=(
+            "Nightly global rebuild of auto canonical products + cross-supplier "
+            "matches, then a refresh of the catalog read models. Runs every day so "
+            "it picks up whichever supplier(s) ingested that day."
+        ),
         start_date=datetime(2026, 1, 1),
-        schedule="0 23 * * 0",
+        schedule="0 2 * * *",
         catchup=False,
         max_active_runs=1,
+        is_paused_upon_creation=True,
         tags=["medmkp", "product-matching"],
     ) as dag:
-        BashOperator(
+        match = BashOperator(
             task_id="match_products",
             bash_command=backend_command(f"npm run products:match{match_args}"),
             pool=MATCHING_POOL,
             retries=1,
         )
+        # The matcher reads base tables and writes canonical tables; the storefront
+        # price/category/offer read models are materialized views that only refresh
+        # when told to. Rebuild them after every match so new prices and products
+        # become visible.
+        refresh = BashOperator(
+            task_id="refresh_read_models",
+            bash_command=backend_command("npm run catalog:refresh-read-models"),
+            pool=MATCHING_POOL,
+            retries=1,
+        )
+        match >> refresh
 
     return dag
-
-
-# Fire-and-forget global re-match chained after a bespoke ingest task. Mirrors
-# the manual-generic-supplier branch in build_supplier_dag: an off-cycle or
-# manual run must not depend on the Sunday 23:00 batch to get matched, or its
-# products never become servable canonical offers until the next Sunday.
-# match_products is max_active_runs=1, so concurrent triggers queue serially.
-def rematch_after(ingest_task: BashOperator) -> None:
-    rematch = TriggerDagRunOperator(
-        task_id="trigger_match_products",
-        trigger_dag_id="match_products",
-        wait_for_completion=False,
-        reset_dag_run=True,
-    )
-    ingest_task >> rematch
 
 
 def build_henry_schein_dag() -> DAG:
@@ -416,18 +421,18 @@ def build_henry_schein_dag() -> DAG:
             "products with public web prices."
         ),
         start_date=datetime(2026, 1, 1),
-        schedule="0 16 * * 0",
+        schedule="0 3 * * 4",
         catchup=False,
         max_active_runs=1,
+        is_paused_upon_creation=True,
         tags=["medmkp", "supplier-ingestion", "msup_henryschein_com"],
     ) as dag:
-        ingest = BashOperator(
+        BashOperator(
             task_id="ingest",
             bash_command=backend_command(f"npm run henryschein:ingest{ingest_args}"),
             pool=POOL,
             retries=1,
         )
-        rematch_after(ingest)
 
     return dag
 
@@ -446,18 +451,18 @@ def build_patterson_dag() -> DAG:
             "from its sitemap; prices remain login-gated, so no price snapshots."
         ),
         start_date=datetime(2026, 1, 1),
-        schedule="0 21 * * 0",
+        schedule="0 3 * * 1",
         catchup=False,
         max_active_runs=1,
+        is_paused_upon_creation=True,
         tags=["medmkp", "supplier-ingestion", "msup_pattersondental_com"],
     ) as dag:
-        ingest = BashOperator(
+        BashOperator(
             task_id="ingest",
             bash_command=backend_command(f"npm run patterson:ingest{ingest_args}"),
             pool=POOL,
             retries=1,
         )
-        rematch_after(ingest)
 
     return dag
 
@@ -480,9 +485,10 @@ def build_darby_dag() -> DAG:
             "public price + stock) from its sitemap, streamed to bound memory."
         ),
         start_date=datetime(2026, 1, 1),
-        schedule="0 9 * * 0",
+        schedule="0 3 * * 3",
         catchup=False,
         max_active_runs=1,
+        is_paused_upon_creation=True,
         tags=["medmkp", "supplier-ingestion", "msup_darbydental_com"],
     ) as dag:
         BashOperator(
