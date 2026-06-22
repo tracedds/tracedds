@@ -536,6 +536,10 @@ export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, 
                       <strong>{buyerName || "Your account"}</strong>
                       <small>{email || practiceName || "Buyer"}</small>
                     </div>
+                    <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate?.(pathForView("history")); }}>
+                      <Icon name="icon-clock" className="button-icon" />
+                      History
+                    </button>
                     <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); onNavigate?.(pathForView("settings")); }}>
                       <Icon name="icon-settings" className="button-icon" />
                       Settings
@@ -597,7 +601,7 @@ export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, 
                 <div className="crl-add-menu m-actions-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onArchiveList?.(); }}>
                     <Icon name="icon-clipboard" className="button-icon" />
-                    <span><strong>Save list</strong><small>Save a copy to Saved lists</small></span>
+                    <span><strong>Save list</strong><small>Save a copy to History</small></span>
                   </button>
                   <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onClearList?.(); }}>
                     <Icon name="icon-trash" className="button-icon crl-menu-danger" />
@@ -1265,7 +1269,7 @@ export function CurrentReorderList({
                 <div className="crl-add-menu m-actions-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onArchiveList?.(); }}>
                     <Icon name="icon-archive-down" className="button-icon" />
-                    <span><strong>Save list</strong><small>Save a copy to Saved lists</small></span>
+                    <span><strong>Save list</strong><small>Save a copy to History</small></span>
                   </button>
                   <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onClearList?.(); }}>
                     <Icon name="icon-trash-ios" className="button-icon crl-menu-danger" />
@@ -1513,6 +1517,97 @@ export function CurrentReorderList({
         />
       )}
 
+    </div>
+  );
+}
+
+// Savings surface. Aggregates the real per-line savings we already compute
+// (paid "what you pay now" minus the cheapest pack-normalized option) across the
+// live list and archived lists. No fabricated numbers: when nothing has a paid
+// price yet, the page is an honest order-history-import onboarding instead.
+export function SavingsView({ rows = [], archivedLists = [], onNavigate, onImportInvoice }) {
+  const sumSavings = (list) => list.reduce((total, row) => total + (row.lineSavings || 0), 0);
+  const listSavings = sumSavings(rows);
+  const archiveSavings = archivedLists.reduce((total, entry) => total + sumSavings(entry.rows || []), 0);
+  const lifetime = listSavings + archiveSavings;
+  const priced = rows.filter((row) => row.hasPaidPrice);
+  const opportunities = rows
+    .filter((row) => row.lineSavings > 0 && row.paidUnitPrice != null)
+    .sort((a, b) => b.lineSavings - a.lineSavings);
+  const hasData = priced.length > 0 || archiveSavings > 0;
+  const nameOf = (row) => row.canonicalName || row.matchName || row.importedName || "Item";
+
+  return (
+    <div className="sv">
+      <header className="sv-head">
+        <h1>Savings</h1>
+        <p>How much your reorder list beats what you pay today — compared per unit, including the cheapest in-stock supplier. We never get between you and your vendor.</p>
+      </header>
+
+      {!hasData ? (
+        <div className="sv-empty">
+          <span className="sv-empty-icon"><Icon name="icon-dollar-circle" /></span>
+          <h2>See what you&rsquo;re overpaying</h2>
+          <p>Import a recent supplier invoice and we&rsquo;ll line every item up against the cheapest option per unit. No logins, no passwords — just the PDF or CSV.</p>
+          <button type="button" className="sv-import" onClick={onImportInvoice}>
+            <Icon name="icon-cloud-upload" className="button-icon" />
+            Import an invoice
+          </button>
+          <p className="sv-fine">
+            Or open any line on your{" "}
+            <button type="button" className="sv-link" onClick={() => onNavigate?.(pathForView("home"))}>reorder list</button>{" "}
+            and enter &ldquo;what you pay now.&rdquo;
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="sv-metrics">
+            <div className="sv-metric">
+              <span className="sv-metric-label">Savings on this list</span>
+              <strong className="sv-metric-value">{money.format(listSavings)}</strong>
+            </div>
+            <div className="sv-metric">
+              <span className="sv-metric-label">Lifetime savings</span>
+              <strong className="sv-metric-value">{money.format(lifetime)}</strong>
+            </div>
+            <div className="sv-metric">
+              <span className="sv-metric-label">Lines with a cheaper option</span>
+              <strong className="sv-metric-value">{opportunities.length}</strong>
+            </div>
+          </div>
+
+          {opportunities.length > 0 ? (
+            <section className="sv-section">
+              <h2>Where you can save now</h2>
+              <ul className="sv-list">
+                {opportunities.map((row) => (
+                  <li key={row.itemId || row.id} className="sv-row">
+                    <div className="sv-row-main">
+                      <strong>{nameOf(row)}</strong>
+                      <small>{row.supplier && row.supplier !== "—" ? `Cheapest: ${row.supplier}` : "Cheapest match"}</small>
+                    </div>
+                    <div className="sv-row-prices">
+                      <span className="sv-was">You pay {money.format(row.paidUnitPrice)}</span>
+                      <span className="sv-now">Best {money.format(row.comparableUnitPrice ?? row.paidUnitPrice - row.lineSavings / (row.qty || 1))}</span>
+                    </div>
+                    <span className="sv-save">save {money.format(row.lineSavings)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <p className="sv-allgood">Every priced line on this list is already at or below what you pay. Nice.</p>
+          )}
+
+          <div className="sv-footer">
+            <button type="button" className="sv-import sv-import-ghost" onClick={onImportInvoice}>
+              <Icon name="icon-cloud-upload" className="button-icon" />
+              Import another invoice
+            </button>
+            <span className="sv-footer-note">Savings count only confident (exact + variant) matches.</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

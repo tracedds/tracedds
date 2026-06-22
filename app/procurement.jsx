@@ -758,7 +758,7 @@ export function SupplierHandoffView({ handoff, onArchive, onBuildCart, onNavigat
       <footer className="ho-footer">
         <div className="ho-footer-copy">
           <strong>Order placed?</strong>
-          <small>Save this list to your Saved lists and start a fresh reorder list. This frozen handoff stays available.</small>
+          <small>Save this list to your History and start a fresh reorder list. This frozen handoff stays available.</small>
         </div>
         <button className="primary-action compact" type="button" onClick={onArchive}><Icon name="icon-clipboard" className="button-icon" />Save list &amp; start new</button>
       </footer>
@@ -775,7 +775,7 @@ export function HistoryView({ onOpen, onReopen, onDuplicate, onDelete, archivedL
   return (
     <div className="crl">
       <header className="crl-header">
-        <div className="crl-title"><h2>Saved lists</h2></div>
+        <div className="crl-title"><h2>History</h2></div>
       </header>
       <div className="history-list">
         {lists.map((list) => {
@@ -822,7 +822,7 @@ export function HistoryDetail({ id, onBack, archivedLists = [], handoffs = [], o
     <div className="crl">
       <header className="crl-header">
         <div className="crl-title">
-          <button className="history-back" type="button" onClick={onBack}><Icon name="icon-chevron-left" className="button-icon" />Saved lists</button>
+          <button className="history-back" type="button" onClick={onBack}><Icon name="icon-chevron-left" className="button-icon" />History</button>
           {isReal ? (
             <input
               className="history-rename-input"
