@@ -96,21 +96,6 @@ SUPPLIERS = [
         ],
     },
     {
-        "name": "darby_dental",
-        "supplier_id": "msup_darbydental_com",
-        "schedule": "0 9 * * 0",
-        "args": [
-            # Magento sitemap index with 4 child sitemaps (~35k products).
-            # supplier:ingest:db is delete-and-replace, so all child sitemaps
-            # must be fetched or the run hard-deletes whatever it didn't
-            # re-discover.
-            "--max-sitemaps-per-supplier=5000",
-            "--sitemap-concurrency=4",
-            "--product-concurrency=12",
-            "--timeout-ms=30000",
-        ],
-    },
-    {
         "name": "sky_dental",
         "supplier_id": "msup_skydentalsupply_com",
         "schedule": "0 6 * * 0",
@@ -477,9 +462,43 @@ def build_patterson_dag() -> DAG:
     return dag
 
 
+def build_darby_dag() -> DAG:
+    # Darby is sitemap-driven (~35k Magento product pages WITH public prices).
+    # Uses the dedicated streaming ingest (darby:ingest) rather than the generic
+    # in-memory supplier:ingest:db: the latter loads the whole extract plus the
+    # full canonical-product list before a single write, the pattern that
+    # OOM-killed the first Patterson prod run on the 7 GB NUC. Keep the fetch
+    # pool modest so the single-box NUC isn't saturated.
+    ingest_args = " -- --concurrency=8"
+    if COMMIT_ENABLED:
+        ingest_args += " --commit"
+
+    with DAG(
+        dag_id="darby_dental",
+        description=(
+            "Import the Darby Dental public Magento catalog (name/brand/MPN/pack + "
+            "public price + stock) from its sitemap, streamed to bound memory."
+        ),
+        start_date=datetime(2026, 1, 1),
+        schedule="0 9 * * 0",
+        catchup=False,
+        max_active_runs=1,
+        tags=["medmkp", "supplier-ingestion", "msup_darbydental_com"],
+    ) as dag:
+        BashOperator(
+            task_id="ingest",
+            bash_command=backend_command(f"npm run darby:ingest{ingest_args}"),
+            pool=POOL,
+            retries=1,
+        )
+
+    return dag
+
+
 for supplier in SUPPLIERS:
     globals()[supplier["name"]] = build_supplier_dag(supplier)
 
 henry_schein = build_henry_schein_dag()
 patterson = build_patterson_dag()
+darby_dental = build_darby_dag()
 match_products = build_product_matching_dag()
