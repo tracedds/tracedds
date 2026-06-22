@@ -8952,6 +8952,9 @@ th {
 
 .crl-imported { display: grid; grid-template-columns: 126px minmax(0, 1fr); gap: 12px; align-items: start; }
 .crl-imported .crl-thumb { width: 126px; height: 126px; }
+/* When the drawer is expanded (⤢), double the imported-item image. */
+.crl-layout.has-detail.detail-wide .crl-imported { grid-template-columns: 252px minmax(0, 1fr); }
+.crl-layout.has-detail.detail-wide .crl-imported .crl-thumb { width: 252px; height: 252px; }
 .crl-imported-info { display: grid; gap: 6px; min-width: 0; }
 .crl-imported-info > strong { color: var(--ink); font-size: 14px; }
 .crl-imported-info > small { color: var(--muted); font-size: 12px; }
