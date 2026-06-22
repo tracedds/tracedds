@@ -503,6 +503,61 @@ describe("end-to-end clustering", () => {
     )
     expect(allMemberNames).not.toContain("Oregano Oil Enteric 90 Sgels")
   })
+
+  it("does not let a size-less bridge collapse Small and X-Small into one canonical", () => {
+    // The family code UF524 sits in every name so the size-less "parent"
+    // listing matches both sizes (name-embedded-SKU); transitively unioning
+    // those edges is what used to fold the whole size ladder into one product.
+    const small1 = product({
+      supplier_id: "msup_darbydental_com",
+      manufacturer_sku: "UF524S",
+      brand: "Microflex",
+      name: "Microflex Ultraform UF524 Nitrile Gloves Small 300/Box",
+      price_cents: 1200,
+    })
+    const small2 = product({
+      supplier_id: "msup_dentalcity_com",
+      manufacturer_sku: "UF524S",
+      brand: "Microflex",
+      name: "Microflex Ultraform UF524 Nitrile Gloves Small 300/Box",
+      price_cents: 1150,
+    })
+    const xsmall1 = product({
+      supplier_id: "msup_darbydental_com",
+      manufacturer_sku: "UF524XS",
+      brand: "Microflex",
+      name: "Microflex Ultraform UF524 Nitrile Gloves X-Small 300/Box",
+      price_cents: 1200,
+    })
+    const xsmall2 = product({
+      supplier_id: "msup_dentalcity_com",
+      manufacturer_sku: "UF524XS",
+      brand: "Microflex",
+      name: "Microflex Ultraform UF524 Nitrile Gloves X-Small 300/Box",
+      price_cents: 1150,
+    })
+    const sizeless = product({
+      supplier_id: "msup_pattersondental_com",
+      manufacturer_sku: "UF524",
+      brand: "Microflex",
+      name: "Microflex Ultraform UF524 Nitrile Gloves 300/Box",
+      price_cents: 1180,
+    })
+    const result = runMatching(
+      [small1, small2, xsmall1, xsmall2, sizeless].map(normalizeProduct)
+    )
+    const clusterOf = (id: string) =>
+      result.clusters.find((c) => c.members.some((m) => m.row.id === id))
+    const smallCluster = clusterOf(small1.id)
+    const xsmallCluster = clusterOf(xsmall1.id)
+    // Each size keeps its own canonical, and they are not the same cluster.
+    expect(smallCluster).toBeDefined()
+    expect(xsmallCluster).toBeDefined()
+    expect(smallCluster).not.toBe(xsmallCluster)
+    expect(smallCluster!.members.map((m) => m.row.id)).toContain(small2.id)
+    expect(smallCluster!.members.map((m) => m.row.id)).not.toContain(xsmall1.id)
+    expect(xsmallCluster!.members.map((m) => m.row.id)).toContain(xsmall2.id)
+  })
 })
 
 describe("offer availability", () => {

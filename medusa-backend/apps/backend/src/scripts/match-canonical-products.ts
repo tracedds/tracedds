@@ -37,6 +37,11 @@ async function main() {
   const client = new Client({
     connectionString: databaseUrl,
     ssl: /localhost|127\.0\.0\.1/.test(databaseUrl) ? undefined : { rejectUnauthorized: false },
+    // The catalog load runs for minutes against the remote prod DB; without TCP
+    // keepalive a dropped connection leaves node-pg waiting forever instead of
+    // erroring, so the run hangs silently rather than failing fast.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 30000,
   })
   await client.connect()
 
