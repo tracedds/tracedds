@@ -129,6 +129,7 @@ export function CatalogView({ onNavigate }) {
   const [status, setStatus] = useState("loading");
   const [layout, setLayout] = useState("grid");
   const [recent, setRecent] = useState([]);
+  const [showAllSuppliers, setShowAllSuppliers] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -226,7 +227,7 @@ export function CatalogView({ onNavigate }) {
           <section className="cat-panel">
             <header><h3>Browse by supplier</h3></header>
             <ul className="cat-supplier-list">
-              {suppliers.slice(0, 5).map((supplier) => (
+              {(showAllSuppliers ? suppliers : suppliers.slice(0, 5)).map((supplier) => (
                 <li key={supplier.id}>
                   <CatalogSupplierAvatar name={supplier.name} />
                   <span className="cat-supplier-name">{supplier.name}</span>
@@ -234,9 +235,11 @@ export function CatalogView({ onNavigate }) {
                 </li>
               ))}
             </ul>
-            <button type="button" className="cat-panel-action" onClick={() => onNavigate("/app/settings")}>
-              View all suppliers ({suppliers.length})
-            </button>
+            {suppliers.length > 5 && (
+              <button type="button" className="cat-panel-action" onClick={() => setShowAllSuppliers((open) => !open)}>
+                {showAllSuppliers ? "Show fewer suppliers" : `View all suppliers (${suppliers.length})`}
+              </button>
+            )}
           </section>
 
           {recent.length > 0 && (
@@ -1184,8 +1187,8 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
           {marketplaceListings.length > 0 && (
             <section className="crl-card pdp-marketplace">
               <div className="pdp-mkt-head">
-                <h2>Also available on Amazon &amp; Alibaba <span className="pdp-mkt-flag"><Icon name="icon-info" className="pdp-mkt-flag-icon" />Not vetted</span></h2>
-                <p className="pdp-mkt-note">Third-party marketplace listings, matched by name from our catalog. Sellers and products aren&rsquo;t vetted by MedMKP, and prices (often bulk/wholesale) aren&rsquo;t directly comparable to the supplier offers above — verify the item and seller before ordering.</p>
+                <h2>Also available on Amazon <span className="pdp-mkt-flag"><Icon name="icon-info" className="pdp-mkt-flag-icon" />Not vetted</span></h2>
+                <p className="pdp-mkt-note">Third-party Amazon listings, matched by name from our catalog. Sellers and products aren&rsquo;t vetted by MedMKP and sit outside the supplier price comparison above — verify the item and seller before ordering.</p>
               </div>
               <div className="pdp-mkt-grid">
                 {marketplaceListings.map((listing, index) => {

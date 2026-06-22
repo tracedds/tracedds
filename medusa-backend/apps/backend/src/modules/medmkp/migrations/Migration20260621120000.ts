@@ -1,39 +1,30 @@
 import { Migration } from "@medusajs/framework/mikro-orm/migrations";
 
-// The /medmkp/categories landing computed, on every request, the number of
-// priced canonical families per category — a join over the full match +
-// current-price tables with a DISTINCT/GROUP BY. On the memory-constrained prod
-// instance (work_mem=64kB) that spilled to disk and took 16-34s, so the request
-// timed out and the catalog rendered "unavailable". Materialize that count here
-// (same set, counted the same way as the drill-down) so the request path does a
-// trivial read; the heavy aggregation runs once per read-model refresh.
-//
-// Parallel workers each allocate work_mem, so we disable parallelism and give a
-// single bounded budget — fast enough to populate at deploy time without OOMing.
 export class Migration20260621120000 extends Migration {
 
   override async up(): Promise<void> {
-    this.addSql(`SET LOCAL max_parallel_workers_per_gather = 0;`);
-    this.addSql(`SET LOCAL work_mem = '64MB';`);
-    this.addSql(`create materialized view if not exists "medmkp_category_priced_count" as
-      with "priced_canon" as (
-        select distinct m."canonical_product_id" as "id"
-        from "medmkp_canonical_product_match" m
-        join "medmkp_supplier_current_price" cp on cp."supplier_product_id" = m."supplier_product_id"
-        where m."match_status" <> 'unmatched' and m."deleted_at" is null
-      )
-      select lower(btrim(p."category")) as "category",
-             count(distinct coalesce(p."family_id", p."id"))::int as "product_count"
-      from "priced_canon" pc
-      join "medmkp_canonical_product" p on p."id" = pc."id"
-      where p."category" <> '' and p."deleted_at" is null
-      group by lower(btrim(p."category"));`);
-    // Unique index doubles as the key required by REFRESH ... CONCURRENTLY.
-    this.addSql(`create unique index if not exists "IDX_medmkp_category_priced_count_category" on "medmkp_category_priced_count" ("category");`);
+    // Tiered flat rate (e.g. Darby $13.95 under $150 / $10.95 at $150+).
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "shipping_flat_tiers" jsonb null;`);
+    // Layer 1: published delivery promise (stated ground transit window + cutoff).
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "transit_days_min" integer null;`);
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "transit_days_max" integer null;`);
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "order_cutoff_local" text null;`);
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "ships_same_day" boolean null;`);
+    // Layer 2: distribution-center origins for per-destination ground estimation.
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "dist_center_zips" text null;`);
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "ship_carrier" text null;`);
+    this.addSql(`alter table if exists "medmkp_supplier" add column if not exists "shipping_time_notes" text null;`);
   }
 
   override async down(): Promise<void> {
-    this.addSql(`drop materialized view if exists "medmkp_category_priced_count";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "shipping_flat_tiers";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "transit_days_min";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "transit_days_max";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "order_cutoff_local";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "ships_same_day";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "dist_center_zips";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "ship_carrier";`);
+    this.addSql(`alter table if exists "medmkp_supplier" drop column if exists "shipping_time_notes";`);
   }
 
 }

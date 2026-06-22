@@ -3,8 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { SearchResults } from "./catalog";
 import { BrandMark, Icon } from "./icons";
-import { CRL_SAMPLE_SOURCES, CRL_SOURCE_ICON, CRL_STATUS, SWIPE_REVEAL, collapseOffersBySupplier, computePlanTotals, deriveMatchRows, isOrderable, isPlanIncluded, matchReviewSample, matchReviewSampleStats, money, mrComputeStats, mrConfTone, mrEa, mrMoney, mrPriceLabel, offerCandidates, optimizeLandedAssignment, pathForView, rowMode, showPerEa, supplierLogoSrc } from "./lib";
-import { BuyingPreferencesCard, CandidateName, CandidateStock, CandidateSub, ListStatusPill, MatchSupplier, ProductSearchResults, ProductThumb, useBarcodeScanner, useProductSearch } from "./ui";
+import { CRL_SAMPLE_SOURCES, CRL_SOURCE_ICON, CRL_STATUS, SWIPE_REVEAL, collapseOffersBySupplier, computePlanTotals, deriveMatchRows, formatPackLabel, isOrderable, isPlanIncluded, matchReviewSample, matchReviewSampleStats, money, mrComputeStats, mrConfTone, mrEa, mrMoney, mrPriceLabel, offerCandidates, optimizeLandedAssignment, pathForView, rowMode, showPerEa, supplierLogoSrc } from "./lib";
+import { BuyingPreferencesCard, CandidateName, CandidateStock, ListStatusPill, MatchSupplier, ProductSearchResults, ProductThumb, useBarcodeScanner, useProductSearch } from "./ui";
 
 export function DesktopBarcodeScan({ onScan, scanResult, onNavigate }) {
   const [captured, setCaptured] = useState(false);
@@ -287,17 +287,17 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
             <span className="crl-drawer-badge">{sourceLabel}</span>
           </div>
           <div className="crl-imported">
-            <ProductThumb image={row.image} alt={row.matchName || row.importedName} />
+            <ProductThumb image={row.image} alt={row.canonicalName || row.matchName || row.importedName} />
             <div className="crl-imported-info">
               {row.canonicalHandle ? (
                 <button type="button" className="crl-imported-link" onClick={() => onNavigate?.(`/app/product/${row.canonicalHandle}`)} title="View this product in the catalog">
-                  {row.matchName || row.importedName}
+                  {row.canonicalName || row.matchName || row.importedName}
                   <Icon name="icon-arrow-right" className="button-icon" />
                 </button>
               ) : (
-                <strong>{row.matchName || row.importedName}</strong>
+                <strong>{row.canonicalName || row.matchName || row.importedName}</strong>
               )}
-              <small>{row.importedName}</small>
+              {(row.canonicalName || row.matchName) && <small>Imported as: {row.importedName}</small>}
               <div className="crl-imported-status">Status: <span className={`crl-status ${status.cls}`}><Icon name={status.icon} className="button-icon" />{status.label}</span></div>
             </div>
           </div>
@@ -343,8 +343,8 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
                   <input type="radio" name="crl-cand" checked={selected === index} disabled={oos} onChange={() => setSelected(index)} />
                   <ProductThumb image={candidate.image} alt={candidate.name} />
                   <span className="crl-cand-info">
-                    <CandidateName name={candidate.name} productUrl={candidate.productUrl} />
-                    <CandidateSub supplier={candidate.supplier} sub={candidate.sub} />
+                    <CandidateName supplier={candidate.supplier} name={candidate.name} canonicalName={row.canonicalName} productUrl={candidate.productUrl} />
+                    {candidate.packLabel && <small>{candidate.packLabel}</small>}
                     <CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} />
                   </span>
                   <span className="crl-cand-right">
@@ -672,6 +672,7 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
     name: offer.name,
     supplier: offer.supplier,
     sub: offer.sub,
+    packLabel: formatPackLabel(offer.packQty, offer.packBasis, offer.baseUnit, offer.packSize),
     price: offer.price,
     perEa: offer.perUnit ?? null,
     image: offer.imageUrl || "",
@@ -682,7 +683,7 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
     productUrl: offer.productUrl || "",
   })), row.selectedOfferKey);
   if (!isResolve && !candidates.length && row.matchName) {
-    candidates.push({ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" });
+    candidates.push({ key: row.selectedOfferKey || null, name: row.matchName, supplier: row.supplier, sub: row.matchSub, packLabel: row.packLabel, price: row.price, perEa: row.perEa, image: row.image, recommended: true, confidence: row.confidence, availability: row.availability, liveAvailable: row.liveAvailable, productUrl: row.productUrl || "" });
   }
   const recIdx = candidates.findIndex((candidate) => candidate.recommended);
   if (recIdx > 0) candidates.unshift(...candidates.splice(recIdx, 1));
@@ -752,7 +753,8 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
 
         <section className="m-detail-sec">
           <span className="m-detail-label">Imported item</span>
-          <strong className="m-detail-name">{row.importedName}</strong>
+          <strong className="m-detail-name">{row.canonicalName || row.matchName || row.importedName}</strong>
+          {(row.canonicalName || row.matchName) && <small>Imported as: {row.importedName}</small>}
           <small>{row.importedSub}</small>
           {row.supplier && row.supplier !== "—" && <small>Imported by {row.supplier}</small>}
           {row.canonicalHandle && (
@@ -784,7 +786,7 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
               <label className={`m-match best ${selected === 0 ? "active" : ""} ${!isOrderable(candidates[0]) ? "oos" : ""}`} aria-disabled={!isOrderable(candidates[0])}>
                 <input type="radio" name="m-cand" checked={selected === 0} disabled={!isOrderable(candidates[0])} onChange={() => setSelected(0)} />
                 <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
-                <span className="m-match-info"><CandidateName name={candidates[0].name} productUrl={candidates[0].productUrl} /><CandidateSub supplier={candidates[0].supplier} sub={candidates[0].sub} /><CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
+                <span className="m-match-info"><CandidateName supplier={candidates[0].supplier} name={candidates[0].name} canonicalName={row.canonicalName} productUrl={candidates[0].productUrl} />{candidates[0].packLabel && <small>{candidates[0].packLabel}</small>}<CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
                 <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrPriceLabel(candidates[0].price)}</strong>{showPerEa(candidates[0].perEa, candidates[0].price) && <small>${mrEa(candidates[0].perEa)} / ea</small>}</span>
               </label>
             </section>
@@ -796,7 +798,7 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
                   return (
                   <label className={`m-match ${selected === index + 1 ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index + 1}>
                     <input type="radio" name="m-cand" checked={selected === index + 1} disabled={oos} onChange={() => setSelected(index + 1)} />
-                    <span className="m-match-info"><CandidateName name={candidate.name} productUrl={candidate.productUrl} /><CandidateSub supplier={candidate.supplier} sub={candidate.sub} /><CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
+                    <span className="m-match-info"><CandidateName supplier={candidate.supplier} name={candidate.name} canonicalName={row.canonicalName} productUrl={candidate.productUrl} />{candidate.packLabel && <small>{candidate.packLabel}</small>}<CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
                     <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrPriceLabel(candidate.price)}</strong>{showPerEa(candidate.perEa, candidate.price) && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
                   </label>
                   );
@@ -1386,7 +1388,7 @@ export function CurrentReorderList({
           />
 
           <section className="crl-card">
-            <h3>Plan Preview</h3>
+            <h3>Savings &amp; totals</h3>
             {usingReal ? (
               <>
                 {planSummary.savings > 0 && (
