@@ -378,11 +378,16 @@ def build_product_matching_dag() -> DAG:
         dag_id="match_products",
         description=(
             "Nightly global rebuild of auto canonical products + cross-supplier "
-            "matches, then a refresh of the catalog read models. Runs every day so "
-            "it picks up whichever supplier(s) ingested that day."
+            "matches, then a refresh of the catalog read models. Runs late each "
+            "evening so it picks up the same day's ingest. If a heavy crawl is "
+            "still running it queues behind it (shared single-slot pool) rather "
+            "than matching a partial catalog."
         ),
         start_date=datetime(2026, 1, 1),
-        schedule="0 2 * * *",
+        # 23:00, after the day's crawls (which start 03:00) have landed, for
+        # same-day freshness. Shares the ingest pool, so a still-running crawl
+        # makes this queue instead of overlapping.
+        schedule="0 23 * * *",
         catchup=False,
         max_active_runs=1,
         is_paused_upon_creation=True,
