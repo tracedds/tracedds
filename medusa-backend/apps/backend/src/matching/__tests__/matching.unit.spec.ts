@@ -1,3 +1,4 @@
+import { pickCategory } from "../db"
 import { runMatching } from "../engine"
 import { buildOffers } from "../line-items"
 import {
@@ -588,5 +589,22 @@ describe("offer availability", () => {
     const offers = buildOffers(ctx, item, members)
     expect(offers[0].availability).toBe("in_stock")
     expect(offers[0].price_cents).toBe(1200)
+  })
+})
+
+describe("category selection", () => {
+  it("prefers a specific category over the 'Dental supplies' catch-all", () => {
+    // The X-Small glove variant: one specific tag, two catch-all tags. The
+    // catch-all is more numerous, but the specific category should win so the
+    // variant matches its siblings.
+    expect(pickCategory(["Gloves", "Dental supplies", "Dental supplies"])).toBe("Gloves")
+  })
+
+  it("falls back to the catch-all when no member has a specific category", () => {
+    expect(pickCategory(["Dental supplies", "", "Dental supplies"])).toBe("Dental supplies")
+  })
+
+  it("picks the most common specific category, ignoring the catch-all", () => {
+    expect(pickCategory(["Gloves", "Gloves", "Masks", "Dental supplies"])).toBe("Gloves")
   })
 })
