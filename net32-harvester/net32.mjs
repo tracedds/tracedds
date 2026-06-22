@@ -66,7 +66,24 @@ async function doSearch(query, { max = 10, postal = POSTAL } = {}) {
   if (!(await waitCleared(page))) {
     return { query, blocked: true, products: [], bestPriceMap: {} }
   }
-  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {})
+  // Wait for the results to render, not for network idle: Net32's page keeps
+  // trackers chattering so it never truly idles (a fixed networkidle wait sinks
+  // ~20s). Resolve as soon as the JSON-LD ItemList or product links appear.
+  await page
+    .waitForFunction(
+      () => {
+        const ld = [...document.querySelectorAll('script[type="application/ld+json"]')].some((s) => {
+          try {
+            return JSON.parse(s.textContent)?.["@type"] === "ItemList"
+          } catch {
+            return false
+          }
+        })
+        return ld || document.querySelectorAll('a[href*="-d-"]').length > 0
+      },
+      { timeout: 12000 }
+    )
+    .catch(() => {})
 
   // Enumerate the filtered, ranked results from the page's JSON-LD ItemList
   // (name + url + image per hit), which is precise. Fall back to scraping
