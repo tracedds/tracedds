@@ -8,6 +8,11 @@ export default defineMiddlewares({
     {
       matcher: "/medmkp/reorder-list",
       method: ["GET", "PUT"],
+      // The whole list blob is PUT at once; Medusa's default JSON body limit is
+      // too small for a worked list (items + saved lists + tombstones), which
+      // 500s every save with "request entity too large". Give it generous room
+      // (the merge also caps tombstone growth so it can't run away).
+      bodyParser: { sizeLimit: "10mb" },
       middlewares: [authenticate("customer", ["bearer", "session"])],
     },
     {
