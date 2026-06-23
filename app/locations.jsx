@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./icons";
 import { daysUntil, formatTraceDate, traceApi, traceErrorMessage } from "./lib";
+import { ProductThumb } from "./ui";
 import s from "./locations.module.css";
 
 // Locations surface: the Location Board (real per-practice locations with scan
@@ -672,7 +673,7 @@ function itemStatus(it) {
   return { label: "OK", tone: "green" };
 }
 
-export function LocationDetailView({ locationId, onBack, onStartScan, onToast }) {
+export function LocationDetailView({ locationId, onBack, onStartScan, onToast, onNavigate }) {
   const [location, setLocation] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -777,7 +778,14 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast })
                       const below = it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level;
                       return (
                         <tr key={it.id}>
-                          <td className={s.tItem}>{it.name}</td>
+                          <td>
+                            <div className={s.tItemCell}>
+                              <ProductThumb image={it.photo_url} alt={it.name} />
+                              {it.canonical_product_id ? (
+                                <button type="button" className={s.tItemLink} onClick={() => onNavigate?.(`/app/product/${it.canonical_product_id}`)} title="View this product in the catalog">{it.name}</button>
+                              ) : <span className={s.tItem}>{it.name}</span>}
+                            </div>
+                          </td>
                           <td><span className={below ? s.tdRed : ""}>{it.quantity_on_hand ?? 0}</span></td>
                           <td className={s.tMuted}>{it.par_level ?? "—"}</td>
                           <td className={s.tMuted}>{it.lot_number || "—"}</td>

@@ -1312,7 +1312,7 @@ export default function Home() {
   const navItems = [
     ["dashboard", "icon-home", "Dashboard", true],
     ["needs-attention", "icon-alert-triangle", "Needs attention", true],
-    ["home", "icon-list", "Reorder list"],
+    ["home", "icon-cart", "Reorder list"],
     ["locations", "icon-map-pin", "Locations"],
     ["scanSessions", "icon-scan", "Scan sessions"],
     ["savings", "icon-dollar-circle", "Savings"],
@@ -1604,6 +1604,7 @@ export default function Home() {
               onBack={() => navigate("/app/locations")}
               onStartScan={() => startScanSession(locationId)}
               onToast={showToast}
+              onNavigate={navigate}
             />
           )}
 
@@ -1621,6 +1622,7 @@ export default function Home() {
               onBack={() => navigate("/app/scan-sessions")}
               onNavigate={navigate}
               onToast={showToast}
+              onNavigate={navigate}
             />
           )}
 

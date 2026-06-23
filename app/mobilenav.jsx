@@ -18,7 +18,7 @@ const MAIN_TABS = [
 ];
 
 const MORE_ITEMS = [
-  { key: "home", label: "Reorder list", icon: "icon-list" },
+  { key: "home", label: "Reorder list", icon: "icon-cart" },
   { key: "savings", label: "Savings", icon: "icon-dollar-circle" },
   { key: "catalog", label: "Catalog", icon: "icon-store" },
   { key: "history", label: "History", icon: "icon-clock" },
