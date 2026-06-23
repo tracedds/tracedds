@@ -9,6 +9,7 @@ import {
   scanLinePayload,
   scanLookup,
   traceApi,
+  traceErrorMessage,
 } from "./lib";
 import { ScanHandoffQr, useBarcodeScanner, useProductSearch, ProductSearchResults } from "./ui";
 import s from "./scansessions.module.css";
@@ -78,8 +79,8 @@ export function ScanSessionsView({ onOpenSession, onNavigate, onToast }) {
     try {
       const { session } = await traceApi.startSession({ location_id: location.id });
       onOpenSession(session.id);
-    } catch {
-      onToast?.("Couldn't start a scan session. Are you signed in?");
+    } catch (err) {
+      onToast?.(traceErrorMessage(err, "Couldn't start a scan session — please try again."));
       setStarting("");
       setPicking(false);
     }
