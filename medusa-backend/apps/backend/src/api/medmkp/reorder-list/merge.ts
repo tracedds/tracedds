@@ -30,6 +30,12 @@ const itemTs = (item: Item): number => Number(item?.updatedAt) || 0
 // bound.
 export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
+// Hard cap on retained tombstones, independent of age. The whole list blob is
+// PUT at once, so unbounded tombstones (every clear adds a batch) bloat it until
+// the server rejects the save as "request entity too large". Keeping the most
+// recent N is far more than enough for a deletion to reach every device.
+export const MAX_TOMBSTONES = 100
+
 // Choose the surviving copy of one item seen on both sides. Higher updatedAt
 // wins (newest write). On a TIE, a tombstone (`included:false`) beats an active
 // copy, so a deletion is "sticky": a stale device re-sending the pre-delete copy
@@ -58,10 +64,15 @@ export function mergeDraftItems(
     byKey.set(key, current ? pickSurvivor(current, item) : item)
   }
   const cutoff = now - TOMBSTONE_TTL_MS
-  // Drop expired tombstones; keep active items and any legacy row (updatedAt 0).
-  return [...byKey.values()].filter(
-    (item) => item.included !== false || itemTs(item) === 0 || itemTs(item) >= cutoff,
-  )
+  const merged = [...byKey.values()]
+  const active = merged.filter((item) => item.included !== false)
+  // Keep tombstones that are still within the TTL (or legacy, ts 0), but never
+  // more than MAX_TOMBSTONES — newest first — so the blob can't grow unbounded.
+  const tombstones = merged
+    .filter((item) => item.included === false && (itemTs(item) === 0 || itemTs(item) >= cutoff))
+    .sort((a, b) => itemTs(b) - itemTs(a))
+    .slice(0, MAX_TOMBSTONES)
+  return [...active, ...tombstones]
 }
 
 // Additive union by id — never lose docs/saved-lists/handoffs because one device

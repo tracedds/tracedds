@@ -6,6 +6,10 @@
 // Kept in a plain-JS module (no JSX) so it can be unit-tested directly.
 
 const REORDER_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Hard cap on retained tombstones (newest first), independent of age, so the
+// whole-list blob can't grow until the server rejects the save. Mirrors
+// MAX_TOMBSTONES in the server merge.
+const REORDER_MAX_TOMBSTONES = 100;
 
 // Identity on lifecycle-stable fields only. `product` is excluded: matching an
 // unmatched scan fills it in, which would change the key mid-life and split one
@@ -34,9 +38,13 @@ export function mergeDraftItems(existing = [], incoming = [], now = Date.now()) 
     byKey.set(key, current ? reorderPickSurvivor(current, item) : item);
   }
   const cutoff = now - REORDER_TOMBSTONE_TTL_MS;
-  return [...byKey.values()].filter(
-    (item) => item.included !== false || reorderItemTs(item) === 0 || reorderItemTs(item) >= cutoff,
-  );
+  const merged = [...byKey.values()];
+  const active = merged.filter((item) => item.included !== false);
+  const tombstones = merged
+    .filter((item) => item.included === false && (reorderItemTs(item) === 0 || reorderItemTs(item) >= cutoff))
+    .sort((a, b) => reorderItemTs(b) - reorderItemTs(a))
+    .slice(0, REORDER_MAX_TOMBSTONES);
+  return [...active, ...tombstones];
 }
 
 function reorderUnionById(existing = [], incoming = []) {
