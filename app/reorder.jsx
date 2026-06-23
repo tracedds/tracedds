@@ -563,9 +563,10 @@ export function MobileReorderCard({ row, onOpen, onRemove }) {
 // Mobile card list for the current reorder list (replaces the desktop table on
 // phones). Stats band + status tabs + tappable product cards.
 
-export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, onRemoveItem, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate, buyerName = "", practiceName = "", buyerInitials = "", email = "", onLogout }) {
+export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, onOpenRow, onToast, onArchiveList, onClearList, onRemoveItem, onRefresh, searchTerm = "", onSearchTerm, searchResults = [], searchLoading, onNavigate, buyerName = "", practiceName = "", buyerInitials = "", email = "", onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   return (
     <div className="m-list">
       <div className="m-brandbar">
@@ -650,6 +651,18 @@ export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, 
       <header className="m-topbar">
         <h1>{title}</h1>
         <div className="m-topbar-actions">
+          {onRefresh && (
+            <button
+              className={`m-iconbtn ${refreshing ? "spinning" : ""}`}
+              type="button"
+              aria-label="Refresh list"
+              title="Refresh list"
+              disabled={refreshing}
+              onClick={async () => { setRefreshing(true); try { await onRefresh(); onToast?.("List refreshed"); } finally { setRefreshing(false); } }}
+            >
+              <Icon name="icon-refresh" className="button-icon" />
+            </button>
+          )}
           <div className="m-menu-wrap">
             <button className="m-iconbtn" type="button" aria-label="List actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
               <svg className="crl-kebab-dots" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" /></svg>
@@ -1202,6 +1215,7 @@ export function CurrentReorderList({
           onArchiveList={onArchiveList}
           onClearList={onClearList}
           onRemoveItem={onRemoveItem}
+          onRefresh={onRefresh}
           searchTerm={searchTerm}
           onSearchTerm={onSearchTerm}
           searchResults={searchResults}
