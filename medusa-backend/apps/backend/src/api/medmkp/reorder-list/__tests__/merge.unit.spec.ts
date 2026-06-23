@@ -101,6 +101,30 @@ describe("reorder-list merge", () => {
     })
   })
 
+  // A deletion must be sticky on a timestamp TIE — otherwise a stale device that
+  // re-sends the pre-delete copy (e.g. a legacy/old-bundle item with no
+  // updatedAt, so both sides read as 0) could resurrect a removed item.
+  describe("deletion is sticky on a timestamp tie", () => {
+    it("an equal-timestamp active copy cannot resurrect a tombstone (legacy zero-ts)", () => {
+      const serverTombstone = { draftItems: [{ id: "x", barcode: "B", included: false }] } // updatedAt absent -> 0
+      const staleActiveResave = { draftItems: [{ id: "x", barcode: "B", included: true }] } // updatedAt absent -> 0
+      expect(visible(draft(serverTombstone, staleActiveResave))).toEqual([])
+      expect(visible(draft(staleActiveResave, serverTombstone))).toEqual([]) // order-independent
+    })
+    it("an equal-timestamp active copy cannot resurrect a tombstone (same non-zero ts)", () => {
+      const tomb = { draftItems: [item({ barcode: "B", included: false, updatedAt: T })] }
+      const active = { draftItems: [item({ barcode: "B", included: true, updatedAt: T })] }
+      expect(visible(draft(tomb, active))).toEqual([])
+      expect(visible(draft(active, tomb))).toEqual([])
+    })
+    it("a strictly newer re-add still wins over a tombstone (re-add not blocked)", () => {
+      const tomb = { draftItems: [item({ product: "Bib", barcode: "B", included: false, updatedAt: T })] }
+      const readd = { draftItems: [item({ product: "Bib", barcode: "B", included: true, updatedAt: T + 1 })] }
+      expect(visible(draft(tomb, readd))).toEqual(["Bib"])
+      expect(visible(draft(readd, tomb))).toEqual(["Bib"])
+    })
+  })
+
   it("the same barcode scanned on two devices merges to one row (no duplicate)", () => {
     const phone = { draftItems: [item({ product: "Gloves", barcode: "B", id: "phone" })] }
     const desk = { draftItems: [item({ product: "Gloves", barcode: "B", id: "desk", updatedAt: T + 1 })] }
