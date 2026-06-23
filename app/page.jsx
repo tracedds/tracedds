@@ -10,6 +10,7 @@ import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, MobileBotto
 import { CartBuilderModal, HistoryDetail, HistoryView, ProcurementPlanView, SupplierHandoffView } from "./procurement";
 import { CurrentReorderList, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
+import StyleGuide from "./styleguide";
 import { ConfirmModal } from "./ui";
 
 export default function Home() {
@@ -1332,6 +1333,7 @@ export default function Home() {
           : view === "signup" ? <SignupPage onNavigate={navigate} onAuthed={handleAuthed} />
           : view === "forgotPassword" ? <ForgotPasswordPage onNavigate={navigate} />
           : view === "resetPassword" ? <ResetPasswordPage onNavigate={navigate} />
+          : view === "styleguide" ? <StyleGuide />
           : view === "sample" ? <SampleReorderList onNavigate={navigate} authed={authed === true} />
           : view === "publicScan" ? (
             <PublicScanView
