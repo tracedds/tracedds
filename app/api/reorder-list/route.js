@@ -14,9 +14,13 @@ async function bearer() {
 
 // GET the practice's saved reorder-list blob. Returns { state: null } when the
 // caller is signed out so the page just falls back to localStorage.
+// no-store on the response so iOS Safari (which ignores fetch cache:"no-store"
+// for repeated GETs) can't serve the phone a stale list and miss desktop edits.
+const NO_STORE = { headers: { "Cache-Control": "no-store, max-age=0" } };
+
 export async function GET(request) {
   const token = await bearer();
-  if (!token) return NextResponse.json({ state: null });
+  if (!token) return NextResponse.json({ state: null }, NO_STORE);
 
   // Forward the poll's ?since= version token so the backend can answer
   // { unchanged: true } cheaply when the list hasn't changed.
@@ -28,10 +32,10 @@ export async function GET(request) {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
-    if (!response.ok) return NextResponse.json({ state: null });
-    return NextResponse.json(await response.json());
+    if (!response.ok) return NextResponse.json({ state: null }, NO_STORE);
+    return NextResponse.json(await response.json(), NO_STORE);
   } catch {
-    return NextResponse.json({ state: null });
+    return NextResponse.json({ state: null }, NO_STORE);
   }
 }
 

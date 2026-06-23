@@ -178,7 +178,7 @@ export default function Home() {
     serverLoadStartedRef.current = true;
     (async () => {
       try {
-        const response = await fetch("/api/reorder-list", { cache: "no-store" });
+        const response = await fetch(`/api/reorder-list?t=${Date.now()}`, { cache: "no-store" });
         const data = await response.json().catch(() => ({}));
         const local = JSON.parse(window.localStorage.getItem(APP_STATE_KEY) || "null");
         if (data && data.state) {
@@ -212,7 +212,10 @@ export default function Home() {
       if (document.visibilityState === "hidden") return;
       try {
         const since = lastServerVersionRef.current;
-        const url = since ? `/api/reorder-list?since=${encodeURIComponent(since)}` : "/api/reorder-list";
+        // The unique `t` defeats iOS Safari's habit of serving a cached response
+        // for a repeated GET even with cache:"no-store" — without it the phone's
+        // poll keeps getting the same stale list and never sees desktop changes.
+        const url = `/api/reorder-list?t=${Date.now()}${since ? `&since=${encodeURIComponent(since)}` : ""}`;
         const response = await fetch(url, { cache: "no-store" });
         const data = await response.json().catch(() => ({}));
         if (data.unchanged || !data.state) return;
@@ -999,7 +1002,7 @@ export default function Home() {
     if (authed !== true) return;
     await flushPendingSave();
     try {
-      const response = await fetch("/api/reorder-list", { cache: "no-store" });
+      const response = await fetch(`/api/reorder-list?t=${Date.now()}`, { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (!data || !data.state) return;
       lastServerVersionRef.current = data.updated_at || lastServerVersionRef.current;
