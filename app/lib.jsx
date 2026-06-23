@@ -47,6 +47,7 @@ export const routeByView = {
   signup: "/signup",
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
+  styleguide: "/styleguide",
   home: "/app",
   locations: "/app/locations",
   locationAdd: "/app/locations/new",
@@ -74,6 +75,7 @@ export function viewFromPath(pathname = "/") {
   if (path === "/reset-password") return { view: "resetPassword", isLoggedIn: false };
   if (path === "/sample") return { view: "sample", isLoggedIn: false };
   if (path === "/scan") return { view: "publicScan", isLoggedIn: false };
+  if (path === "/styleguide") return { view: "styleguide", isLoggedIn: false };
 
   // Authenticated app
   if (path === "/app") return { view: "home", isLoggedIn: true };
