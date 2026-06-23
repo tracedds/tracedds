@@ -1,5 +1,13 @@
+import { Geist } from "next/font/google";
 import "../styles.css";
 import DevBadge from "./DevBadge";
+
+const sans = Geist({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
+  display: "swap",
+});
 
 export const metadata = {
   title: "TraceDDS",
@@ -15,7 +23,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" className={sans.variable}>
       <body>
         {children}
         <DevBadge />

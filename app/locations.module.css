@@ -31,7 +31,7 @@
 
 .title {
   font-size: 26px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   margin: 0;
   line-height: 1.15;
@@ -86,13 +86,13 @@
 
 .statLabel {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: #6b7888;
 }
 
 .statValue {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   line-height: 1.1;
 }
@@ -176,7 +176,7 @@
   padding: 0 5px;
   background: #fff;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
   color: var(--muted);
 }
@@ -188,7 +188,7 @@
   background: transparent;
   font: inherit;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   outline: none;
   cursor: pointer;
@@ -223,7 +223,7 @@
   border-radius: 10px;
   padding: 0 18px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #fff;
   background: var(--blue);
   cursor: pointer;
@@ -241,7 +241,7 @@
   border-radius: 10px;
   padding: 0 16px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
@@ -323,7 +323,7 @@
 
 .cardName {
   font-size: 15.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -337,7 +337,7 @@
   display: inline-flex;
   align-items: center;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   border-radius: 999px;
   padding: 2px 9px;
   white-space: nowrap;
@@ -378,7 +378,7 @@
 
 .miniValue {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   line-height: 1;
 }
@@ -415,7 +415,7 @@
 
 .progressPct {
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: #6b7888;
   flex-shrink: 0;
 }
@@ -426,7 +426,7 @@
   align-items: center;
   gap: 7px;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: #b06a08;
   margin-bottom: 14px;
 }
@@ -459,7 +459,7 @@
 
 .cardEmptyTitle {
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
 }
 
@@ -500,7 +500,7 @@
 
 .footMetaValue {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
 }
 
@@ -525,7 +525,7 @@
   height: 26px;
   border-radius: 999px;
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--blue);
   background: #e8efff;
   flex-shrink: 0;
@@ -549,7 +549,7 @@
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   border: 1px solid #d6deea;
   background: #fff;
@@ -591,7 +591,7 @@
 
 .railTitle {
   font-size: 14.5px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   margin: 0 0 12px;
 }
@@ -621,7 +621,7 @@
 
 .activityText {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   line-height: 1.35;
 }
@@ -641,7 +641,7 @@
   padding: 10px 0 0;
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--blue);
   cursor: pointer;
 }
@@ -661,7 +661,7 @@
   padding: 11px 0;
   font: inherit;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   cursor: pointer;
   text-align: left;
@@ -717,7 +717,7 @@
 
 .promoTitle {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -738,7 +738,7 @@
 }
 
 .tip svg { width: 16px; height: 16px; color: #c2710c; flex-shrink: 0; }
-.tip strong { color: var(--ink); font-weight: 600; }
+.tip strong { color: var(--ink); font-weight: 500; }
 
 .tipLink {
   display: inline-flex;
@@ -749,7 +749,7 @@
   padding: 0;
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--blue);
   cursor: pointer;
 }
@@ -772,7 +772,7 @@
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .crumbLink {
@@ -780,7 +780,7 @@
   border: 0;
   padding: 0;
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--blue);
   cursor: pointer;
 }
@@ -805,7 +805,7 @@
 
 .panelTitle {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   margin: 0 0 18px;
 }
@@ -836,7 +836,7 @@
   align-items: center;
   gap: 5px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: #3a4a5a;
 }
 
@@ -975,7 +975,7 @@
 .useCheck svg { width: 12px; height: 12px; }
 
 .useBody { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.useName { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.useName { font-size: 13.5px; font-weight: 500; color: var(--ink); }
 .useDesc { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
 
 /* Image dropzone */
@@ -1004,7 +1004,7 @@
 .dropIcon svg { width: 21px; height: 21px; }
 
 .dropBody { flex: 1; min-width: 0; }
-.dropTitle { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.dropTitle { font-size: 13.5px; font-weight: 500; color: var(--ink); }
 .dropHint { font-size: 12px; color: #9aa6b4; margin-top: 1px; }
 
 .browse {
@@ -1012,7 +1012,7 @@
   border-radius: 9px;
   padding: 8px 14px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
@@ -1037,7 +1037,7 @@
   border-radius: 10px;
   padding: 11px 20px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
@@ -1053,7 +1053,7 @@
   border-radius: 10px;
   padding: 11px 22px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #fff;
   background: var(--blue);
   cursor: pointer;
@@ -1091,7 +1091,7 @@
 
 .previewName {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -1099,7 +1099,7 @@
   display: inline-flex;
   align-items: center;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--blue);
   background: #e8efff;
   border-radius: 999px;
@@ -1122,7 +1122,7 @@
 
 .previewUseLabel {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
   margin: 4px 0 8px;
 }
@@ -1135,7 +1135,7 @@
 
 .chip {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted);
   background: #f1f4f9;
   border-radius: 999px;
@@ -1173,7 +1173,7 @@
 .aboutIcon svg { width: 17px; height: 17px; }
 
 .aboutBody { min-width: 0; }
-.aboutName { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.aboutName { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .aboutText { font-size: 12.5px; color: #7a8696; line-height: 1.4; margin-top: 1px; }
 
 /* ── Responsive ─────────────────────────────────────────────────────── */
@@ -1234,13 +1234,13 @@
 
 .locHeadMain { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .locHeadBody { min-width: 0; }
-.locHeadName { font-size: 18px; font-weight: 700; color: var(--ink); }
+.locHeadName { font-size: 18px; font-weight: 600; color: var(--ink); }
 
 .locProgress { display: flex; flex-direction: column; gap: 7px; }
-.locProgressLabel { font-size: 12.5px; font-weight: 600; color: #6b7888; }
+.locProgressLabel { font-size: 12.5px; font-weight: 500; color: #6b7888; }
 
 .locMeta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 4px; }
-.locMetaItem { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #3a4a5a; }
+.locMetaItem { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500; color: #3a4a5a; }
 .locMetaItem svg { width: 15px; height: 15px; color: #9aa6b4; }
 .locMetaItem small { display: block; font-size: 11px; font-weight: 500; color: #9aa6b4; }
 
@@ -1256,7 +1256,7 @@
   border-radius: 10px;
   padding: 9px 14px;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
@@ -1274,7 +1274,7 @@
   padding: 4px;
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--blue);
   cursor: pointer;
 }
@@ -1309,7 +1309,7 @@
   border-radius: 10px;
   padding: 0 14px;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: #3a4a5a;
   background: #fff;
   cursor: pointer;
@@ -1325,7 +1325,7 @@
 .table th {
   text-align: left;
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--muted);
@@ -1355,7 +1355,7 @@
 .table th:nth-child(6), .table td:nth-child(6) { width: 12%; }   /* Status */
 .table th:nth-child(7), .table td:nth-child(7) { width: 14%; }   /* Last counted */
 
-.tItem { font-weight: 600; color: var(--ink); }
+.tItem { font-weight: 500; color: var(--ink); }
 .tItemCell { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tItemCell .tItemLink, .tItemCell .tItem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tItemCell :global(.crl-thumb) { border: none; background: transparent; flex: none; width: 32px; height: 32px; }
@@ -1365,26 +1365,26 @@
   padding: 0;
   font: inherit;
   text-align: left;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   cursor: pointer;
 }
 .tItemLink:hover { color: var(--blue); text-decoration: underline; }
 .tMuted { color: var(--muted); }
-.tdRed { color: var(--red); font-weight: 600; }
-.tdAmber { color: #c2710c; font-weight: 600; }
+.tdRed { color: var(--red); font-weight: 500; }
+.tdAmber { color: #c2710c; font-weight: 500; }
 
-.evi { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.evi { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .evi svg { width: 14px; height: 14px; }
 
-.savings { color: #0a9861; font-weight: 700; }
+.savings { color: #0a9861; font-weight: 600; }
 
 .tLink {
   background: none;
   border: 0;
   padding: 0;
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--blue);
   cursor: pointer;
 }
@@ -1396,7 +1396,7 @@
   border-radius: 8px;
   padding: 6px 12px;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
@@ -1436,7 +1436,7 @@
   background: #fff;
   font: inherit;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: #3a4a5a;
   cursor: pointer;
 }
@@ -1455,7 +1455,7 @@
 }
 .scanRow:first-of-type { border-top: 0; }
 .scanBody { flex: 1; min-width: 0; }
-.scanText { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.scanText { font-size: 13.5px; font-weight: 500; color: var(--ink); }
 .scanMeta { font-size: 12px; color: var(--muted); margin-top: 1px; }
 .scanWho { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .scanWho .footMetaValue { font-size: 12.5px; }
@@ -1472,8 +1472,8 @@
 .issueRow:first-of-type { border-top: 0; }
 .issueIcon { display: inline-flex; }
 .issueIcon svg { width: 17px; height: 17px; }
-.issueLabel { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--ink); }
-.issueValue { font-size: 14px; font-weight: 700; color: var(--ink); }
+.issueLabel { flex: 1; font-size: 13.5px; font-weight: 500; color: var(--ink); }
+.issueValue { font-size: 14px; font-weight: 600; color: var(--ink); }
 
 .railBtn {
   display: flex;
@@ -1487,7 +1487,7 @@
   padding: 9px 14px;
   font: inherit;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ink);
   background: #fff;
   cursor: pointer;
@@ -1507,7 +1507,7 @@
 .eviDot { display: inline-flex; }
 .eviDot svg { width: 16px; height: 16px; }
 .eviLabel { flex: 1; font-size: 13px; color: var(--ink); }
-.eviStatus { font-size: 12.5px; font-weight: 600; }
+.eviStatus { font-size: 12.5px; font-weight: 500; }
 
 /* ── Reorder needs card ─────────────────────────────────────────────── */
 .reorderHead {
@@ -1530,7 +1530,7 @@
   padding: 9px 0;
   border-top: 1px solid #eef1f6;
 }
-.reorderName { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reorderName { font-size: 13px; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .railPrimary {
   display: flex;
@@ -1544,7 +1544,7 @@
   padding: 11px 14px;
   font: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: #fff;
   background: var(--blue);
   cursor: pointer;
@@ -1583,7 +1583,7 @@
   flex-shrink: 0;
 }
 .mBackBtn svg { width: 20px; height: 20px; }
-.mHeadTitle { flex: 1; min-width: 0; font-size: 19px; font-weight: 800; color: var(--ink); letter-spacing: -0.01em; }
+.mHeadTitle { flex: 1; min-width: 0; font-size: 19px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
 .mHeadSpacer { width: 38px; flex-shrink: 0; }
 .mBody { display: flex; flex-direction: column; gap: 14px; padding-bottom: 24px; }
 
@@ -1597,7 +1597,7 @@
   background: #fff;
 }
 .mLocText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mLocName { font-size: 16px; font-weight: 700; color: var(--ink); }
+.mLocName { font-size: 16px; font-weight: 600; color: var(--ink); }
 .mLocSub { font-size: 13px; color: var(--muted); }
 
 .mScanBtn {
@@ -1611,7 +1611,7 @@
   background: var(--blue);
   color: #fff;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 .mScanBtn svg { width: 19px; height: 19px; }
@@ -1627,11 +1627,11 @@
   border: 1px solid #e6ebf2;
   background: #fff;
 }
-.mStatVal { font-size: 18px; font-weight: 800; color: var(--ink); }
+.mStatVal { font-size: 18px; font-weight: 600; color: var(--ink); }
 .mStatLabel { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.2; }
 
 .mListHead { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-.mListTitle { font-size: 15px; font-weight: 700; color: var(--ink); margin: 0; }
+.mListTitle { font-size: 15px; font-weight: 600; color: var(--ink); margin: 0; }
 .mListCount {
   display: inline-flex;
   align-items: center;
@@ -1643,7 +1643,7 @@
   background: #eef2f8;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .mSearch {
@@ -1686,6 +1686,6 @@
 .mItem:last-child { border-bottom: 0; }
 .mItem:active { background: #f7f9fc; }
 .mItemBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.mItemName { font-size: 15px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mItemName { font-size: 15px; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mItemMeta { font-size: 12.5px; color: var(--muted); }
-.mItemRed { color: var(--red); font-weight: 700; }
+.mItemRed { color: var(--red); font-weight: 600; }

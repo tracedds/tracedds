@@ -26,21 +26,21 @@ const COLOR_TOKENS = [
 ];
 
 const TYPE_SCALE = [
-  { px: 30, weight: 900, label: "Display / page hero" },
-  { px: 24, weight: 800, label: "Page title (h1)" },
-  { px: 18, weight: 800, label: "Section title (h2)" },
-  { px: 15, weight: 700, label: "Card title / emphasis" },
-  { px: 14, weight: 600, label: "Body (base)" },
-  { px: 13, weight: 600, label: "Secondary / dense rows" },
-  { px: 12, weight: 700, label: "Labels, pills, captions" },
-  { px: 11, weight: 700, label: "Micro / eyebrow (uppercase)" },
+  { px: 30, weight: 700, label: "Display / page hero" },
+  { px: 24, weight: 600, label: "Page title (h1)" },
+  { px: 18, weight: 600, label: "Section title (h2)" },
+  { px: 15, weight: 600, label: "Card title / emphasis" },
+  { px: 14, weight: 400, label: "Body (base)" },
+  { px: 13, weight: 400, label: "Secondary / dense rows" },
+  { px: 12, weight: 500, label: "Labels, pills, captions" },
+  { px: 11, weight: 500, label: "Micro / eyebrow (uppercase)" },
 ];
 
 const WEIGHTS = [
-  { w: 600, label: "600 Body" },
-  { w: 700, label: "700 Strong" },
-  { w: 800, label: "800 Title" },
-  { w: 900, label: "900 Stat" },
+  { w: 400, label: "400 Body" },
+  { w: 500, label: "500 Medium" },
+  { w: 600, label: "600 Semibold" },
+  { w: 700, label: "700 Display" },
 ];
 
 const RADII = [
@@ -95,7 +95,7 @@ export default function StyleGuide() {
       <div className={styles.pageHead}>
         <BrandMark />
       </div>
-      <h1 style={{ fontSize: 30, fontWeight: 900 }}>Design System</h1>
+      <h1 style={{ fontSize: 30, fontWeight: 700 }}>Design System</h1>
       <p className={styles.lede}>
         The visual language of TraceDDS, in one place. Build new screens from these
         tokens, scales, and components so every view feels like the same product.
@@ -146,7 +146,7 @@ export default function StyleGuide() {
       <section className={styles.section}>
         <h2>Typography</h2>
         <p className={styles.sectionNote}>
-          Inter, with a system fallback. Base body is 14px. Sizes cluster at
+          Geist, with a system fallback. Base body is 14px. Sizes cluster at
           11/12/13/14 for UI and 18/24/30 for headings — stay on the scale.
         </p>
         {TYPE_SCALE.map((t) => (
