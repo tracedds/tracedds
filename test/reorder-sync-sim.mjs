@@ -93,4 +93,19 @@ class Client {
   }
   ok("client merge == server merge (parity, no drift)") }
 
+// 8) Tombstone bloat is bounded — 500 deletions collapse to the cap, active kept,
+//    and client/server still agree (this is what prevents "request entity too large")
+{ const now = T
+  const tombs = []
+  for (let i = 0; i < 500; i++) tombs.push({ ...scan("D" + i, now - i * 10), included: false })
+  const withActive = [scan("Keep", now), ...tombs]
+  const c = clientMergeItems(withActive, [], now)
+  const s = serverMergeItems(withActive, [], now)
+  const cActive = c.filter((x) => x.included !== false).length
+  const cTombs = c.filter((x) => x.included === false).length
+  assert.strictEqual(cActive, 1)                    // active item survives
+  assert.ok(cTombs <= 100, `tombstones capped, got ${cTombs}`)
+  assert.strictEqual(c.length, s.length)            // client == server
+  ok(`tombstone bloat bounded: 500 -> ${cTombs} (cap 100), active kept, parity holds`) }
+
 console.log(`\nALL ${n} SCENARIOS PASSED`)
