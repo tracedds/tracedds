@@ -328,6 +328,7 @@ export default function Home() {
       const nextRoute = viewFromPath(window.location.pathname + window.location.search);
       setIsLoggedIn(nextRoute.isLoggedIn);
       setViewState(nextRoute.view);
+      setLocationId(nextRoute.locationId || null);
       setHistoryId(nextRoute.historyId || null);
       setSelectedHandoffId(nextRoute.handoffId || null);
       setProductHandle(nextRoute.productHandle || null);
@@ -1295,7 +1296,7 @@ export default function Home() {
   const navItems = [
     ["dashboard", "icon-home", "Dashboard", true],
     ["needs-attention", "icon-alert-triangle", "Needs attention", true],
-    ["home", "icon-list", "Reorder list"],
+    ["home", "icon-cart", "Reorder list"],
     ["locations", "icon-map-pin", "Locations"],
     ["scan-sessions", "icon-scan", "Scan sessions", true],
     ["savings", "icon-dollar-circle", "Savings"],
@@ -1587,6 +1588,7 @@ export default function Home() {
               onBack={() => navigate("/app/locations")}
               onStartScan={openMobileScan}
               onToast={showToast}
+              onNavigate={navigate}
             />
           )}
 

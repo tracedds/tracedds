@@ -1319,30 +1319,59 @@
 .filterBtn:hover { border-color: #2F5BD6; color: #2F5BD6; }
 
 /* ── Items table ────────────────────────────────────────────────────── */
-.tableWrap { overflow-x: auto; margin: 14px -4px 0; }
+.tableWrap { margin: 12px 0 0; }
 
-.table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 .table th {
   text-align: left;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   color: #8a97a6;
-  padding: 0 12px 9px;
+  padding: 0 8px 8px;
   border-bottom: 1px solid #eef1f6;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .table td {
-  padding: 12px;
+  padding: 8px;
   border-bottom: 1px solid #f1f4f8;
   vertical-align: middle;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: #2a3a4a;
 }
 .table tbody tr:hover { background: #fafcff; }
 
+/* Fixed column widths so 9 columns always fit the panel — no horizontal scroll. */
+.table th:nth-child(1), .table td:nth-child(1) { width: 24%; }   /* Item */
+.table th:nth-child(2), .table td:nth-child(2) { width: 9%; }    /* SKU */
+.table th:nth-child(3), .table td:nth-child(3) { width: 8%; }    /* On hand */
+.table th:nth-child(4), .table td:nth-child(4) { width: 8%; }    /* Par level */
+.table th:nth-child(5), .table td:nth-child(5) { width: 10%; }   /* Status */
+.table th:nth-child(6), .table td:nth-child(6) { width: 11%; }   /* Evidence */
+.table th:nth-child(7), .table td:nth-child(7) { width: 7%; }    /* Reorder */
+.table th:nth-child(8), .table td:nth-child(8) { width: 9%; }    /* Last scanned */
+.table th:nth-child(9), .table td:nth-child(9) { width: 14%; }   /* Actions */
+
 .tItem { font-weight: 600; color: #14202E; }
+.tItemCell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tItemCell .tItemLink, .tItemCell .tItem { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tItemCell :global(.crl-thumb) { border: none; background: transparent; flex: none; width: 32px; height: 32px; }
+.tItemLink {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  font-weight: 600;
+  color: #14202E;
+  cursor: pointer;
+}
+.tItemLink:hover { color: #2F5BD6; text-decoration: underline; }
 .tMuted { color: #8a97a6; }
 .tdRed { color: #d1352b; font-weight: 600; }
 .tdAmber { color: #c2710c; font-weight: 600; }
@@ -1365,16 +1394,18 @@
 
 .tActions { display: flex; align-items: center; gap: 4px; }
 .tBtn {
-  border: 1px solid #d6deea;
+  flex: none;
+  border: 1px solid #2F5BD6;
   border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 12.5px;
+  padding: 5px 9px;
+  font-size: 12px;
   font-weight: 600;
-  color: #2a3a4a;
-  background: #fff;
+  color: #fff;
+  background: #2F5BD6;
   cursor: pointer;
+  white-space: nowrap;
 }
-.tBtn:hover { border-color: #2F5BD6; color: #2F5BD6; }
+.tBtn:hover { background: #244dbd; border-color: #244dbd; color: #fff; }
 
 .kebab {
   border: 0;

@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./icons";
+import { money } from "./lib";
+import { ProductThumb } from "./ui";
 import s from "./locations.module.css";
 
 // Locations surface: the Location Board (room/cabinet scan coverage) and the
@@ -694,10 +696,10 @@ export function AddLocationView({ onCancel, onSave, onToast }) {
 
 // ── Location Detail ───────────────────────────────────────────────────
 
-// Representative per-location detail. The clicked location's identity (name,
-// room, type, status, progress, assignee) is read from the board mock for the
-// header + breadcrumb; the item table / evidence / reorder data below is shared
-// mock until the Phase-1 backend exposes per-item inventory.
+// Fallback per-location detail. Real catalog products are fetched per location
+// (see productsToItems below) and drive the item table, recent scans, issues,
+// and reorder rail. This shared mock is only used when the catalog backend can't
+// be reached. Evidence (a compliance-program signal, not per-product) stays mock.
 const DETAIL = {
   items: [
     { name: "Nitrile Exam Gloves, Medium", sku: "GLV-NTR-M", onHand: "2 boxes", onHandTone: "red", par: "10 boxes", status: { label: "Reorder now", tone: "red" }, evidence: { label: "Verified", icon: "icon-check-circle", tone: "green" }, reorder: { type: "savings", value: "$11.25" }, scanned: "May 16, 2024 · 9:10 AM", action: "Reorder" },
@@ -739,6 +741,116 @@ const DETAIL = {
 
 const PILL_TONE = { red: s.badgeRed, amber: s.badgeAmber, green: s.badgeGreen, blue: s.badgeBlue, slate: s.badgeSlate };
 
+// Per location-type catalog department to source real products from, so each
+// board shows db-backed products relevant to that room (Hygiene → preventives,
+// Operatory → instruments, …). These match the supplier-named source categories
+// in the catalog (see app/catalogData.js). Unmapped types fall back to Instruments.
+const TYPE_CATEGORY = {
+  cabinet: "Preventives",
+  operatory: "Instruments",
+  sterilization: "Infection Control",
+  lab: "Laboratory Products",
+  storage: "Burs & Diamonds",
+  emergency_kit: "Infection Control",
+  other: "Instruments",
+};
+
+// Representative scan-session state cycled across a location's real products. The
+// products (name / SKU / supplier / price) are real from the catalog; the
+// on-hand / par / status overlay is illustrative until the Phase-1 inventory
+// backend exposes per-item counts.
+const ITEM_STATES = [
+  { onHand: 2, par: 10, onHandTone: "red", status: { label: "Reorder now", tone: "red" }, evidence: { label: "Verified", icon: "icon-check-circle", tone: "green" }, reorder: "savings", action: "Reorder" },
+  { onHand: 1, par: 4, onHandTone: "red", status: { label: "Needs review", tone: "amber" }, evidence: { label: "Expiration captured", icon: "icon-clock", tone: "amber" }, reorder: "review", action: "Review" },
+  { onHand: 4, par: 8, onHandTone: null, status: { label: "Needs details", tone: "amber" }, evidence: { label: "Missing lot", icon: "icon-alert-triangle", tone: "red" }, reorder: "details", action: "Add details" },
+  { onHand: 3, par: 6, onHandTone: null, status: { label: "Healthy", tone: "green" }, evidence: { label: "Verified", icon: "icon-check-circle", tone: "green" }, reorder: "savings", action: "Reorder" },
+  { onHand: 12, par: 10, onHandTone: null, status: { label: "Healthy", tone: "green" }, evidence: { label: "Verified", icon: "icon-check-circle", tone: "green" }, reorder: "savings", action: "Reorder" },
+  { onHand: 2, par: 5, onHandTone: "amber", status: { label: "Low stock", tone: "amber" }, evidence: { label: "Verified", icon: "icon-check-circle", tone: "green" }, reorder: "savings", action: "Reorder" },
+  { onHand: 6, par: 6, onHandTone: null, status: { label: "Expiring soon", tone: "amber" }, evidence: { label: "Expiration in 25 days", icon: "icon-clock", tone: "amber" }, reorder: "savings", action: "Reorder" },
+];
+
+const SCAN_TIMES = ["9:10 AM", "3:22 PM", "11:05 AM", "8:55 AM", "8:48 AM", "4:12 PM", "10:20 AM"];
+const SCAN_AGO = ["2 min ago", "15 min ago", "32 min ago", "45 min ago", "1 hr ago"];
+const SCAN_WHO = ["Alex Kim", "Jamie Lee", "Hannah Lee"];
+const SCAN_VERB = [
+  { verb: "scanned", icon: "icon-check-circle", tone: "green" },
+  { verb: "flagged for review", icon: "icon-alert-triangle", tone: "amber" },
+  { verb: "updated", icon: "icon-file-text", tone: "blue" },
+];
+
+function unitWord(offer) {
+  const basis = String(offer?.pack_basis || "").toLowerCase();
+  if (basis === "box") return "boxes";
+  if (basis === "case") return "cases";
+  if (basis === "pack") return "packs";
+  if (basis === "bag") return "bags";
+  return "units";
+}
+
+function priceText(cents) {
+  return cents != null ? money.format(cents / 100) : null;
+}
+
+// Map real catalog products (from /api/canonical-products) onto the location
+// item-table row shape, cycling the illustrative inventory overlay across them.
+function productsToItems(products) {
+  return products.map((product, i) => {
+    const offer = product.best_offer || {};
+    const st = ITEM_STATES[i % ITEM_STATES.length];
+    const word = unitWord(offer);
+    const price = priceText(offer.price_cents);
+    const reorder =
+      st.reorder === "review"
+        ? { type: "link", value: "Review" }
+        : st.reorder === "details"
+        ? { type: "link", value: "Add details" }
+        : { type: "savings", value: price || "—" };
+    return {
+      id: product.id || offer.sku || `row-${i}`,
+      name: product.name,
+      handle: product.handle || "",
+      image: product.image_url || offer.image_url || "",
+      sku: offer.sku || "—",
+      supplier: offer.supplier_name || "",
+      onHand: `${st.onHand} ${word}`,
+      onHandTone: st.onHandTone,
+      par: `${st.par} ${word}`,
+      status: st.status,
+      evidence: st.evidence,
+      reorder,
+      priceCents: offer.price_cents ?? null,
+      scanned: `May ${16 - (i % 3)} · ${SCAN_TIMES[i % SCAN_TIMES.length]}`,
+      action: st.action,
+      belowPar: st.onHand < st.par,
+    };
+  });
+}
+
+function itemsToScans(items) {
+  return items.slice(0, 5).map((it, i) => {
+    const v = SCAN_VERB[i % SCAN_VERB.length];
+    return { id: i + 1, text: `${it.name} ${v.verb}`, sku: it.sku, qty: it.onHand, who: SCAN_WHO[i % SCAN_WHO.length], time: SCAN_AGO[i % SCAN_AGO.length], icon: v.icon, tone: v.tone };
+  });
+}
+
+function itemsToIssues(items) {
+  const count = (label) => items.filter((it) => it.status.label === label).length;
+  return [
+    { label: "Needs review", value: count("Needs review"), icon: "icon-alert-triangle", tone: "red" },
+    { label: "Missing details", value: count("Needs details"), icon: "icon-info", tone: "amber" },
+    { label: "Reorder now", value: count("Reorder now"), icon: "icon-cart", tone: "red" },
+  ];
+}
+
+function itemsToReorder(items) {
+  const picks = items.filter((it) => it.belowPar).slice(0, 4);
+  const estCents = picks.reduce((sum, it) => sum + (it.priceCents || 0), 0);
+  return {
+    estValue: money.format(estCents / 100),
+    items: picks.map((it) => ({ name: it.name, qty: it.onHand, price: priceText(it.priceCents) || "—" })),
+  };
+}
+
 // Pull the four header stats from the clicked location's mini-stats, falling
 // back to the wireframe defaults for locations with a different stat shape.
 function detailStats(loc) {
@@ -754,7 +866,7 @@ function detailStats(loc) {
   };
 }
 
-export function LocationDetailView({ locationId, onBack, onStartScan, onToast }) {
+export function LocationDetailView({ locationId, onBack, onStartScan, onToast, onNavigate }) {
   const loc = BOARD_MOCK.locations.find((l) => l.id === locationId) || BOARD_MOCK.locations[0];
   const meta = typeMeta(loc.type);
   const status = STATUS_META[loc.status] || STATUS_META.not_started;
@@ -762,6 +874,30 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast })
   const progress = loc.progress ?? 78;
   const tellSoon = () => onToast?.("Scan sessions land in an upcoming phase.");
   const scan = () => (onStartScan ? onStartScan() : tellSoon());
+
+  // Real catalog products for this location's department, fetched the same way
+  // the reorder list / catalog pull from the db. Falls back to the wireframe
+  // sample only if the backend can't be reached.
+  const [products, setProducts] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const category = TYPE_CATEGORY[loc.type] || "Instruments";
+    const controller = new AbortController();
+    setLoading(true);
+    fetch(`/api/canonical-products?category=${encodeURIComponent(category)}&limit=8`, { signal: controller.signal, cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((body) => setProducts(body.canonical_products || []))
+      .catch((error) => { if (error.name !== "AbortError") setProducts([]); })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [locationId, loc.type]);
+
+  const hasReal = Boolean(products && products.length);
+  const items = useMemo(() => (hasReal ? productsToItems(products) : DETAIL.items), [hasReal, products]);
+  const scans = useMemo(() => (hasReal ? itemsToScans(items) : DETAIL.scans), [hasReal, items]);
+  const issues = useMemo(() => (hasReal ? itemsToIssues(items) : DETAIL.issues), [hasReal, items]);
+  const reorder = useMemo(() => (hasReal ? itemsToReorder(items) : DETAIL.reorder), [hasReal, items]);
 
   return (
     <div className={s.detail}>
@@ -817,10 +953,8 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast })
         </div>
       </section>
 
-      <div className={s.detailGrid}>
-        <div className={s.detailMain}>
-          <section className={s.panel}>
-            <h2 className={s.panelTitle}>Items in this location</h2>
+      <section className={s.panel}>
+        <h2 className={s.panelTitle}>Items in this location</h2>
             <div className={s.toolbar}>
               <label className={s.search}>
                 <Icon name="icon-search" />
@@ -840,44 +974,61 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast })
                   </tr>
                 </thead>
                 <tbody>
-                  {DETAIL.items.map((it) => (
-                    <tr key={it.sku}>
-                      <td className={s.tItem}>{it.name}</td>
+                  {loading && !hasReal ? (
+                    <tr><td colSpan={9} className={s.tMuted}>Loading items…</td></tr>
+                  ) : (
+                    items.map((it) => (
+                    <tr key={it.id || it.sku}>
+                      <td>
+                        <div className={s.tItemCell}>
+                          <ProductThumb image={it.image} alt={it.name} />
+                          {it.handle ? (
+                            <button type="button" className={s.tItemLink} onClick={() => onNavigate?.(`/app/product/${it.handle}`)} title="View this product in the catalog">{it.name}</button>
+                          ) : <span className={s.tItem}>{it.name}</span>}
+                        </div>
+                      </td>
                       <td className={s.tMuted}>{it.sku}</td>
                       <td><span className={it.onHandTone === "red" ? s.tdRed : it.onHandTone === "amber" ? s.tdAmber : ""}>{it.onHand}</span></td>
                       <td className={s.tMuted}>{it.par}</td>
                       <td><span className={`${s.badge} ${PILL_TONE[it.status.tone]}`}>{it.status.label}</span></td>
                       <td><span className={`${s.evi} ${TONE_TEXT[it.evidence.tone]}`}><Icon name={it.evidence.icon} />{it.evidence.label}</span></td>
-                      <td>{it.reorder.type === "savings" ? <span className={s.savings}>Savings {it.reorder.value}</span> : <button type="button" className={s.tLink} onClick={tellSoon}>{it.reorder.value}</button>}</td>
+                      <td>{it.reorder.type === "savings" ? <span className={s.savings}>{it.reorder.value}</span> : <button type="button" className={s.tLink} onClick={tellSoon}>{it.reorder.value}</button>}</td>
                       <td className={s.tMuted}>{it.scanned}</td>
-                      <td className={s.tActions}>
-                        <button type="button" className={s.tBtn} onClick={tellSoon}>{it.action}</button>
-                        <button type="button" className={s.kebab} onClick={tellSoon} aria-label="More actions">⋮</button>
+                      <td>
+                        <div className={s.tActions}>
+                          <button type="button" className={s.tBtn} onClick={tellSoon}>{it.action}</button>
+                          <button type="button" className={s.kebab} onClick={tellSoon} aria-label="More actions">⋮</button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
 
             <div className={s.tableFoot}>
-              <span className={s.tMuted}>Showing 1 to 7 of 37 items</span>
-              <div className={s.pager}>
-                <button type="button" className={s.pageNav} onClick={tellSoon} aria-label="Previous"><Icon name="icon-chevron-left" /></button>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button key={n} type="button" className={`${s.pageNum} ${n === 1 ? s.pageActive : ""}`} onClick={tellSoon}>{n}</button>
-                ))}
-                <button type="button" className={s.pageNav} onClick={tellSoon} aria-label="Next"><Icon name="icon-chevron-right" /></button>
-              </div>
+              <span className={s.tMuted}>{items.length ? `Showing 1 to ${items.length} of ${items.length} items` : "No items yet"}</span>
+              {hasReal ? null : (
+                <div className={s.pager}>
+                  <button type="button" className={s.pageNav} onClick={tellSoon} aria-label="Previous"><Icon name="icon-chevron-left" /></button>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} type="button" className={`${s.pageNum} ${n === 1 ? s.pageActive : ""}`} onClick={tellSoon}>{n}</button>
+                  ))}
+                  <button type="button" className={s.pageNav} onClick={tellSoon} aria-label="Next"><Icon name="icon-chevron-right" /></button>
+                </div>
+              )}
             </div>
-          </section>
+      </section>
 
+      <div className={s.detailGrid}>
+        <div className={s.detailMain}>
           <section className={s.panel}>
             <div className={s.cardHeadRow}>
               <h2 className={s.panelTitle}>Recent scans</h2>
               <button type="button" className={s.railLink} onClick={tellSoon}>View all activity<Icon name="icon-arrow-right" /></button>
             </div>
-            {DETAIL.scans.map((ev) => (
+            {scans.map((ev) => (
               <div className={s.scanRow} key={ev.id}>
                 <span className={`${s.activityIcon} ${TONE[ev.tone] || s.tSlate}`}><Icon name={ev.icon} /></span>
                 <div className={s.scanBody}>
@@ -897,7 +1048,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast })
         <aside className={s.detailRail}>
           <section className={s.railCard}>
             <h2 className={s.railTitle}>Issues in this location</h2>
-            {DETAIL.issues.map((iss) => (
+            {issues.map((iss) => (
               <div className={s.issueRow} key={iss.label}>
                 <span className={`${s.issueIcon} ${TONE_TEXT[iss.tone]}`}><Icon name={iss.icon} /></span>
                 <span className={s.issueLabel}>{iss.label}</span>
@@ -923,14 +1074,14 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast })
             <div className={s.reorderHead}>
               <div>
                 <div className={s.railTitle}>Reorder needs</div>
-                <small className={s.tMuted}>{DETAIL.reorder.items.length} items below par</small>
+                <small className={s.tMuted}>{reorder.items.length} items below par</small>
               </div>
               <div className={s.reorderEst}>
                 <small className={s.tMuted}>Est. reorder value</small>
-                <strong className={s.savings}>{DETAIL.reorder.estValue}</strong>
+                <strong className={s.savings}>{reorder.estValue}</strong>
               </div>
             </div>
-            {DETAIL.reorder.items.map((it) => (
+            {reorder.items.map((it) => (
               <div className={s.reorderRow} key={it.name}>
                 <span className={s.reorderName}>{it.name}</span>
                 <span className={s.tMuted}>{it.qty}</span>
