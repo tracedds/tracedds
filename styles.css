@@ -10830,3 +10830,11 @@ th {
   .ol-board { grid-template-columns: 1fr; }
   .ol-tray { order: -1; }
 }
+
+/* ===== Phase 3 — Evidence audit packet (print) ===== */
+/* Export PDF on the binder is the browser's print-to-PDF: drop the app chrome
+   and the binder's own toolbar (.evd-noprint) so only the packet prints. */
+@media print {
+  .topbar, .sidebar, .mobile-bottom-nav, .toast, .evd-noprint { display: none !important; }
+  .app-body, .app-main { display: block; }
+}
