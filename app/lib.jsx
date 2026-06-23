@@ -683,11 +683,28 @@ export function scanLinePayload(code, product, scanned) {
 // or throws; callers handle the empty / signed-out / unreachable states.
 async function traceFetch(path, opts) {
   const response = await fetch(path, opts);
-  if (!response.ok) throw new Error(`${path} → ${response.status}`);
+  if (!response.ok) {
+    // Surface the backend's own message ({ error } from our routes, { message }
+    // from the Medusa framework) and the status, so callers can tell a real
+    // auth failure apart from validation / no-practice / server errors.
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(data.error || data.message || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
   return response.json();
 }
 function jsonBody(method, body) {
   return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+}
+
+// Maps a traceFetch rejection to a user-facing toast. Only a 401 is really an
+// "are you signed in?" case; 4xx errors carry an actionable backend message, so
+// surface it rather than blaming auth. 5xx / network fall back to a retry hint.
+export function traceErrorMessage(err, fallback) {
+  if (err?.status === 401) return "Your session expired — please sign in again.";
+  if (err?.status && err.status < 500 && err.message) return err.message;
+  return fallback;
 }
 
 export const traceApi = {

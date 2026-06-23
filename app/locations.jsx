@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./icons";
-import { daysUntil, formatTraceDate, traceApi } from "./lib";
+import { daysUntil, formatTraceDate, traceApi, traceErrorMessage } from "./lib";
 import s from "./locations.module.css";
 
 // Locations surface: the Location Board (real per-practice locations with scan
@@ -478,9 +478,9 @@ export function AddLocationView({ onCancel, onSaved, onToast }) {
       await traceApi.createLocation({ name: name.trim(), type, notes: description.trim() || null });
       onToast?.(`Location "${name.trim()}" saved.`);
       onSaved?.();
-    } catch {
+    } catch (err) {
       setSaving(false);
-      onToast?.("Couldn't save the location. Are you signed in?");
+      onToast?.(traceErrorMessage(err, "Couldn't save the location — please try again."));
     }
   }
 
