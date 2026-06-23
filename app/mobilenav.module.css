@@ -36,7 +36,7 @@
 }
 
 .tab.active {
-  color: #2f5bd6;
+  color: var(--blue);
 }
 
 .iconWrap {
@@ -89,7 +89,7 @@
 }
 
 .sheetHead strong {
-  color: #14202e;
+  color: var(--ink);
   font-size: 16px;
   font-weight: 700;
 }
@@ -133,7 +133,7 @@
   padding: 14px 6px;
   border: none;
   background: transparent;
-  color: #14202e;
+  color: var(--ink);
   text-align: left;
   cursor: pointer;
 }
@@ -145,7 +145,7 @@
   height: 40px;
   border-radius: 11px;
   background: #eef3ff;
-  color: #2f5bd6;
+  color: var(--blue);
 }
 
 .sheetItemLabel {

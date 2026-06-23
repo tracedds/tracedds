@@ -7376,7 +7376,7 @@ th {
     padding: 20px 22px calc(26px + env(safe-area-inset-bottom));
     border-radius: 22px 22px 0 0;
     background: #ffffff;
-    color: #081536;
+    color: var(--ink);
     animation: scanResultIn 0.24s ease-out;
   }
   .scan-fs-manual-card header {
@@ -7424,14 +7424,14 @@ th {
     background: #ffffff;
   }
   .mobile-manual-field:focus-within {
-    border-color: #0f62ff;
+    border-color: var(--blue);
     box-shadow: 0 0 0 3px rgba(15, 98, 255, 0.14);
   }
   .mobile-manual-field .button-icon {
     width: 20px;
     height: 20px;
     flex: 0 0 auto;
-    stroke: #0f62ff;
+    stroke: var(--blue);
     fill: none;
   }
   .mobile-manual-field input {
@@ -7442,7 +7442,7 @@ th {
     background: transparent;
     font-size: 16px;
     font-weight: 600;
-    color: #081536;
+    color: var(--ink);
     letter-spacing: 0.02em;
   }
   .scan-fs-manual-card .primary-action {
@@ -7453,7 +7453,7 @@ th {
     height: 50px;
     border: none;
     border-radius: 12px;
-    background: #0f62ff;
+    background: var(--blue);
     color: #ffffff;
     font-size: 15px;
     font-weight: 700;
@@ -7539,11 +7539,11 @@ th {
     overflow: hidden;
     border-radius: 10px;
     background: #eef3fb;
-    color: #0f62ff;
+    color: var(--blue);
   }
   .scan-result-card.nomatch .src-thumb {
     background: #fdecec;
-    color: #d23b3b;
+    color: var(--red);
   }
   .scan-result-card .src-thumb img {
     width: 100%;
@@ -7564,7 +7564,7 @@ th {
     overflow: hidden;
     font-size: 14.5px;
     font-weight: 750;
-    color: #081536;
+    color: var(--ink);
     white-space: nowrap;
     text-overflow: ellipsis;
   }
@@ -7587,7 +7587,7 @@ th {
   .scan-result-card .src-right > strong {
     font-size: 15px;
     font-weight: 800;
-    color: #081536;
+    color: var(--ink);
   }
   .scan-result-card .src-right > small {
     font-size: 11px;
@@ -7606,15 +7606,15 @@ th {
   }
   .scan-result-card .src-pill.confirmed { background: #e5f8ef; color: #18915e; }
   .scan-result-card .src-pill.possible { background: #fdf0d9; color: #b5740a; }
-  .scan-result-card .src-pill.nomatch { background: #fdecec; color: #d23b3b; }
-  .scan-result-card .src-pill.duplicate { background: #e7eefc; color: #0f62ff; }
-  .scan-result-card .src-qty { background: #eef3fb; color: #0f62ff; }
+  .scan-result-card .src-pill.nomatch { background: #fdecec; color: var(--red); }
+  .scan-result-card .src-pill.duplicate { background: #e7eefc; color: var(--blue); }
+  .scan-result-card .src-qty { background: #eef3fb; color: var(--blue); }
   .scan-result-card .src-action {
     grid-column: 1 / -1;
     height: 40px;
     border: none;
     border-radius: 10px;
-    background: #0f62ff;
+    background: var(--blue);
     color: #ffffff;
     font-size: 13.5px;
     font-weight: 700;
@@ -7662,7 +7662,7 @@ th {
     gap: 9px;
     border: none;
     background: transparent;
-    color: #0f62ff;
+    color: var(--blue);
     font-size: 14px;
     font-weight: 750;
   }
@@ -7792,7 +7792,7 @@ th {
   .mobile-primary-cta {
     margin-top: 22px;
     border: none;
-    background: #0f62ff;
+    background: var(--blue);
     color: #ffffff;
   }
 
@@ -7800,14 +7800,14 @@ th {
     margin-top: 16px;
     border: 1px solid #dbe4f1;
     background: #ffffff;
-    color: #0f62ff;
+    color: var(--blue);
   }
 
   .mobile-ghost-cta {
     margin-top: 16px;
     border: none;
     background: #f6f9fd;
-    color: #0f62ff;
+    color: var(--blue);
   }
 
   .mobile-cta-icon {
@@ -7865,7 +7865,7 @@ th {
   }
 
   .mobile-bottom-nav button.active {
-    color: #0f62ff;
+    color: var(--blue);
   }
 
   .mobile-bottom-nav span {
@@ -7884,7 +7884,7 @@ th {
     place-items: center;
     border: 2px solid #ffffff;
     border-radius: 999px;
-    background: #0f62ff;
+    background: var(--blue);
     color: #ffffff;
     font-size: 9px;
     line-height: 1;
@@ -10042,26 +10042,26 @@ th {
 }
 .pscan-card .scan-result-card.match { cursor: pointer; }
 .pscan-card .scan-result-card.nomatch { border-color: #f3c0c0; }
-.pscan-card .scan-result-card .src-thumb { display: grid; place-items: center; width: 46px; height: 46px; overflow: hidden; border-radius: 10px; background: #eef3fb; color: #0f62ff; }
-.pscan-card .scan-result-card.nomatch .src-thumb { background: #fdecec; color: #d23b3b; }
+.pscan-card .scan-result-card .src-thumb { display: grid; place-items: center; width: 46px; height: 46px; overflow: hidden; border-radius: 10px; background: #eef3fb; color: var(--blue); }
+.pscan-card .scan-result-card.nomatch .src-thumb { background: #fdecec; color: var(--red); }
 .pscan-card .scan-result-card .src-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .pscan-card .scan-result-card .src-thumb .button-icon { width: 26px; height: 26px; stroke: currentColor; fill: none; }
 .pscan-card .scan-result-card .src-body { min-width: 0; }
-.pscan-card .scan-result-card .src-body strong { display: block; overflow: hidden; font-size: 14.5px; font-weight: 750; color: #081536; white-space: nowrap; text-overflow: ellipsis; }
+.pscan-card .scan-result-card .src-body strong { display: block; overflow: hidden; font-size: 14.5px; font-weight: 750; color: var(--ink); white-space: nowrap; text-overflow: ellipsis; }
 .pscan-card .scan-result-card .src-body small { display: block; margin-top: 2px; overflow: hidden; font-size: 12px; color: #5a6b86; white-space: nowrap; text-overflow: ellipsis; }
 .pscan-card .scan-result-card .src-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
-.pscan-card .scan-result-card .src-right > strong { font-size: 15px; font-weight: 800; color: #081536; }
+.pscan-card .scan-result-card .src-right > strong { font-size: 15px; font-weight: 800; color: var(--ink); }
 .pscan-card .scan-result-card .src-right > small { font-size: 11px; font-weight: 600; color: #5a6b86; }
 .pscan-card .scan-result-card .src-pill,
 .pscan-card .scan-result-card .src-qty { margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 800; font-style: normal; letter-spacing: 0.02em; }
 .pscan-card .scan-result-card .src-pill.confirmed { background: #e5f8ef; color: #18915e; }
 .pscan-card .scan-result-card .src-pill.possible { background: #fdf0d9; color: #b5740a; }
-.pscan-card .scan-result-card .src-pill.nomatch { background: #fdecec; color: #d23b3b; }
-.pscan-card .scan-result-card .src-qty { background: #eef3fb; color: #0f62ff; }
-.pscan-card .scan-result-card .src-action { grid-column: 1 / -1; height: 40px; border: none; border-radius: 10px; background: #0f62ff; color: #fff; font-size: 13.5px; font-weight: 700; }
+.pscan-card .scan-result-card .src-pill.nomatch { background: #fdecec; color: var(--red); }
+.pscan-card .scan-result-card .src-qty { background: #eef3fb; color: var(--blue); }
+.pscan-card .scan-result-card .src-action { grid-column: 1 / -1; height: 40px; border: none; border-radius: 10px; background: var(--blue); color: #fff; font-size: 13.5px; font-weight: 700; }
 .pscan-card .scan-result-card { position: relative; }
 .pscan-card .scan-result-card.duplicate { border-color: #c7d6f5; background: #f6f9ff; }
-.pscan-card .scan-result-card .src-pill.duplicate { background: #e7eefc; color: #0f62ff; }
+.pscan-card .scan-result-card .src-pill.duplicate { background: #e7eefc; color: var(--blue); }
 .pscan-card .scan-result-card .src-dismiss { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: none; border-radius: 50%; background: rgba(8, 21, 54, 0.06); color: #5a6b86; cursor: pointer; }
 .pscan-card .scan-result-card .src-dismiss .button-icon { width: 15px; height: 15px; stroke: currentColor; fill: none; }
 
@@ -10681,7 +10681,7 @@ th {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .qrl-label-type { color: #2F5BD6; }
+  .qrl-label-type { color: var(--blue); }
 }
 
 /* ===== Phase 1c — Office layout ===== */
