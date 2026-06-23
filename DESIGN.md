@@ -70,22 +70,23 @@ it to the token. New files: tokens only.
 
 ## 3. Typography
 
-- **Family:** `Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`. Base body size **14px**.
+- **Family:** `var(--font-sans)` → `Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif` (self-hosted via `next/font`). Base body size **14px**.
 - Sizes cluster tightly. Stay on the scale; don't introduce one-off sizes.
+- Keep type light. The scale tops out at 600 for titles; 700 is reserved for rare display/stat moments. No 800/900.
 
 | px | Weight | Role |
 |---|---|---|
-| 30 | 900 | Display / page hero |
-| 24 | 800 | Page title (`h1`) |
-| 18 | 800 | Section title (`h2`) |
-| 15 | 700 | Card title / emphasis |
-| 14 | 600 | Body (base) |
-| 13 | 600 | Secondary / dense table rows |
-| 12 | 700 | Labels, pills, captions |
-| 11 | 700 | Micro / eyebrow (uppercase, letterspaced) |
+| 30 | 700 | Display / page hero |
+| 24 | 600 | Page title (`h1`) |
+| 18 | 600 | Section title (`h2`) |
+| 15 | 600 | Card title / emphasis |
+| 14 | 400 | Body (base) |
+| 13 | 400 | Secondary / dense table rows |
+| 12 | 500 | Labels, pills, captions |
+| 11 | 500 | Micro / eyebrow (uppercase, letterspaced) |
 
-**Weights in use:** 600 (body), 700 (strong), 800 (titles), 900 (big stats).
-Reserve 900 for numbers you want to land — savings, counts, scores.
+**Weights in use:** 400 (body), 500 (labels / medium), 600 (titles), 700 (display / big stats).
+Reserve 700 for numbers you want to land — savings, counts, scores.
 
 ---
 
@@ -162,7 +163,7 @@ Shared, in `app/ui.jsx` and `app/icons.jsx`. Reach for these first.
 **Patterns:**
 
 - **Button** — pill-shaped. Primary = solid `var(--blue)`, white text. Secondary = ghost (`var(--surface)` + `var(--line)` border). Destructive = `var(--red)` text on surface. There is **no shared button class yet**; the canonical recipe is on `/styleguide` and a `.btn`/`.btn--primary` primitive would be a good cleanup.
-- **Status pill** — `.list-pill` + a `--variant`; fully rounded, 12px/700, a leading `currentColor` dot. Tints map to semantic color (review=blue, ordering=gold, ordered=green).
+- **Status pill** — `.list-pill` + a `--variant`; fully rounded, 12px/500, a leading `currentColor` dot. Tints map to semantic color (review=blue, ordering=gold, ordered=green).
 - **Card** — surface, `1px var(--line)`, `var(--shadow)`, 10–14px radius. The default container.
 - **Input** — `8px` radius, `1px var(--line)`; focus = `var(--blue)` border + `var(--blue-2)` ring.
 - **Icons** — never hand-roll an SVG inline; add it to the sprite in `app/icons.jsx` and reference by name.
@@ -175,7 +176,7 @@ These are product rules that show up as design:
 
 - **No fabricated data.** No fake ratings, fake activity feeds, invented ETAs, or placeholder assignees. If a number isn't real, don't render it (this has been a repeated cleanup — see prior scan-session and PDP work).
 - **Stubs are honest.** An unbuilt action shows a toast ("coming soon"), not a fake success.
-- **Numbers earn weight.** Big 900-weight figures are for real, defensible values (savings, audit-readiness, counts).
+- **Numbers earn weight.** Big 700-weight figures are for real, defensible values (savings, audit-readiness, counts).
 - **Calm density.** Prefer one well-labeled card over three decorative ones. Whitespace from the spacing scale, not filler.
 
 ---

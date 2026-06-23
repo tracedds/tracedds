@@ -38,7 +38,7 @@ export function SearchResults({ results, query = "", loading, onNavigate }) {
             <em style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
               <span>{price}</span>
               {perUnit && (
-                <small style={{ color: "var(--muted)", fontWeight: 600, fontStyle: "normal" }}>
+                <small style={{ color: "var(--muted)", fontWeight: 500, fontStyle: "normal" }}>
                   {perUnit}{packLabel ? ` · ${packLabel}` : ""}
                 </small>
               )}
