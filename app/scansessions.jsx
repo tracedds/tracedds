@@ -51,7 +51,7 @@ function Stat({ icon, tone, label, value }) {
 
 // ── Scan Sessions list + start-a-session picker ───────────────────────
 
-export function ScanSessionsView({ onOpenSession, onNavigate, onToast }) {
+export function ScanSessionsView({ onOpenSession, onNavigate, onToast, onLogout }) {
   const [sessions, setSessions] = useState([]);
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +78,15 @@ export function ScanSessionsView({ onOpenSession, onNavigate, onToast }) {
   const active = sessions.filter((x) => x.status === "active");
   const past = sessions.filter((x) => x.status !== "active");
 
+  // Real needs-attention rollup: the backend flags each inventory item that's
+  // expiring/expired, at/below par, or missing lot+expiry, and /locations rolls
+  // the per-location counts on. Sum them for the mobile home card.
+  const needsAttention = useMemo(() => {
+    const items = locations.reduce((sum, l) => sum + (l.needs_attention_count || 0), 0);
+    const locs = locations.filter((l) => (l.needs_attention_count || 0) > 0).length;
+    return { items, locations: locs };
+  }, [locations]);
+
   async function startFor(location) {
     setStarting(location.id);
     try {
@@ -97,9 +106,11 @@ export function ScanSessionsView({ onOpenSession, onNavigate, onToast }) {
         sessions={sessions}
         locations={locations}
         starting={starting}
+        needsAttention={needsAttention}
         onOpenSession={onOpenSession}
         onStart={startFor}
         onNavigate={onNavigate}
+        onLogout={onLogout}
       />
     );
   }
@@ -342,7 +353,10 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
       const { session: saved } = await traceApi.updateSession(sessionId, { status: "completed" });
       setSession(saved);
       onToast?.("Scan session completed — items saved to the location.");
-      onBack?.();
+      // On mobile, land on the location's items so the tech sees what they
+      // captured; desktop returns to the sessions board.
+      if (isMobile && saved?.location_id) onNavigate?.(`/app/locations/${saved.location_id}`);
+      else onBack?.();
     } catch {
       onToast?.("Couldn't complete the session.");
     }
