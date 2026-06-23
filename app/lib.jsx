@@ -51,6 +51,8 @@ export const routeByView = {
   locations: "/app/locations",
   locationAdd: "/app/locations/new",
   scanSessions: "/app/scan-sessions",
+  evidence: "/app/evidence",
+  evidenceBinder: "/app/evidence/binder",
   plan: "/app/review",
   catalog: "/app/catalog",
   savings: "/app/savings",
@@ -80,6 +82,8 @@ export function viewFromPath(pathname = "/") {
   if (path === "/app/scan") return { view: "home", isLoggedIn: true, mobileAddItemRoute: true };
   if (path === "/app/scan-sessions") return { view: "scanSessions", isLoggedIn: true };
   if (path.startsWith("/app/scan-sessions/")) return { view: "scanSession", isLoggedIn: true, scanSessionId: decodeURIComponent(path.split("/")[3] || "") };
+  if (path === "/app/evidence/binder") return { view: "evidenceBinder", isLoggedIn: true };
+  if (path === "/app/evidence") return { view: "evidence", isLoggedIn: true };
   // /app/plan is the former name — kept so old links/bookmarks still resolve.
   if (path === "/app/review/handoff" || path === "/app/plan/handoff") return { view: "handoff", isLoggedIn: true, handoffId: query.get("ho") || "" };
   if (path === "/app/review" || path === "/app/plan") return { view: "plan", isLoggedIn: true };

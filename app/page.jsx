@@ -6,6 +6,7 @@ import { BrandMark, Icon, IconSprite } from "./icons";
 import { APP_STATE_KEY, DEFAULT_BUYING_PREFS, FREE_SCAN_KEY, FREE_SCAN_LIMIT, NAV_COLLAPSED_KEY, SHOPIFY_STOCK_MAX_ITEMS, SHOPIFY_STOCK_SESSION_KEY, UPLOAD_TIMEOUT_MS, applyLiveStock, buildShippingByName, computePlanTotals, deriveListStatus, deriveMatchRows, groupRowsBySupplier, isPlanIncluded, lookupScannedProduct, makeScanDraftItem, mapSearchOffer, money, newItemId, parseAttributes, pathForView, shopifyStockKey, slimHandoffRow, statusFromItem, traceApi, viewFromPath } from "./lib";
 import { AddLocationView, LocationDetailView, LocationsBoardView } from "./locations";
 import { ScanSessionsView, ScanSessionView } from "./scansessions";
+import { EvidenceView, EvidenceBinderView } from "./evidence";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, MobileBottomNav, MobileScanItemView, PricingPage, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
 import { CartBuilderModal, HistoryDetail, HistoryView, ProcurementPlanView, SupplierHandoffView } from "./procurement";
 import { CurrentReorderList, SavingsView } from "./reorder";
@@ -1316,7 +1317,7 @@ export default function Home() {
     ["locations", "icon-map-pin", "Locations"],
     ["scanSessions", "icon-scan", "Scan sessions"],
     ["savings", "icon-dollar-circle", "Savings"],
-    ["evidence", "icon-shield-check", "Evidence", true],
+    ["evidence", "icon-shield-check", "Evidence"],
     ["reports", "icon-chart", "Reports", true],
     ["catalog", "icon-store", "Catalog"],
     ["history", "icon-clock", "History"],
@@ -1488,7 +1489,7 @@ export default function Home() {
             {navItems.map(([target, icon, label, soon]) => (
               <button
                 key={target}
-                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target || (target === "locations" && (view === "locationAdd" || view === "locationDetail")) || (target === "scanSessions" && view === "scanSession") ? "active" : ""} ${soon ? "nav-tab-soon" : ""}`}
+                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target || (target === "locations" && (view === "locationAdd" || view === "locationDetail")) || (target === "scanSessions" && view === "scanSession") || (target === "evidence" && view === "evidenceBinder") ? "active" : ""} ${soon ? "nav-tab-soon" : ""}`}
                 type="button"
                 onClick={() => { if (!soon) setView(target); }}
                 disabled={soon}
@@ -1622,6 +1623,17 @@ export default function Home() {
               onNavigate={navigate}
               onToast={showToast}
             />
+          )}
+
+          {view === "evidence" && (
+            <EvidenceView
+              onBuildPacket={() => navigate("/app/evidence/binder")}
+              onToast={showToast}
+            />
+          )}
+
+          {view === "evidenceBinder" && (
+            <EvidenceBinderView onBack={() => navigate("/app/evidence")} />
           )}
 
           {view === "plan" && (

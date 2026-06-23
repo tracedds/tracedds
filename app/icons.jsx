@@ -269,6 +269,47 @@ export function IconSprite() {
         <path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.5" />
         <path d="M20 20v-4.5h-4.5" />
       </symbol>
+      <symbol id="icon-folder" viewBox="0 0 24 24">
+        <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2.5h8A1.5 1.5 0 0 1 20.5 9v8.5A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5V6.5Z" />
+      </symbol>
+      <symbol id="icon-more-vertical" viewBox="0 0 24 24">
+        <circle cx="12" cy="5.5" r="1.5" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="18.5" r="1.5" fill="currentColor" stroke="none" />
+      </symbol>
+      {/* File-type logos: full-color, self-contained (explicit fill/stroke so they
+          ignore the .nav-icon currentColor styling). Color carries the format at
+          small sizes; the band label reads on larger renders. */}
+      <symbol id="icon-file-pdf" viewBox="0 0 24 24">
+        <path d="M6 2.6h7.2L18.4 7.8V19.4a1.8 1.8 0 0 1-1.8 1.8H6a1.8 1.8 0 0 1-1.8-1.8V4.4A1.8 1.8 0 0 1 6 2.6Z" fill="#fff" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M13.2 2.9V7.8H18.1" fill="none" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <rect x="2.4" y="12.2" width="12.8" height="6.8" rx="1.4" fill="#d1352b" stroke="none" />
+        <text x="8.8" y="17.2" fontFamily="Arial, sans-serif" fontSize="4.3" fontWeight="700" fill="#fff" textAnchor="middle" stroke="none">PDF</text>
+      </symbol>
+      <symbol id="icon-file-doc" viewBox="0 0 24 24">
+        <path d="M6 2.6h7.2L18.4 7.8V19.4a1.8 1.8 0 0 1-1.8 1.8H6a1.8 1.8 0 0 1-1.8-1.8V4.4A1.8 1.8 0 0 1 6 2.6Z" fill="#fff" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M13.2 2.9V7.8H18.1" fill="none" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <rect x="2.4" y="12.2" width="12.8" height="6.8" rx="1.4" fill="#2b579a" stroke="none" />
+        <text x="8.8" y="17.2" fontFamily="Arial, sans-serif" fontSize="4.3" fontWeight="700" fill="#fff" textAnchor="middle" stroke="none">DOC</text>
+      </symbol>
+      <symbol id="icon-file-xls" viewBox="0 0 24 24">
+        <path d="M6 2.6h7.2L18.4 7.8V19.4a1.8 1.8 0 0 1-1.8 1.8H6a1.8 1.8 0 0 1-1.8-1.8V4.4A1.8 1.8 0 0 1 6 2.6Z" fill="#fff" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M13.2 2.9V7.8H18.1" fill="none" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <rect x="2.4" y="12.2" width="12.8" height="6.8" rx="1.4" fill="#217346" stroke="none" />
+        <text x="8.8" y="17.2" fontFamily="Arial, sans-serif" fontSize="4.3" fontWeight="700" fill="#fff" textAnchor="middle" stroke="none">XLS</text>
+      </symbol>
+      <symbol id="icon-file-img" viewBox="0 0 24 24">
+        <path d="M6 2.6h7.2L18.4 7.8V19.4a1.8 1.8 0 0 1-1.8 1.8H6a1.8 1.8 0 0 1-1.8-1.8V4.4A1.8 1.8 0 0 1 6 2.6Z" fill="#fff" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M13.2 2.9V7.8H18.1" fill="none" stroke="#cdd6e2" strokeWidth="1.3" strokeLinejoin="round" />
+        <rect x="5.4" y="11.4" width="9.6" height="7.4" rx="1.3" fill="#e6f6ee" stroke="#18a05a" strokeWidth="1.1" />
+        <circle cx="8" cy="13.9" r="0.95" fill="#18a05a" stroke="none" />
+        <path d="M5.9 18.2 9 14.9l1.9 2.1 1.5-1.6 2.1 2.8Z" fill="#18a05a" stroke="none" />
+      </symbol>
+      <symbol id="icon-file-generic" viewBox="0 0 24 24">
+        <path d="M6 2.6h7.2L18.4 7.8V19.4a1.8 1.8 0 0 1-1.8 1.8H6a1.8 1.8 0 0 1-1.8-1.8V4.4A1.8 1.8 0 0 1 6 2.6Z" fill="#fff" stroke="#aeb8c6" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M13.2 2.9V7.8H18.1" fill="none" stroke="#aeb8c6" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M7 12.4h7M7 15h7M7 17.6h4.5" fill="none" stroke="#aeb8c6" strokeWidth="1.2" strokeLinecap="round" />
+      </symbol>
     </svg>
   );
 }
