@@ -14,10 +14,14 @@
 
 export type Item = Record<string, any>
 
-// Stable identity for a row — mirrors the web client's keyOf so the same product
-// lands in the same merge bucket on both client and server.
+// Stable identity for a row — mirrors the web client's keyOf so the same item
+// lands in the same merge bucket on both client and server. Keys ONLY on fields
+// that never change over an item's lifecycle: `barcode` (the natural identity of
+// a scanned item) and `extractedFrom` (the original source text) are immutable;
+// `product` is deliberately excluded because matching an unmatched item fills it
+// in, which would change the key mid-life and split one item into two on merge.
 export const itemKey = (item: Item): string =>
-  (item && (item.product || item.extractedFrom || item.sku || item.id)) || ""
+  (item && (item.barcode || item.extractedFrom || item.sku || item.id)) || ""
 
 const itemTs = (item: Item): number => Number(item?.updatedAt) || 0
 
