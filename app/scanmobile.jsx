@@ -383,8 +383,13 @@ export function MobileScanSession({
       )}
 
       <div className={s.camTop}>
-        <button type="button" className={s.camCircle} onClick={onBack} aria-label="Back to scan sessions">
-          <Icon name="icon-chevron-left" />
+        <button
+          type="button"
+          className={s.camCircle}
+          onClick={() => (session.location_id ? onNavigate?.(`/app/locations/${session.location_id}`) : onBack?.())}
+          aria-label="Exit scanner"
+        >
+          <Icon name="icon-x" />
         </button>
         <span className={s.camBrand}><Icon name="icon-scan" /> TraceDDS</span>
         <span className={s.camRight}>

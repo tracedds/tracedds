@@ -678,6 +678,15 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     if (!locationId) return undefined;
@@ -713,6 +722,88 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
   const attention = location.needs_attention_count ?? top.reorder + top.expiring;
   const status = attention > 0 ? STATUS_META.needs_attention : items.length ? STATUS_META.healthy : STATUS_META.not_started;
   const tracePct = items.length ? Math.round((top.traced / items.length) * 100) : 0;
+
+  // Phone surface: a card list of everything captured at this location (the
+  // desktop table doesn't fit a 390px screen). This is where the scanner exits
+  // to, so the tech immediately sees what they just scanned for the room.
+  if (isMobile) {
+    return (
+      <div className={s.mDetail}>
+        <header className={s.mHead}>
+          <button type="button" className={s.mBackBtn} onClick={() => onBack?.()} aria-label="Back to locations">
+            <Icon name="icon-chevron-left" />
+          </button>
+          <span className={s.mHeadTitle}>{location.name}</span>
+          <span className={s.mHeadSpacer} />
+        </header>
+        <div className={s.mBody}>
+          <div className={s.mLocCard}>
+            <span className={`${s.cardIcon} ${meta.tint}`}><Icon name={meta.icon} /></span>
+            <div className={s.mLocText}>
+              <span className={s.mLocName}>{location.name}</span>
+              <span className={s.mLocSub}>{meta.label}{location.qr_code ? ` · ${location.qr_code}` : ""}</span>
+            </div>
+            <span className={`${s.badge} ${status.badge}`}>{status.label}</span>
+          </div>
+
+          <button type="button" className={s.mScanBtn} onClick={() => onStartScan?.()}>
+            <Icon name="icon-scan" /> Scan this location
+          </button>
+
+          <div className={s.mStats}>
+            <div className={s.mStat}><span className={s.mStatVal}>{top.tracked}</span><span className={s.mStatLabel}>Items</span></div>
+            <div className={s.mStat}><span className={s.mStatVal}>{tracePct}%</span><span className={s.mStatLabel}>Lot &amp; expiry</span></div>
+            <div className={s.mStat}><span className={s.mStatVal}>{top.expiring}</span><span className={s.mStatLabel}>Expiring</span></div>
+            <div className={s.mStat}><span className={s.mStatVal}>{top.reorder}</span><span className={s.mStatLabel}>Below par</span></div>
+          </div>
+
+          <div className={s.mListHead}>
+            <h2 className={s.mListTitle}>Items in this location</h2>
+            <span className={s.mListCount}>{items.length}</span>
+          </div>
+
+          {items.length > 0 && (
+            <label className={s.mSearch}>
+              <Icon name="icon-search" />
+              <input type="search" placeholder="Search items…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search items" />
+            </label>
+          )}
+
+          {items.length === 0 ? (
+            <div className={s.mEmpty}>No items captured here yet. Scan this location to build its inventory.</div>
+          ) : (
+            <div className={s.mItemList}>
+              {visibleItems.map((it) => {
+                const st = itemStatus(it);
+                const below = it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level;
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    className={s.mItem}
+                    onClick={() => it.canonical_product_id && onNavigate?.(`/app/product/${it.canonical_product_id}`)}
+                  >
+                    <ProductThumb image={it.photo_url} alt={it.name} />
+                    <div className={s.mItemBody}>
+                      <span className={s.mItemName}>{it.name}</span>
+                      <span className={s.mItemMeta}>
+                        On hand <span className={below ? s.mItemRed : ""}>{it.quantity_on_hand ?? 0}</span>
+                        {it.par_level != null ? ` · Par ${it.par_level}` : ""}
+                      </span>
+                      <span className={s.mItemMeta}>
+                        {it.lot_number ? `Lot ${it.lot_number}` : "No lot"} · {it.expiration_date ? `Exp ${formatTraceDate(it.expiration_date)}` : "No expiry"}
+                      </span>
+                    </div>
+                    <span className={`${s.badge} ${PILL_TONE[st.tone]}`}>{st.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={s.detail}>

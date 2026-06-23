@@ -353,7 +353,10 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
       const { session: saved } = await traceApi.updateSession(sessionId, { status: "completed" });
       setSession(saved);
       onToast?.("Scan session completed — items saved to the location.");
-      onBack?.();
+      // On mobile, land on the location's items so the tech sees what they
+      // captured; desktop returns to the sessions board.
+      if (isMobile && saved?.location_id) onNavigate?.(`/app/locations/${saved.location_id}`);
+      else onBack?.();
     } catch {
       onToast?.("Couldn't complete the session.");
     }
