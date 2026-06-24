@@ -13,19 +13,40 @@ export const LOCATION_TYPES = [
 ] as const
 
 export const PACKAGE_CONDITIONS = ["good", "damaged", "missing"] as const
+export const CAPTURE_TYPES = ["receiving", "shelf_audit"] as const
+export const PULL_REASONS = ["expiry", "recall", "manual"] as const
+export const LIFECYCLE_STATUSES = ["active", "expiring", "expired", "pulled"] as const
 
 // Days before expiration at which an item is flagged "expiring soon".
 const EXPIRING_SOON_DAYS = 30
 
-// An inventory item needs attention when it's expired or expiring soon, at/below
-// par, or missing the traceability fields an audit requires (lot + expiration).
-export function needsAttention(item: any, now: Date = new Date()): boolean {
+// The lot's current state, DERIVED from its expiry + pulled flag (never stored,
+// so it can't go stale): a human-confirmed pull wins; otherwise the date drives
+// expired → expiring → active. Expiry only escalates a lot toward "pull now"; it
+// never removes it. A record leaves the active set only via pulled_at.
+export function deriveLifecycle(
+  item: any,
+  now: Date = new Date()
+): (typeof LIFECYCLE_STATUSES)[number] {
+  if (item.pulled_at) return "pulled"
   if (item.expiration_date) {
     const exp = new Date(item.expiration_date)
+    if (exp <= now) return "expired"
     const soon = new Date(now.getTime() + EXPIRING_SOON_DAYS * 86_400_000)
-    if (exp <= soon) return true
+    if (exp <= soon) return "expiring"
   }
-  if (item.par_level != null && (item.quantity_on_hand ?? 0) <= item.par_level) return true
+  return "active"
+}
+
+// An item needs attention when it's expiring or already expired (and not yet
+// pulled), or when it's missing the traceability an audit requires (lot +
+// expiration). Par level no longer drives this: there is no live on-hand count
+// to compare against — reorder timing is handled separately by the reorder
+// ladder, not by treating inventory as a census.
+export function needsAttention(item: any, now: Date = new Date()): boolean {
+  if (item.pulled_at) return false
+  const lifecycle = deriveLifecycle(item, now)
+  if (lifecycle === "expired" || lifecycle === "expiring") return true
   if (!item.lot_number || !item.expiration_date) return true
   return false
 }

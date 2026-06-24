@@ -12,6 +12,9 @@ const ScanSession = model.define("medmkp_scan_session", {
   name: model.text().nullable(),
   // active | completed | abandoned
   status: model.text().default("active"),
+  // receiving | shelf_audit — Receiving creates/refreshes evidence + (later)
+  // seeds reorder history; Shelf Audit verifies presence/location/status.
+  capture_type: model.text().default("shelf_audit"),
   started_by: model.text().nullable(),
   completed_at: model.dateTime().nullable(),
 })

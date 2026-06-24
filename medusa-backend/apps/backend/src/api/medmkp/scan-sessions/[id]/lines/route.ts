@@ -64,7 +64,13 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
     scanned_by: actor,
   })
 
-  const inventoryItemId = await syncInventoryFromLine(medmkp, created, session.location_id, actor)
+  const inventoryItemId = await syncInventoryFromLine(
+    medmkp,
+    created,
+    session.location_id,
+    actor,
+    session.capture_type ?? null
+  )
   const line = inventoryItemId
     ? await medmkp.updateScanSessionLines({ id: created.id, inventory_item_id: inventoryItemId })
     : created

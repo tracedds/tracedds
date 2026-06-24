@@ -2,7 +2,7 @@ import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/frame
 import { MEDMKP_MODULE } from "../../../modules/medmkp"
 import type MedMKPModuleService from "../../../modules/medmkp/service"
 import { requirePractice } from "../../../utils/practice"
-import { loadOwnedLocation } from "../../../utils/inventory"
+import { loadOwnedLocation, CAPTURE_TYPES } from "../../../utils/inventory"
 import { SESSION_STATUSES, serializeSession } from "../../../utils/scan-sessions"
 
 // GET /medmkp/scan-sessions — the practice's scan sessions (optionally filtered
@@ -70,11 +70,18 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
     return
   }
 
+  const captureType =
+    typeof body.capture_type === "string" &&
+    (CAPTURE_TYPES as readonly string[]).includes(body.capture_type)
+      ? body.capture_type
+      : "shelf_audit"
+
   const created = await medmkp.createScanSessions({
     practice_id: practiceId,
     location_id: location.id,
     name: typeof body.name === "string" && body.name.trim() ? body.name.trim() : null,
     status: "active",
+    capture_type: captureType,
     started_by: req.auth_context?.actor_id ?? null,
   })
 
