@@ -1,0 +1,169 @@
+/* Mobile bottom nav — always visible on ≤767px */
+
+.nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 64px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 50;
+  padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Standard tab ── */
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabActive {
+  color: var(--blue);
+}
+
+.tabIcon {
+  width: 22px;
+  height: 22px;
+}
+
+.tabLabel {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.badge {
+  position: absolute;
+  top: 8px;
+  right: calc(50% - 18px);
+  min-width: 16px;
+  height: 16px;
+  background: var(--red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  pointer-events: none;
+}
+
+/* ── Center FAB (Scan) ── */
+.fab {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  margin-bottom: 8px;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.1s;
+}
+.fab:active { transform: scale(0.94); }
+
+.fabIcon {
+  width: 26px;
+  height: 26px;
+}
+
+/* ── More bottom sheet ── */
+.moreBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+}
+
+.moreSheet {
+  width: 100%;
+  background: var(--surface);
+  border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+  animation: slideUp 0.22s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.moreDrag {
+  width: 36px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+}
+
+.moreTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 8px 20px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.moreList {
+  display: flex;
+  flex-direction: column;
+}
+
+.moreRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  -webkit-tap-highlight-color: transparent;
+}
+.moreRow:last-child { border-bottom: none; }
+.moreRow:active { background: var(--hover); }
+
+.moreIcon {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.moreLabel {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.moreChevron {
+  width: 16px; height: 16px;
+  color: var(--muted);
+}

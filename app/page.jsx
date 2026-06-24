@@ -6,6 +6,8 @@ import { BrandMark, Icon, IconSprite } from "./icons";
 import { APP_STATE_KEY, DEFAULT_BUYING_PREFS, FREE_SCAN_KEY, FREE_SCAN_LIMIT, NAV_COLLAPSED_KEY, SHOPIFY_STOCK_MAX_ITEMS, SHOPIFY_STOCK_SESSION_KEY, UPLOAD_TIMEOUT_MS, applyLiveStock, buildShippingByName, computePlanTotals, deriveListStatus, deriveMatchRows, groupRowsBySupplier, isPlanIncluded, lookupScannedProduct, makeScanDraftItem, mapSearchOffer, mergeDraftState, money, newItemId, parseAttributes, pathForView, shopifyStockKey, slimHandoffRow, statusFromItem, traceApi, viewFromPath } from "./lib";
 import { AddLocationView, LocationDetailView, LocationsBoardView } from "./locations";
 import { ScanSessionsView, ScanSessionView } from "./scansessions";
+import { MobileBottomNav, MobileMoreSheet } from "./mobilebottom";
+import { MobileTodayView } from "./mobiletoday";
 import { EvidenceView, EvidenceBinderView } from "./evidence";
 import { NeedsAttentionView, NEEDS_ATTENTION_BADGE } from "./needsattention";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, MobileScanItemView, PricingPage, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
@@ -35,10 +37,10 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
-  // Phone surface: mobile is scan-first, so `/app` (home) lands on the scan
-  // session start screen instead of the reorder list. Matches the breakpoint at
-  // which the desktop rail/topbar give way to the mobile layout.
   const [isMobile, setIsMobile] = useState(false);
+  // Mobile bottom nav tab: "today" | "locations" | "scan" | "reorder" | "more"
+  const [mobileTab, setMobileTab] = useState("today");
+  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -1616,12 +1618,50 @@ export default function Home() {
                 scanCount={scanCount}
               />
             ) : isMobile ? (
-              <ScanSessionsView
-                onOpenSession={(id) => navigate(`/app/scan-sessions/${id}`)}
-                onNavigate={navigate}
-                onToast={showToast}
-                onLogout={handleLogout}
-              />
+              // Mobile: bottom-nav IA — Today | Locations | Scan FAB | Reorder | More
+              <>
+                {mobileTab === "today" && (
+                  <MobileTodayView
+                    onResumeSession={(id) => navigate(`/app/scan-sessions/${id}`)}
+                    onNavigate={(dest) => {
+                      if (dest === "needsAttention") navigate("/app/needs-attention");
+                      else navigate(`/app/${dest}`);
+                    }}
+                    onToast={showToast}
+                  />
+                )}
+                {mobileTab === "locations" && (
+                  <LocationsBoardView
+                    onStartScan={startScanSession}
+                    onAddLocation={() => navigate("/app/locations/new")}
+                    onOpenLocation={(id) => navigate(`/app/locations/${id}`)}
+                    onToast={showToast}
+                  />
+                )}
+                {mobileTab === "scan" && (
+                  <ScanSessionsView
+                    onOpenSession={(id) => navigate(`/app/scan-sessions/${id}`)}
+                    onNavigate={navigate}
+                    onToast={showToast}
+                    onLogout={handleLogout}
+                  />
+                )}
+                {mobileTab === "reorder" && reorderListEl}
+                {moreSheetOpen && (
+                  <MobileMoreSheet
+                    onNavigate={(dest) => navigate(`/app/${dest}`)}
+                    onClose={() => setMoreSheetOpen(false)}
+                  />
+                )}
+                <MobileBottomNav
+                  activeTab={mobileTab}
+                  onTab={(tab) => {
+                    if (tab === "more") { setMoreSheetOpen(true); return; }
+                    setMoreSheetOpen(false);
+                    setMobileTab(tab);
+                  }}
+                />
+              </>
             ) : (
               reorderListEl
             )

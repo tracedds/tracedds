@@ -7006,7 +7006,8 @@ th {
 
 @media (max-width: 767px) {
   .app-body {
-    padding-bottom: env(safe-area-inset-bottom);
+    /* Reserve space for the bottom nav (64px) + safe area */
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-add-item-shell {
