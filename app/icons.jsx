@@ -345,6 +345,22 @@ export function BrandMark() {
 }
 
 
+// The TraceDDS logo mark on its own (corner brackets + circle), monochrome
+// via currentColor so callers can color it to fit their surface.
+export function BrandLogoMark({ className = "nav-icon" }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <g stroke="currentColor" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 28 L13 22 Q13 13 22 13 L28 13" />
+        <path d="M36 13 L42 13 Q51 13 51 22 L51 28" />
+        <path d="M13 36 L13 42 Q13 51 22 51 L28 51" />
+      </g>
+      <circle cx="46" cy="46" r="6.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+
 export function Icon({ name, className = "nav-icon" }) {
   return (
     <svg className={className} aria-hidden="true">
