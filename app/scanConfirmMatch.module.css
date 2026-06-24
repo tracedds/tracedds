@@ -1,0 +1,444 @@
+/* ScanConfirmMatch — full-screen overlay for reviewing/confirming an
+   unmatched scan line. Shares the mobile-scan visual language from
+   scanmobile.module.css (same color tokens, same shell structure). */
+
+.screen svg,
+.screen button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+/* ── Full-screen shell ──────────────────────────────────────────────── */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 70; /* above MobileScanSession (60) */
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fb;
+  color: #14202e;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────── */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  background: #fff;
+  border-bottom: 1px solid #eef1f6;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  border: 1px solid #e7ecf3;
+  background: #fff;
+  color: #2c3a4b;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.iconBtn:active { background: #f1f4f9; }
+.iconBtn svg { width: 19px; height: 19px; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+.brand :global(.brand-mark) { width: 132px; }
+
+.topSpacer { width: 38px; flex-shrink: 0; }
+
+/* ── Scrollable body ────────────────────────────────────────────────── */
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Review banner ──────────────────────────────────────────────────── */
+
+.reviewBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #fff8ec;
+  border: 1px solid #f5d48a;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.reviewBannerIcon {
+  display: flex;
+  align-items: center;
+  color: #c2710c;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+.reviewBannerIcon svg { width: 20px; height: 20px; }
+
+.reviewBannerTitle {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #92500a;
+  margin-bottom: 2px;
+}
+
+.reviewBannerSub {
+  display: block;
+  font-size: 13px;
+  color: #a56318;
+  line-height: 1.4;
+}
+
+/* ── Product card ───────────────────────────────────────────────────── */
+
+.prodCard {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e7ecf3;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prodCardEmpty {
+  border-style: dashed;
+  border-color: #cdd9f3;
+  background: #f8faff;
+}
+
+.prodTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.prodImg {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: #eef1f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  color: #8492a6;
+}
+.prodImg img { width: 100%; height: 100%; object-fit: contain; }
+.prodImg svg { width: 22px; height: 22px; }
+
+.prodInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prodName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #14202e;
+  line-height: 1.3;
+}
+
+.prodAttr {
+  font-size: 12px;
+  color: #6a7889;
+}
+
+.pickedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0a8553;
+  background: #e3f6ec;
+  border-radius: 20px;
+  padding: 2px 8px;
+  width: fit-content;
+}
+.pickedBadge svg { width: 12px; height: 12px; }
+
+.prodSpecs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid #f0f3f8;
+  padding-top: 10px;
+}
+
+.prodSpec {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.prodSpecLabel {
+  font-size: 12px;
+  color: #8492a6;
+}
+
+.prodSpecVal {
+  font-size: 12px;
+  color: #2c3a4b;
+  font-weight: 500;
+  text-align: right;
+}
+
+.prodLocChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #2F5BD6;
+  background: #eaf1ff;
+  border-radius: 20px;
+  padding: 4px 10px;
+  width: fit-content;
+}
+.prodLocChip svg { width: 13px; height: 13px; }
+
+/* ── No match placeholder ───────────────────────────────────────────── */
+
+.noMatchPlaceholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.noMatchIcon {
+  display: flex;
+  align-items: center;
+  color: #8492a6;
+}
+.noMatchIcon svg { width: 24px; height: 24px; }
+
+.noMatchText {
+  font-size: 14px;
+  color: #8492a6;
+}
+
+/* ── Search link button ─────────────────────────────────────────────── */
+
+.searchLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2F5BD6;
+  background: #eaf1ff;
+  border: 1.5px solid #cdd9f3;
+  border-radius: 11px;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+.searchLink:active { background: #dce8ff; }
+.searchLink svg { width: 17px; height: 17px; }
+
+/* ── Form card ──────────────────────────────────────────────────────── */
+
+.formCard {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e7ecf3;
+  padding: 0 0 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.formHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6a7889;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid #f0f3f8;
+}
+.formHead svg { width: 14px; height: 14px; }
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f5f7fb;
+}
+.formRow:last-child { border-bottom: none; }
+
+.formLabel {
+  font-size: 13px;
+  color: #6a7889;
+  min-width: 110px;
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  font-size: 14px;
+  color: #14202e;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: right;
+  font-family: inherit;
+  min-width: 0;
+}
+.input::placeholder { color: #b0bac8; }
+
+/* ── Expired banner ─────────────────────────────────────────────────── */
+
+.expiredBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #c5392e;
+  background: #fdeeed;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f9d4d2;
+}
+.expiredBanner svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+/* ── Scanned code footnote ──────────────────────────────────────────── */
+
+.scannedCode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8492a6;
+  margin: 0;
+}
+.scannedCode svg { width: 14px; height: 14px; }
+.scannedCode code {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #6a7889;
+  background: #eef1f6;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ── Footer actions ─────────────────────────────────────────────────── */
+
+.footer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #eef1f6;
+  flex-shrink: 0;
+}
+
+.btnPrimary,
+.btnOutline {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 48px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btnPrimary {
+  border: 0;
+  background: #2F5BD6;
+  color: #fff;
+  flex: 2;
+}
+.btnPrimary:active { background: #2449b3; }
+.btnPrimary:disabled { background: #aebfe6; cursor: default; }
+.btnPrimary svg { width: 18px; height: 18px; }
+
+.btnOutline {
+  border: 1.5px solid #cdd9f3;
+  background: #fff;
+  color: #2F5BD6;
+}
+.btnOutline:active { background: #f2f6ff; }
+
+/* ── Catalog search sub-view ────────────────────────────────────────── */
+
+.searchBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.searchHint {
+  font-size: 13px;
+  color: #8492a6;
+  margin: 0;
+}
+
+.searchField {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1.5px solid #cdd9f3;
+  border-radius: 11px;
+  padding: 0 14px;
+  height: 46px;
+}
+.searchField svg { width: 18px; height: 18px; color: #8492a6; }
+.searchField input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  font-family: inherit;
+  background: transparent;
+  color: #14202e;
+}
+.searchField input::placeholder { color: #b0bac8; }
+
+.searchResults {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
