@@ -6,10 +6,9 @@ import { formatTraceDate } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
 
-// Mobile scan flow. Three scan modes set intent before the camera opens:
+// Mobile scan flow. Two scan modes set intent before the camera opens:
 //   Receiving   — new shipment arrives; captures lot/expiry/supplier/qty/date
 //   Shelf Audit — verify items already on shelves; records presence/status
-//   Reorder List — quick scan to add products to the reorder list
 // Desktop keeps its two-column layout in scansessions.jsx; this module is the
 // phone surface those views hand off to.
 
@@ -41,14 +40,6 @@ const SCAN_MODE_META = {
     records: ["Lot", "Expiry", "Location", "Status"],
     statuses: ["Present", "Moved", "Not found", "Removed"],
   },
-  reorder_list: {
-    label: "Reorder List",
-    emoji: "🛒",
-    emojiLabel: "Shopping cart",
-    desc: "Scan items to add directly to your reorder list.",
-    records: ["Product match"],
-    optional: ["Location"],
-  },
 };
 
 const AUDIT_STATUSES = [
@@ -69,11 +60,6 @@ function relTime(iso) {
   if (hr < 24) return `${hr} hr ago`;
   const d = Math.round(hr / 24);
   return `${d} day${d === 1 ? "" : "s"} ago`;
-}
-
-function matchPill(status) {
-  if (status === "needs_review") return { label: "Needs review", cls: s.pillRed, icon: "icon-alert-triangle" };
-  return { label: "Exact match", cls: s.pillGreen, icon: "icon-check-circle" };
 }
 
 function offerSku(line) {
@@ -197,17 +183,13 @@ export function MobileScanStart({
           <button
             type="button"
             className={s.btnPrimary}
-            disabled={!scanMode}
+            disabled={!scanMode || Boolean(starting)}
             onClick={() => {
-              if (scanMode === "reorder_list") {
-                // Reorder List mode = scan barcodes straight onto the reorder
-                // list. /app/scan is the full-screen barcode scanner that does
-                // exactly that (MobileScanItemView).
-                onNavigate?.("/app/scan");
-              } else {
-                // Receiving + Shelf Audit both pick a location next.
-                setStep("choose-location");
-              }
+              // Receiving fans out to many shelves, so it doesn't pick one
+              // location up front — location is captured per item in the sheet.
+              // Shelf Audit is an audit of one location, so it picks next.
+              if (scanMode === "receiving") onStart(null, "receiving");
+              else setStep("choose-location");
             }}
           >
             Continue
@@ -340,7 +322,7 @@ export function MobileScanStart({
                   <span className={s.resumeIcon}><Icon name="icon-refresh" /></span>
                   <span className={s.resumeBody}>
                     <span className={s.resumeKicker}>IN PROGRESS</span>
-                    <span className={s.resumeTitle}>Continue {resume.location_name || "location"}</span>
+                    <span className={s.resumeTitle}>Continue {resume.location_name || (resume.capture_type === "receiving" ? "receiving" : "location")}</span>
                     <span className={s.resumeMeta}><Icon name="icon-calendar" /> {resume.counts?.scanned || 0} items scanned</span>
                     <span className={s.resumeMeta}><Icon name="icon-clock" /> Last updated {relTime(resume.updated_at) || "recently"}</span>
                   </span>
@@ -384,7 +366,13 @@ export function MobileScanSession({
   const [detail, setDetail] = useState(null);
   const [link, setLink]   = useState(null);
   const [sheet, setSheet] = useState(null); // manual | search | help | location
-  const [localMode, setLocalMode] = useState(captureType || "shelf_audit");
+  // Mode is fixed for the life of the session — chosen up front, never switched
+  // mid-scan (Receiving and Shelf Audit are different events, not two views).
+  const localMode = captureType || "shelf_audit";
+  // Receiving captures a destination per item; this remembers the last one picked
+  // so consecutive items in a delivery default to it — one tap only when the
+  // destination changes.
+  const [receivingLocId, setReceivingLocId] = useState(null);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const pulseTimer = useRef();
@@ -416,12 +404,11 @@ export function MobileScanSession({
     track.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorchOn(next)).catch(() => {});
   }
 
-  function switchMode(m) {
-    setLocalMode(m);
-    if (pendingLine) onClearPending?.();
-  }
-
   const locName = session.location_name || "Location";
+  // Receiving has no session location — its top pill shows the sticky default
+  // (last place put away to); Shelf Audit shows the audited location.
+  const stickyLoc = locations.find((l) => l.id === receivingLocId);
+  const locLabel = localMode === "receiving" ? (stickyLoc?.name || "Set location") : locName;
 
   // ----- Shelf details (deep edit) -----
   if (detail) {
@@ -519,20 +506,22 @@ export function MobileScanSession({
         </span>
       </div>
 
-      {/* Location pill — shelf audit only */}
-      {localMode === "shelf_audit" && (
+      {/* Context strip — mode badge + location, anchored under the header so it
+          holds its position across the scan → post-scan transition (the sheet
+          rises underneath it, nothing hops). The mode badge is a read-only
+          identity marker; the location is the interactive selector — for
+          Receiving it sets the sticky default, for Shelf Audit it switches the
+          audited location. */}
+      <div className={s.contextStrip}>
+        <span className={`${s.modeBadge} ${localMode === "receiving" ? s.modeBadgeReceiving : s.modeBadgeAudit}`}>
+          <Icon name={localMode === "receiving" ? "icon-package" : "icon-clipboard-check"} />
+          {SCAN_MODE_META[localMode]?.label}
+        </span>
         <button type="button" className={s.locPill} onClick={() => setSheet("location")}>
           <Icon name="icon-map-pin" />
-          <span className={s.locPillName}>{locName}</span>
+          <span className={s.locPillName}>{locLabel}</span>
           <span className={s.locPillCaret}><Icon name="icon-chevron-down" /></span>
         </button>
-      )}
-
-      {/* Current mode badge — single pill, not a toggle */}
-      <div className={s.modeBadgeRow}>
-        <span className={s.modeBadge}>
-          {SCAN_MODE_META[localMode]?.emoji} {SCAN_MODE_META[localMode]?.label}
-        </span>
       </div>
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
@@ -544,10 +533,16 @@ export function MobileScanSession({
       {pendingLine && localMode === "receiving" && (
         <ReceivingSheet
           line={pendingLine}
-          locName={locName}
+          locations={locations}
+          defaultLocationId={receivingLocId}
           onClose={onClearPending}
-          onSave={(body) => { onPatchLine(pendingLine.id, body); onClearPending?.(); }}
+          onSave={(body) => {
+            if (body.location_id) setReceivingLocId(body.location_id);
+            onPatchLine(pendingLine.id, body);
+            onClearPending?.();
+          }}
           onUndo={() => { onRemoveLine(pendingLine.id); onClearPending?.(); }}
+          onNavigate={onNavigate}
         />
       )}
       {pendingLine && localMode === "shelf_audit" && (
@@ -559,16 +554,6 @@ export function MobileScanSession({
           onUndo={() => { onRemoveLine(pendingLine.id); onClearPending?.(); }}
         />
       )}
-      {pendingLine && localMode === "reorder_list" && (
-        <ReorderQuickSheet
-          line={pendingLine}
-          locName={locName}
-          locations={locations}
-          onClose={onClearPending}
-          onUndo={() => { onRemoveLine(pendingLine.id); onClearPending?.(); }}
-          onNavigate={onNavigate}
-        />
-      )}
 
       {sheet === "manual"   && <ManualSheet onClose={() => setSheet(null)} onSubmit={(code) => { onScan(code); setSheet(null); }} />}
       {sheet === "search"   && <SearchSheet title="Search product" onClose={() => setSheet(null)} onPick={(p) => { onAddProduct(p); setSheet(null); }} />}
@@ -576,9 +561,15 @@ export function MobileScanSession({
       {sheet === "location" && (
         <LocationSheet
           locations={locations}
-          currentId={session.location_id}
+          currentId={localMode === "receiving" ? receivingLocId : session.location_id}
           onClose={() => setSheet(null)}
-          onPick={(loc) => { setSheet(null); if (loc.id !== session.location_id) onSwitchLocation(loc); }}
+          onPick={(loc) => {
+            setSheet(null);
+            // Receiving: set the sticky default for upcoming scans (no session
+            // location to switch). Shelf Audit: switch the audited location.
+            if (localMode === "receiving") setReceivingLocId(loc.id);
+            else if (loc.id !== session.location_id) onSwitchLocation(loc);
+          }}
           onManage={() => { setSheet(null); onNavigate?.("/app/locations"); }}
         />
       )}
@@ -607,20 +598,23 @@ export function MobileScanSession({
 
 // ── Receiving bottom sheet ────────────────────────────────────────────
 
-function ReceivingSheet({ line, locName, onClose, onSave, onUndo }) {
+function ReceivingSheet({ line, locations, defaultLocationId, onClose, onSave, onUndo, onNavigate }) {
   const [lot,          setLot]          = useState(line.lot_number || "");
   const [exp,          setExp]          = useState(line.expiration_date ? String(line.expiration_date).slice(0, 10) : "");
   const [qty,          setQty]          = useState(1);
   const [supplier,     setSupplier]     = useState("");
   const [receivedDate, setReceivedDate] = useState(todayIso());
+  const [locId,        setLocId]        = useState(line.location_id || defaultLocationId || "");
 
   function save() {
+    if (!locId) return;
     onSave({
       lot_number:      lot.trim() || null,
       expiration_date: exp || null,
       quantity:        qty,
       supplier_name:   supplier.trim() || null,
       received_date:   receivedDate || null,
+      location_id:     locId,
     });
   }
 
@@ -651,8 +645,19 @@ function ReceivingSheet({ line, locName, onClose, onSave, onUndo }) {
           <ModeSheetRow label="Received date">
             <input className={s.input} type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
           </ModeSheetRow>
-          <ModeSheetRow label="Location">
-            <span className={s.modeSheetLocPill}><Icon name="icon-map-pin" /> {locName}</span>
+          <ModeSheetRow label="Put away to">
+            {locations.length === 0 ? (
+              <button type="button" className={s.modeSheetLocLink} onClick={() => onNavigate?.("/app/locations")}>
+                <Icon name="icon-map-pin" /> Add a location first
+              </button>
+            ) : (
+              <select className={s.input} value={locId} onChange={(e) => setLocId(e.target.value)} aria-label="Put away to">
+                <option value="">Choose location…</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            )}
           </ModeSheetRow>
         </div>
 
@@ -662,7 +667,7 @@ function ReceivingSheet({ line, locName, onClose, onSave, onUndo }) {
 
         <div className={s.modeSheetActions}>
           <button type="button" className={s.btnOutline} onClick={onUndo}>Undo scan</button>
-          <button type="button" className={s.btnPrimary} onClick={save}>Save receiving record</button>
+          <button type="button" className={s.btnPrimary} onClick={save} disabled={!locId}>Save receiving record</button>
         </div>
       </div>
     </div>
@@ -733,38 +738,6 @@ function ShelfAuditSheet({ line, locName, onClose, onSave, onUndo }) {
         <div className={s.modeSheetActions}>
           <button type="button" className={s.btnOutline} onClick={onUndo}>Undo scan</button>
           <button type="button" className={s.btnPrimary} onClick={save}>Save verification</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Reorder quick-add sheet ───────────────────────────────────────────
-
-function ReorderQuickSheet({ line, locName, onClose, onUndo, onNavigate }) {
-  const pill = matchPill(line.status);
-  return (
-    <div className={s.modeSheet}>
-      <div className={s.modeSheetBackdrop} onClick={onClose} />
-      <div className={s.modeSheetPanel}>
-        <div className={s.modeSheetGrip} aria-hidden="true" />
-        <ModeSheetProductHeader line={line} modeBadge="Reorder list" modeBadgeCls={s.badgeSlate} />
-
-        <div className={s.reorderSheetBody}>
-          <p className={s.reorderSheetHint}>
-            To add this item to your reorder list, go to the Reorder List and use its scan feature there.
-            You can also manage your list from the menu.
-          </p>
-          <div className={s.reorderSheetLoc}>
-            <Icon name="icon-map-pin" /> {locName}
-          </div>
-        </div>
-
-        <div className={s.modeSheetActions}>
-          <button type="button" className={s.btnOutline} onClick={onUndo}>Undo scan</button>
-          <button type="button" className={s.btnPrimary} onClick={() => onNavigate?.("/app/reorder-list")}>
-            Go to reorder list
-          </button>
         </div>
       </div>
     </div>
