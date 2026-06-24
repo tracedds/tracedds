@@ -1,0 +1,28 @@
+graph TD
+  NAV["Bottom nav (always visible)"]
+
+  NAV --> TODAY["Today"]
+  NAV --> LOC["Locations"]
+  NAV --> SCAN["Scan (center action)"]
+  NAV --> REORDER["Reorder"]
+  NAV --> MORE["More"]
+
+  TODAY --> NA["Needs attention"]
+  TODAY --> RESUME["Resume session"]
+
+  LOC --> LOCBOARD["All locations"]
+  LOCBOARD --> LOCDETAIL["Location detail (inventory)"]
+
+  SCAN --> LIVE["Live scan"]
+  LIVE --> SHELF["Shelf details (lot, expiry)"]
+  SHELF --> SREVIEW["Review and save"]
+
+  REORDER --> RLIST["Reorder list"]
+  RLIST --> PLAN["Review and plan"]
+  PLAN --> HANDOFF["Supplier handoff"]
+
+  MORE --> EVID["Evidence and compliance"]
+  MORE --> SAV["Savings"]
+  MORE --> HIST["History"]
+  MORE --> CAT["Catalog"]
+  MORE --> SET["Settings"]

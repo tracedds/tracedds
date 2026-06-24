@@ -662,15 +662,27 @@ export function AddLocationView({ onCancel, onSaved, onToast }) {
 
 const PILL_TONE = { red: s.badgeRed, amber: s.badgeAmber, green: s.badgeGreen, blue: s.badgeBlue, slate: s.badgeSlate };
 
-// Honest per-item status, derived from real inventory fields (no fabricated
-// evidence/savings). Expiry first, then par, then missing traceability.
-function itemStatus(it) {
+// Client-side fallback for the lot lifecycle when the API didn't send one
+// (it normally does): a human-confirmed pull wins, then the expiry date drives
+// expired → expiring → active. Mirrors deriveLifecycle on the backend.
+function deriveLifecycleClient(it) {
+  if (it.pulled_at) return "pulled";
   const d = daysUntil(it.expiration_date);
-  if (d != null && d <= 0) return { label: "Expired", tone: "red" };
-  if (d != null && d <= 30) return { label: "Expiring soon", tone: "amber" };
-  if (it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level) return { label: "Reorder", tone: "red" };
+  if (d != null && d <= 0) return "expired";
+  if (d != null && d <= 30) return "expiring";
+  return "active";
+}
+
+// Honest per-item status from the lot lifecycle (active/expiring/expired/pulled).
+// No par-based "reorder" here — reorder timing is the reorder ladder's job, not a
+// census. An expired-but-unpulled lot is the loudest state: "Pull now".
+function itemStatus(it) {
+  const lc = it.lifecycle || deriveLifecycleClient(it);
+  if (lc === "pulled") return { label: "Pulled", tone: "slate" };
+  if (lc === "expired") return { label: "Pull now", tone: "red" };
+  if (lc === "expiring") return { label: "Expiring soon", tone: "amber" };
   if (!it.lot_number || !it.expiration_date) return { label: "Needs details", tone: "amber" };
-  return { label: "OK", tone: "green" };
+  return { label: "Active", tone: "green" };
 }
 
 export function LocationDetailView({ locationId, onBack, onStartScan, onToast, onNavigate }) {
@@ -699,10 +711,11 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
   }, [locationId, onToast]);
 
   const top = useMemo(() => {
+    const active = items.filter((it) => !it.pulled_at);
     const traced = items.filter((it) => it.lot_number && it.expiration_date).length;
-    const expiring = items.filter((it) => { const d = daysUntil(it.expiration_date); return d != null && d <= 30; }).length;
-    const reorder = items.filter((it) => it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level).length;
-    return { tracked: items.length, traced, expiring, reorder };
+    const expiring = active.filter((it) => (it.lifecycle || deriveLifecycleClient(it)) === "expiring").length;
+    const expired = active.filter((it) => (it.lifecycle || deriveLifecycleClient(it)) === "expired").length;
+    return { tracked: items.length, traced, expiring, expired };
   }, [items]);
 
   const visibleItems = useMemo(() => {
@@ -710,8 +723,8 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
     return q ? items.filter((it) => (it.name || "").toLowerCase().includes(q)) : items;
   }, [items, query]);
 
-  const reorderItems = useMemo(
-    () => items.filter((it) => it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level),
+  const pullItems = useMemo(
+    () => items.filter((it) => !it.pulled_at && (it.lifecycle || deriveLifecycleClient(it)) === "expired"),
     [items],
   );
 
@@ -719,9 +732,16 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
   if (!location) return <div className={s.detail}><div className={s.empty}>Location not found.</div></div>;
 
   const meta = typeMeta(location.type);
-  const attention = location.needs_attention_count ?? top.reorder + top.expiring;
+  const attention = location.needs_attention_count ?? top.expired + top.expiring;
   const status = attention > 0 ? STATUS_META.needs_attention : items.length ? STATUS_META.healthy : STATUS_META.not_started;
   const tracePct = items.length ? Math.round((top.traced / items.length) * 100) : 0;
+  const reload = () => traceApi.getLocation(locationId)
+    .then((d) => { setLocation(d.location || null); setItems(d.items || []); })
+    .catch(() => {});
+  const onPull = async (it) => {
+    try { await traceApi.pull(it.id, { reason: "manual" }); onToast?.(`Marked pulled — ${it.name}`); reload(); }
+    catch { onToast?.("Couldn't mark pulled."); }
+  };
 
   // Phone surface: a card list of everything captured at this location (the
   // desktop table doesn't fit a 390px screen). This is where the scanner exits
@@ -754,7 +774,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
             <div className={s.mStat}><span className={s.mStatVal}>{top.tracked}</span><span className={s.mStatLabel}>Items</span></div>
             <div className={s.mStat}><span className={s.mStatVal}>{tracePct}%</span><span className={s.mStatLabel}>Lot &amp; expiry</span></div>
             <div className={s.mStat}><span className={s.mStatVal}>{top.expiring}</span><span className={s.mStatLabel}>Expiring</span></div>
-            <div className={s.mStat}><span className={s.mStatVal}>{top.reorder}</span><span className={s.mStatLabel}>Below par</span></div>
+            <div className={s.mStat}><span className={s.mStatVal}>{top.expired}</span><span className={s.mStatLabel}>Pull now</span></div>
           </div>
 
           <div className={s.mListHead}>
@@ -775,7 +795,6 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
             <div className={s.mItemList}>
               {visibleItems.map((it) => {
                 const st = itemStatus(it);
-                const below = it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level;
                 return (
                   <button
                     key={it.id}
@@ -787,12 +806,9 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                     <div className={s.mItemBody}>
                       <span className={s.mItemName}>{it.name}</span>
                       <span className={s.mItemMeta}>
-                        On hand <span className={below ? s.mItemRed : ""}>{it.quantity_on_hand ?? 0}</span>
-                        {it.par_level != null ? ` · Par ${it.par_level}` : ""}
-                      </span>
-                      <span className={s.mItemMeta}>
                         {it.lot_number ? `Lot ${it.lot_number}` : "No lot"} · {it.expiration_date ? `Exp ${formatTraceDate(it.expiration_date)}` : "No expiry"}
                       </span>
+                      <span className={s.mItemMeta}>Est. qty {it.quantity_on_hand ?? 0}</span>
                     </div>
                     <span className={`${s.badge} ${PILL_TONE[st.tone]}`}>{st.label}</span>
                   </button>
@@ -822,7 +838,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
         <Stat icon="icon-package" tint={s.tBlue} label="Tracked items" value={top.tracked} />
         <Stat icon="icon-shield-check" tint={s.tGreen} label="Lot &amp; expiry captured" value={`${tracePct}%`} />
         <Stat icon="icon-clock" tint={s.tAmber} label="Expiring soon" value={top.expiring} />
-        <Stat icon="icon-alert-triangle" tint={s.tRed} label="At / below par" value={top.reorder} />
+        <Stat icon="icon-alert-triangle" tint={s.tRed} label="Expired (pull now)" value={top.expired} />
       </div>
 
       <section className={s.locHeader}>
@@ -860,13 +876,13 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                 <table className={s.table}>
                   <thead>
                     <tr>
-                      <th>Item</th><th>On hand</th><th>Par</th><th>Lot</th><th>Expiration</th><th>Status</th><th>Last counted</th>
+                      <th>Item</th><th>Est. qty</th><th>Par</th><th>Lot</th><th>Expiration</th><th>Status</th><th>Last counted</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleItems.map((it) => {
                       const st = itemStatus(it);
-                      const below = it.par_level != null && (it.quantity_on_hand ?? 0) <= it.par_level;
+                      const lc = it.lifecycle || deriveLifecycleClient(it);
                       return (
                         <tr key={it.id}>
                           <td>
@@ -877,11 +893,16 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                               ) : <span className={s.tItem}>{it.name}</span>}
                             </div>
                           </td>
-                          <td><span className={below ? s.tdRed : ""}>{it.quantity_on_hand ?? 0}</span></td>
+                          <td>{it.quantity_on_hand ?? 0}</td>
                           <td className={s.tMuted}>{it.par_level ?? "—"}</td>
                           <td className={s.tMuted}>{it.lot_number || "—"}</td>
                           <td className={it.expiration_date ? "" : s.tMuted}>{it.expiration_date ? formatTraceDate(it.expiration_date) : "—"}</td>
-                          <td><span className={`${s.badge} ${PILL_TONE[st.tone]}`}>{st.label}</span></td>
+                          <td>
+                            <span className={`${s.badge} ${PILL_TONE[st.tone]}`}>{st.label}</span>
+                            {lc === "expired" && (
+                              <button type="button" className={s.pullBtn} onClick={() => onPull(it)}>Mark pulled</button>
+                            )}
+                          </td>
                           <td className={s.tMuted}>{it.last_counted_at ? formatTraceDate(it.last_counted_at) : "—"}</td>
                         </tr>
                       );
@@ -898,7 +919,12 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
             <h2 className={s.railTitle}>Issues in this location</h2>
             <div className={s.issueRow}>
               <span className={`${s.issueIcon} ${TONE_TEXT.red}`}><Icon name="icon-alert-triangle" /></span>
-              <span className={s.issueLabel}>Expiring / expired</span>
+              <span className={s.issueLabel}>Expired (pull now)</span>
+              <span className={s.issueValue}>{top.expired}</span>
+            </div>
+            <div className={s.issueRow}>
+              <span className={`${s.issueIcon} ${TONE_TEXT.amber}`}><Icon name="icon-clock" /></span>
+              <span className={s.issueLabel}>Expiring soon</span>
               <span className={s.issueValue}>{top.expiring}</span>
             </div>
             <div className={s.issueRow}>
@@ -906,31 +932,25 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
               <span className={s.issueLabel}>Missing lot / expiry</span>
               <span className={s.issueValue}>{items.length - top.traced}</span>
             </div>
-            <div className={s.issueRow}>
-              <span className={`${s.issueIcon} ${TONE_TEXT.red}`}><Icon name="icon-package" /></span>
-              <span className={s.issueLabel}>At / below par</span>
-              <span className={s.issueValue}>{top.reorder}</span>
-            </div>
           </section>
 
           <section className={s.railCard}>
             <div className={s.reorderHead}>
               <div>
-                <div className={s.railTitle}>Reorder needs</div>
-                <small className={s.tMuted}>{reorderItems.length} item{reorderItems.length === 1 ? "" : "s"} at or below par</small>
+                <div className={s.railTitle}>Needs pulling</div>
+                <small className={s.tMuted}>{pullItems.length} expired lot{pullItems.length === 1 ? "" : "s"} still on the shelf</small>
               </div>
             </div>
-            {reorderItems.length === 0 ? (
-              <small className={s.tMuted}>Nothing needs reordering here.</small>
+            {pullItems.length === 0 ? (
+              <small className={s.tMuted}>Nothing expired to pull here.</small>
             ) : (
-              reorderItems.slice(0, 6).map((it) => (
+              pullItems.slice(0, 6).map((it) => (
                 <div className={s.reorderRow} key={it.id}>
                   <span className={s.reorderName}>{it.name}</span>
-                  <span className={s.tMuted}>{it.quantity_on_hand ?? 0} / {it.par_level}</span>
+                  <button type="button" className={s.pullBtn} onClick={() => onPull(it)}>Mark pulled</button>
                 </div>
               ))
             )}
-            <button type="button" className={s.railPrimary} onClick={() => onToast?.("Reorder drafts arrive with Forecasting.")}><Icon name="icon-cart" />Create reorder draft</button>
           </section>
 
           <section className={s.railCard}>

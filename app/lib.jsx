@@ -763,6 +763,9 @@ export const traceApi = {
   addLine: (id, body) => traceFetch(`/api/scan-sessions/${encodeURIComponent(id)}/lines`, jsonBody("POST", body)),
   updateLine: (id, body) => traceFetch(`/api/scan-lines/${encodeURIComponent(id)}`, jsonBody("PATCH", body)),
   deleteLine: (id) => traceFetch(`/api/scan-lines/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  // Confirm a lot was physically pulled (reason: expiry | recall | manual), or
+  // undo with { pulled: false }. The only thing that moves a lot out of active.
+  pull: (id, body) => traceFetch(`/api/inventory/${encodeURIComponent(id)}/pull`, jsonBody("POST", body)),
 };
 
 // Shared review-bucket vocabulary for scan-session lines (UI labels + tone).
