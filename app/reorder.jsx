@@ -1204,7 +1204,7 @@ export function CurrentReorderList({
     return (
       <>
         <MobileReorderList
-          title="Current Reorder List"
+          title="Reorder List"
           rows={filtered}
           stats={stats}
           totalItems={totalItems}
@@ -1273,7 +1273,7 @@ export function CurrentReorderList({
     <div className={`crl ${detail ? "detail-open" : ""}`}>
       <header className="crl-header">
         <div className="crl-title crl-title-main">
-          <h2 id="homeHeading">Current Reorder List</h2>
+          <h2 id="homeHeading">Reorder List</h2>
           <p className="crl-subtitle">
             <span className="crl-listname-edit">
               <input

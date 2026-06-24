@@ -1434,10 +1434,10 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
 
         <aside className="pdp-rail">
           <section className="crl-card pdp-add">
-            <h3>Add to Current Reorder List</h3>
+            <h3>Add to Reorder List</h3>
             <div className="pdp-field">
               <span>Current list</span>
-              <div className="pdp-current-list"><Icon name="icon-list" className="nav-icon" />{listName || "Current reorder list"}</div>
+              <div className="pdp-current-list"><Icon name="icon-list" className="nav-icon" />{listName || "Reorder list"}</div>
             </div>
             <div className="pdp-qty-grid">
               <label className="pdp-field">
@@ -1474,7 +1474,7 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
             </button>
             <button className="secondary-action" type="button" onClick={() => onNavigate("/app")}>
               <Icon name="icon-file-text" className="button-icon" />
-              View Current Reorder List
+              View Reorder List
             </button>
           </section>
 

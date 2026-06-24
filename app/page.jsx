@@ -1137,7 +1137,7 @@ export default function Home() {
     }
     setConfirmDialog({
       title: "Save this list?",
-      body: "The current reorder list will be saved to History and a fresh, empty list will start. You can reopen or duplicate a saved list any time.",
+      body: "The reorder list will be saved to History and a fresh, empty list will start. You can reopen or duplicate a saved list any time.",
       confirmLabel: "Save list",
       onConfirm: saveCurrentList,
     });
@@ -1150,7 +1150,7 @@ export default function Home() {
     }
     setConfirmDialog({
       title: "Clear this list?",
-      body: "Every item will be removed from your current reorder list. This can't be undone — to keep a copy, archive the list instead.",
+      body: "Every item will be removed from your reorder list. This can't be undone — to keep a copy, archive the list instead.",
       confirmLabel: "Clear list",
       destructive: true,
       onConfirm: clearCurrentList,
@@ -1273,7 +1273,7 @@ export default function Home() {
     const n = activeDraftItems.length;
     setConfirmDialog({
       title: `${verb} "${entryName}"?`,
-      body: `Your current reorder list has ${n} unsaved item${n === 1 ? "" : "s"}. Save them to History first so you don't lose them, or discard them to continue.`,
+      body: `Your reorder list has ${n} unsaved item${n === 1 ? "" : "s"}. Save them to History first so you don't lose them, or discard them to continue.`,
       confirmLabel: "Save current first",
       secondaryLabel: "Discard current",
       onConfirm: () => { saveCurrentList(); proceed(); },
