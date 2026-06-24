@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrandLogoMark, BrandMark, Icon } from "./icons";
+import { BrandLogoMark, Icon } from "./icons";
 import { formatTraceDate } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
@@ -484,7 +484,12 @@ export function MobileScanSession({
         >
           <Icon name="icon-chevron-left" />
         </button>
-        <span className={s.camBrand}><BrandMark /></span>
+        <span className={s.camBrand}>
+          <BrandLogoMark className={s.camBrandMark} />
+          <span className={s.camWordmark}>
+            <span className={s.camWordTrace}>Trace</span>{" "}<span className={s.camWordDds}>DDS</span>
+          </span>
+        </span>
         <span className={s.camRight}>
           {torchSupported && (
             <button
