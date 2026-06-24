@@ -7,6 +7,7 @@ import {
   deriveLineStatus,
   sessionCounts,
   syncInventoryFromLine,
+  cleanupOrphanInventory,
   isPackageCondition,
 } from "../../../../utils/scan-sessions"
 
@@ -54,11 +55,22 @@ export async function PATCH(req: AuthenticatedMedusaRequest, res: MedusaResponse
 
   const saved = await medmkp.updateScanSessionLines(update)
   const actor = req.auth_context?.actor_id ?? null
-  const inventoryItemId = await syncInventoryFromLine(medmkp, saved, session.location_id, actor)
-  const line2 =
-    inventoryItemId !== saved.inventory_item_id
-      ? await medmkp.updateScanSessionLines({ id: saved.id, inventory_item_id: inventoryItemId })
-      : saved
+  const inventoryItemId = await syncInventoryFromLine(
+    medmkp,
+    saved,
+    session.location_id,
+    actor,
+    session.capture_type ?? null
+  )
+  let line2 = saved
+  if (inventoryItemId !== saved.inventory_item_id) {
+    line2 = await medmkp.updateScanSessionLines({ id: saved.id, inventory_item_id: inventoryItemId })
+    // The record this line used to point at may now be orphaned (its lot or
+    // product changed). Drop it only if no other line still references it.
+    if (session.status === "active") {
+      await cleanupOrphanInventory(medmkp, saved.inventory_item_id)
+    }
+  }
 
   const lines = await medmkp.listScanSessionLines({ session_id: session.id })
   res.json({ line: line2, counts: sessionCounts(lines as any[]) })
@@ -75,10 +87,13 @@ export async function DELETE(req: AuthenticatedMedusaRequest, res: MedusaRespons
   if (!owned) return
   const { line, session } = owned
 
-  if (line.inventory_item_id && session.status === "active") {
-    await medmkp.deleteInventoryItems(line.inventory_item_id).catch(() => {})
-  }
   await medmkp.deleteScanSessionLines(line.id)
+  // Reference-counted: only remove the lot record if this was the last scan
+  // vouching for it (and the session is still active; a completed session's
+  // inventory is durable). Absence is not deletion.
+  if (session.status === "active") {
+    await cleanupOrphanInventory(medmkp, line.inventory_item_id)
+  }
 
   const lines = await medmkp.listScanSessionLines({ session_id: session.id })
   res.json({ ok: true, counts: sessionCounts(lines as any[]) })

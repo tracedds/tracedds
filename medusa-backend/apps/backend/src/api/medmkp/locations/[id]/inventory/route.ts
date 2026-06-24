@@ -2,7 +2,7 @@ import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/frame
 import { MEDMKP_MODULE } from "../../../../../modules/medmkp"
 import type MedMKPModuleService from "../../../../../modules/medmkp/service"
 import { requirePractice } from "../../../../../utils/practice"
-import { PACKAGE_CONDITIONS, needsAttention, loadOwnedLocation } from "../../../../../utils/inventory"
+import { PACKAGE_CONDITIONS, needsAttention, deriveLifecycle, loadOwnedLocation } from "../../../../../utils/inventory"
 
 // GET /medmkp/locations/:id/inventory — items at a location.
 export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) {
@@ -14,7 +14,13 @@ export async function GET(req: AuthenticatedMedusaRequest, res: MedusaResponse) 
 
   const items = await medmkp.listInventoryItems({ location_id: location.id })
   const now = new Date()
-  res.json({ items: (items as any[]).map((i) => ({ ...i, needs_attention: needsAttention(i, now) })) })
+  res.json({
+    items: (items as any[]).map((i) => ({
+      ...i,
+      needs_attention: needsAttention(i, now),
+      lifecycle: deriveLifecycle(i, now),
+    })),
+  })
 }
 
 // POST /medmkp/locations/:id/inventory — add an item to a location.
