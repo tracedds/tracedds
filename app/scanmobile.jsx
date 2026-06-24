@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrandMark, Icon } from "./icons";
+import { BrandLogoMark, BrandMark, Icon } from "./icons";
 import { formatTraceDate } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
@@ -391,7 +391,7 @@ export function MobileScanSession({
         >
           <Icon name="icon-x" />
         </button>
-        <span className={s.camBrand}><Icon name="icon-scan" /> TraceDDS</span>
+        <span className={s.camBrand}><BrandLogoMark /> TraceDDS</span>
         <span className={s.camRight}>
           {torchSupported && (
             <button type="button" className={`${s.camCircle} ${torchOn ? s.camCircleActive : ""}`} onClick={toggleTorch} aria-label="Toggle flash" aria-pressed={torchOn}>
