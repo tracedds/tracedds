@@ -383,10 +383,21 @@
 .camCircle svg { width: 20px; height: 20px; }
 .camCircleActive { background: rgba(255,210,51,0.85); color: #1c1402; }
 .camBrand {
-  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
 }
-/* BrandMark renders as an <img> — size it for the dark camera top bar */
-.camBrand img { height: 28px; width: auto; filter: brightness(0) invert(1); }
+/* Composed wordmark over the live camera: blue mark, white "Trace", blue "DDS".
+   Shadows lift it off arbitrary video so it stays legible past the scrim edge. */
+.camBrandMark {
+  width: 26px; height: 26px; flex-shrink: 0;
+  color: #4F79E4;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+.camWordmark {
+  font-size: 19px; font-weight: 800; letter-spacing: -0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 5px rgba(0, 0, 0, 0.4);
+}
+.camWordTrace { color: #fff; }
+.camWordDds { color: #4F79E4; }
 .camRight { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
 /* Persistent "what have I collected here" button — the location's own icon with a
