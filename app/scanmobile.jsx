@@ -618,8 +618,6 @@ export function MobileReorderScan({
   onScan, onClearScanResult, onApplyDetails, onLinkProduct, onCaptureLabel, onReview, onBack,
 }) {
   const [sheet, setSheet] = useState(null); // manual (Enter code)
-  const [torchOn, setTorchOn] = useState(false);
-  const [torchSupported, setTorchSupported] = useState(false);
   const [captured, setCaptured] = useState(false);
   const pulseTimer = useRef();
 
@@ -640,20 +638,6 @@ export function MobileReorderScan({
       pulseTimer.current = window.setTimeout(() => setCaptured(false), 700);
     },
   });
-
-  useEffect(() => {
-    if (cameraStatus !== "ready") { setTorchSupported(false); setTorchOn(false); return; }
-    const track = videoRef.current?.srcObject?.getVideoTracks?.()[0];
-    const caps = track?.getCapabilities?.();
-    setTorchSupported(Boolean(caps && "torch" in caps && caps.torch));
-  }, [cameraStatus, videoRef]);
-
-  function toggleTorch() {
-    const track = videoRef.current?.srcObject?.getVideoTracks?.()[0];
-    if (!track) return;
-    const next = !torchOn;
-    track.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorchOn(next)).catch(() => {});
-  }
 
   return (
     <div className={`${s.camera} ${captured ? s.scanCaptured : ""}`} aria-label="Scan items">
@@ -680,19 +664,14 @@ export function MobileReorderScan({
           <span className={s.camWordmark}><span className={s.camWordTrace}>Trace</span>{" "}<span className={s.camWordDds}>DDS</span></span>
         </span>
         <span className={s.camRight}>
-          {torchSupported && (
-            <button type="button" className={`${s.camCircle} ${torchOn ? s.camCircleActive : ""}`} onClick={toggleTorch} aria-label="Toggle flash" aria-pressed={torchOn}>
-              <Icon name="icon-bolt" />
-            </button>
-          )}
           <button
             type="button"
             className={s.camReviewBtn}
             onClick={onReview}
-            aria-label={scanCount ? `Review ${scanCount} scanned item${scanCount === 1 ? "" : "s"}` : "Go to reorder list"}
+            aria-label={scanCount ? `View reorder list, ${scanCount} item${scanCount === 1 ? "" : "s"}` : "Go to reorder list"}
           >
             <QrScanGlyph />
-            {scanCount > 0 && <span className={s.camCountBadge}>{scanCount > 99 ? "99+" : `+${scanCount}`}</span>}
+            {scanCount > 0 && <span className={s.camCountBadge}>{scanCount > 99 ? "99+" : scanCount}</span>}
           </button>
         </span>
       </div>

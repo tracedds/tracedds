@@ -1794,14 +1794,14 @@ export default function Home() {
               <MobileReorderScan
                 active
                 scanResult={scanResult}
-                scanCount={scanCount}
+                scanCount={activeDraftItems.length}
                 onScan={handleScanComplete}
                 onClearScanResult={() => setScanResult(null)}
                 onApplyDetails={applyScanDetails}
                 onLinkProduct={linkProductToItem}
                 onCaptureLabel={() => showToast("Label capture is coming soon — saved as a pending item")}
                 onReview={() => { setScanResult(null); navigate("/app/reorder-list"); }}
-                onBack={() => { setScanResult(null); navigate("/app"); }}
+                onBack={() => { setScanResult(null); navigate("/app/reorder-list"); }}
               />
             ) : isMobile ? (
               // Mobile home (`/app`) = the Today tab. Locations / Scan / Reorder
