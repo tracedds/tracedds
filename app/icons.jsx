@@ -49,6 +49,15 @@ export function IconSprite() {
         <path d="M10.8 18.1a7.2 7.2 0 1 0 0-14.4 7.2 7.2 0 0 0 0 14.4Z" />
         <path d="m16 16 5 5" />
       </symbol>
+      <symbol id="icon-camera" viewBox="0 0 24 24">
+        <rect x="3" y="7" width="18" height="13" rx="2.5" />
+        <path d="M8 7l1.4-2.2h5.2L16 7" />
+        <circle cx="12" cy="13.5" r="3.2" />
+      </symbol>
+      <symbol id="icon-fast-forward" viewBox="0 0 24 24">
+        <path d="m5 7 5 5-5 5" />
+        <path d="m12 7 5 5-5 5" />
+      </symbol>
       <symbol id="icon-sidebar" viewBox="0 0 24 24">
         <rect x="3" y="4" width="18" height="16" rx="2.5" />
         <path d="M9 4v16" />
@@ -382,6 +391,45 @@ export function BrandLogoMark({ className = "nav-icon" }) {
         <path d="M13 36 L13 42 Q13 51 22 51 L28 51" />
       </g>
       <circle cx="46" cy="46" r="6.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+// QR-in-scan-brackets glyph: four rounded corner brackets framing a QR (three
+// finder rings + data modules). Used for the upper-right scan button. Explicit
+// fill/stroke per group so it survives the `.camera svg` reset (fill:none /
+// stroke:currentColor) it renders inside.
+export function QrScanGlyph({ className = "nav-icon" }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      {/* scan corner brackets */}
+      <g stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+        <path d="M7 21 L7 13 Q7 7 13 7 L21 7" />
+        <path d="M43 7 L51 7 Q57 7 57 13 L57 21" />
+        <path d="M7 43 L7 51 Q7 57 13 57 L21 57" />
+        <path d="M43 57 L51 57 Q57 57 57 51 L57 43" />
+      </g>
+      {/* QR finder rings */}
+      <g stroke="currentColor" strokeWidth="3" fill="none">
+        <rect x="18" y="18" width="9" height="9" />
+        <rect x="37" y="18" width="9" height="9" />
+        <rect x="18" y="37" width="9" height="9" />
+      </g>
+      {/* QR data modules */}
+      <g fill="currentColor" stroke="none">
+        <rect x="31" y="18" width="3" height="3" />
+        <rect x="31" y="24" width="3" height="3" />
+        <rect x="18" y="31" width="3" height="3" />
+        <rect x="24" y="31" width="3" height="3" />
+        <rect x="31" y="31" width="3" height="3" />
+        <rect x="37" y="31" width="3" height="3" />
+        <rect x="43" y="31" width="3" height="3" />
+        <rect x="31" y="37" width="3" height="3" />
+        <rect x="37" y="37" width="3" height="3" />
+        <rect x="43" y="37" width="3" height="3" />
+        <rect x="37" y="43" width="3" height="3" />
+        <rect x="43" y="43" width="3" height="3" />
+      </g>
     </svg>
   );
 }

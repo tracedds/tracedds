@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrandLogoMark, Icon } from "./icons";
+import { BrandLogoMark, Icon, QrScanGlyph } from "./icons";
 import { formatTraceDate } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
@@ -615,26 +615,13 @@ export function MobileScanSession({
 
 export function MobileReorderScan({
   active = true, scanResult, scanCount = 0,
-  onScan, onClearScanResult, onApplyDetails, onRemoveItem, onReview, onBack,
+  onScan, onClearScanResult, onApplyDetails, onLinkProduct, onCaptureLabel, onReview, onBack,
 }) {
-  const [sheet, setSheet] = useState(null); // manual | location
-  const [locations, setLocations] = useState([]);
-  const [stickyLocId, setStickyLocId] = useState("");
+  const [sheet, setSheet] = useState(null); // manual (Enter code)
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const [captured, setCaptured] = useState(false);
   const pulseTimer = useRef();
-
-  useEffect(() => {
-    fetch("/api/locations")
-      .then((r) => r.json())
-      .then(({ locations: locs }) => {
-        const list = locs || [];
-        setLocations(list);
-        setStickyLocId((cur) => cur || list[0]?.id || "");
-      })
-      .catch(() => {});
-  }, []);
 
   const drawerOpen = Boolean(scanResult);
   const cameraActive = active && !drawerOpen && sheet !== "manual";
@@ -662,8 +649,6 @@ export function MobileReorderScan({
     const next = !torchOn;
     track.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorchOn(next)).catch(() => {});
   }
-
-  const stickyLoc = locations.find((l) => l.id === stickyLocId);
 
   return (
     <div className={`${s.camera} ${captured ? s.scanCaptured : ""}`} aria-label="Scan items">
@@ -701,19 +686,23 @@ export function MobileReorderScan({
             onClick={onReview}
             aria-label={scanCount ? `Review ${scanCount} scanned item${scanCount === 1 ? "" : "s"}` : "Go to reorder list"}
           >
-            <Icon name="icon-scan" />
+            <QrScanGlyph />
             {scanCount > 0 && <span className={s.camCountBadge}>{scanCount > 99 ? "99+" : `+${scanCount}`}</span>}
           </button>
         </span>
       </div>
 
-      <div className={s.contextStrip}>
-        <button type="button" className={s.locPill} onClick={() => setSheet("location")}>
-          <Icon name="icon-map-pin" />
-          <span className={s.locPillName}>{stickyLoc?.name || "Set location"}</span>
-          <span className={s.locPillCaret}><Icon name="icon-chevron-down" /></span>
-        </button>
-      </div>
+      {/* No location pill here: scanning into the reorder list doesn't pick a
+          location up front — it's captured per item in the post-scan drawer. */}
+
+      {/* Floating confirmation that a matched scan auto-added the item. The
+          unmatched case has no badge — its own drawer says "No exact match". */}
+      {drawerOpen && scanResult.status !== "Not found" && (
+        <div className={s.scanAddedBadge}>
+          <Icon name="icon-check-circle" />
+          Item added successfully
+        </div>
+      )}
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
       {!drawerOpen && cameraStatus === "ready" && (
@@ -726,61 +715,118 @@ export function MobileReorderScan({
         </button>
       )}
 
+      {/* Matched scans capture lot/expiry; an unmatched scan instead offers
+          capture-label / search / skip and is saved as a pending item. */}
       {drawerOpen && (
-        <ReorderScanSheet
-          result={scanResult}
-          locations={locations}
-          defaultLocationId={stickyLocId}
-          onClose={onClearScanResult}
-          onSave={(body) => {
-            if (body.location_id) setStickyLocId(body.location_id);
-            onApplyDetails?.(scanResult.item?.id, body);
-            onClearScanResult?.();
-          }}
-          onUndo={() => { if (scanResult.item?.id) onRemoveItem?.(scanResult.item.id); onClearScanResult?.(); }}
-        />
+        scanResult.status === "Not found" ? (
+          <UnmatchedScanSheet
+            onCaptureLabel={() => { onCaptureLabel?.(); onClearScanResult?.(); }}
+            onSearch={() => setSheet("search")}
+            onSkip={() => onClearScanResult?.()}
+          />
+        ) : (
+          <ReorderScanSheet
+            result={scanResult}
+            onDismiss={(body) => {
+              onApplyDetails?.(scanResult.item?.id, body);
+              onClearScanResult?.();
+            }}
+          />
+        )
       )}
 
       {sheet === "manual" && <ManualSheet onClose={() => setSheet(null)} onSubmit={(code) => { onScan?.(code); setSheet(null); }} />}
-      {sheet === "location" && (
-        <LocationSheet
-          locations={locations}
-          currentId={stickyLocId}
+      {sheet === "search" && (
+        <SearchSheet
+          title="Search the catalog"
+          hint="Find the right product to match this item."
           onClose={() => setSheet(null)}
-          onPick={(loc) => { setStickyLocId(loc.id); setSheet(null); }}
-          onManage={() => setSheet(null)}
+          onPick={(product) => {
+            if (scanResult?.item?.id) onLinkProduct?.(scanResult.item.id, product);
+            setSheet(null);
+            onClearScanResult?.();
+          }}
         />
       )}
     </div>
   );
 }
 
-// Post-scan drawer for /app/scan: product card + lot/expiry/qty/location, no
-// status step. "Add to reorder list" patches the captured details onto the
-// already-added line; "Undo scan" removes it.
-function ReorderScanSheet({ result, locations, defaultLocationId, onClose, onSave, onUndo }) {
+// Post-scan drawer for an UNMATCHED scan (/app/scan): the code didn't resolve to
+// a catalog product. The item is already saved as a pending row; this offers the
+// next step — capture the label for later, search the catalog to match it now, or
+// skip and keep scanning. Tapping outside is the same as skip.
+function UnmatchedScanSheet({ onCaptureLabel, onSearch, onSkip }) {
+  return (
+    <div className={s.modeSheet}>
+      <div className={s.modeSheetBackdrop} onClick={onSkip} />
+      <div className={`${s.modeSheetPanel} ${s.unmatchedPanel}`}>
+        <div className={s.modeSheetGrip} aria-hidden="true" />
+        <div className={s.unmatchedHead}>
+          <span className={s.unmatchedIcon}><Icon name="icon-alert-triangle" /></span>
+          <div className={s.unmatchedHeadText}>
+            <span className={s.unmatchedTitle}>No exact match found</span>
+            <span className={s.unmatchedSub}>We couldn&rsquo;t find this item in your catalog.</span>
+          </div>
+        </div>
+
+        <div className={s.unmatchedActions}>
+          <button type="button" className={`${s.unmatchedAction} ${s.unmatchedActionPrimary}`} onClick={onCaptureLabel}>
+            <Icon name="icon-camera" />
+            <span className={s.unmatchedActionTitle}>Capture label</span>
+            <span className={s.unmatchedActionSub}>Take a photo of the label</span>
+          </button>
+          <button type="button" className={s.unmatchedAction} onClick={onSearch}>
+            <Icon name="icon-search" />
+            <span className={s.unmatchedActionTitle}>Search manually</span>
+            <span className={s.unmatchedActionSub}>Search our catalog</span>
+          </button>
+          <button type="button" className={s.unmatchedAction} onClick={onSkip}>
+            <Icon name="icon-fast-forward" />
+            <span className={s.unmatchedActionTitle}>Skip for now</span>
+            <span className={s.unmatchedActionSub}>Keep scanning</span>
+          </button>
+        </div>
+
+        <div className={s.unmatchedFootnote}>
+          <Icon name="icon-info" /> We&rsquo;ll create a pending item you can review later.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Post-scan drawer for /app/scan: a compact, shallow sheet (≤ 1/3 of the screen)
+// showing only what was scanned — lot, expiry, location, scanned time. The
+// captured fields sit in a horizontal swipe strip so the sheet stays short even
+// when they don't all fit across; swipe right to reach the later fields. Lot and
+// expiry pre-fill from the GS1/HIBC data decoded off the barcode. Qty is set back
+// on the reorder list, not here.
+//
+// There are no confirm / undo buttons: the item is already on the reorder list
+// (added the moment it was scanned), so this drawer only captures lot / expiry /
+// location. Dismissing it (tap outside) persists whatever's shown, pre-filled or
+// edited — there's nothing to "submit".
+function ReorderScanSheet({ result, onDismiss }) {
   const item = result.item || {};
   const matched = result.status !== "Not found";
   const [lot, setLot] = useState(item.lot || "");
   const [exp, setExp] = useState(item.expirationDate ? String(item.expirationDate).slice(0, 10) : "");
-  const [qty, setQty] = useState(item.draftQty || result.qty || 1);
-  const [locId, setLocId] = useState(item.locationId || defaultLocationId || locations[0]?.id || "");
 
-  function save() {
-    onSave({
+  function dismiss() {
+    onDismiss({
       lot: lot.trim() || null,
       expirationDate: exp || null,
-      qty,
-      location_id: locId || null,
     });
   }
 
   const name = item.product || item.canonicalName || item.extractedFrom || item.sku || "Unidentified item";
+  const scannedAt = formatScanTime(item.updatedAt);
 
   return (
     <div className={s.modeSheet}>
-      <div className={s.modeSheetBackdrop} onClick={onClose} />
-      <div className={s.modeSheetPanel}>
+      <div className={s.modeSheetBackdrop} onClick={dismiss} />
+      <div className={`${s.modeSheetPanel} ${s.reorderPanel}`}>
         <div className={s.modeSheetGrip} aria-hidden="true" />
         <div className={s.modeSheetProduct}>
           <span className={s.modeSheetThumb}>
@@ -788,46 +834,42 @@ function ReorderScanSheet({ result, locations, defaultLocationId, onClose, onSav
           </span>
           <div className={s.modeSheetProductInfo}>
             <span className={s.modeSheetProductName}>
-              {matched && <Icon name="icon-check-circle" />}
               <span className={s.modeSheetProductNameText}>{name}</span>
             </span>
             {item.sku && <span className={s.modeSheetSku}>SKU: {item.sku}</span>}
-            <span className={`${s.badge} ${matched ? s.badgeGreen : s.badgeAmber}`}>{matched ? "Matched" : "Needs review"}</span>
+            <span className={`${s.badge} ${matched ? s.badgeGreen : s.badgeAmber}`}>
+              <Icon name={matched ? "icon-check-circle" : "icon-clock"} />
+              {matched ? "Exact match" : "Needs review"}
+            </span>
           </div>
         </div>
 
-        <div className={s.modeSheetFields}>
-          <ModeSheetRow label="Lot number">
-            <input className={s.input} value={lot} onChange={(e) => setLot(e.target.value)} placeholder="e.g. A219" />
-            <Icon name="icon-scan" className={s.fieldIcon} />
-          </ModeSheetRow>
-          <ModeSheetRow label="Expiration date">
-            <DateField value={exp} display={exp ? formatLongDate(exp) : "Select date"} onChange={setExp} />
-          </ModeSheetRow>
-          <ModeSheetRow label="Qty">
-            <div className={s.stepper}>
-              <button type="button" className={s.stepBtn} onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
-              <span className={s.stepVal}>{qty}</span>
-              <button type="button" className={s.stepBtn} onClick={() => setQty((q) => q + 1)}>+</button>
+        <div className={s.reorderStrip}>
+          <div className={s.reorderField}>
+            <span className={s.reorderFieldLabel}><Icon name="icon-file-text" /> Lot number</span>
+            <div className={s.reorderFieldControl}>
+              <input className={s.reorderFieldInput} value={lot} onChange={(e) => setLot(e.target.value)} placeholder="e.g. A219" />
             </div>
-          </ModeSheetRow>
-          <ModeSheetRow label="Location">
-            {locations.length === 0 ? (
-              <span className={s.modeSheetLocPill}><Icon name="icon-map-pin" /> No locations yet</span>
-            ) : (
-              <>
-                <select className={s.fieldSelect} value={locId} onChange={(e) => setLocId(e.target.value)} aria-label="Location">
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-                <Icon name="icon-chevron-down" className={s.fieldIcon} />
-              </>
-            )}
-          </ModeSheetRow>
-        </div>
-
-        <div className={s.modeSheetActions}>
-          <button type="button" className={s.btnOutline} onClick={onUndo}>Undo scan</button>
-          <button type="button" className={s.btnPrimary} onClick={save}>Add to reorder list</button>
+          </div>
+          <div className={s.reorderField}>
+            <span className={s.reorderFieldLabel}><Icon name="icon-calendar" /> Expiration date</span>
+            <div className={s.reorderFieldControl}>
+              <span className={s.reorderFieldText}>{exp ? formatLongDate(exp) : "Select date"}</span>
+              <input
+                type="date"
+                className={s.dateOverlay}
+                value={exp || ""}
+                onChange={(e) => setExp(e.target.value)}
+                aria-label="Expiration date"
+              />
+            </div>
+          </div>
+          <div className={s.reorderField}>
+            <span className={s.reorderFieldLabel}><Icon name="icon-clock" /> Last verified</span>
+            <div className={s.reorderFieldControl}>
+              <span className={s.reorderFieldText}>{scannedAt}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1049,6 +1091,17 @@ function formatLongDate(iso) {
   const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
   if (!y || !m || !d) return String(iso);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+// When the item was scanned, for the post-scan drawer's read-only "Last verified"
+// field. Same-day scans drop the date ("Today, 9:41 AM"); older ones keep it.
+function formatScanTime(ms) {
+  if (!ms) return "—";
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "—";
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay ? `Today, ${time}` : `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${time}`;
 }
 
 // ── Deep-edit: Shelf details (full screen) ────────────────────────────

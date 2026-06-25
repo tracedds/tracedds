@@ -386,8 +386,10 @@
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
 }
 /* Composed wordmark over the live camera: blue mark, white "Trace", blue "DDS".
-   Shadows lift it off arbitrary video so it stays legible past the scrim edge. */
-.camBrandMark {
+   Shadows lift it off arbitrary video so it stays legible past the scrim edge.
+   Scoped under .camBrand so it outranks the `.camera svg { color: inherit }`
+   reset above, which would otherwise wash the mark to the inherited white. */
+.camBrand .camBrandMark {
   width: 26px; height: 26px; flex-shrink: 0;
   color: #4F79E4;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
@@ -487,13 +489,19 @@
 .camFrame span {
   position: absolute;
   width: 28px; height: 28px;
-  border: 3px solid #3b82f6;
+  /* Bright, near-white brackets with a luminous blue halo so they pop off the
+     shelf behind them (drop-shadow follows the L-shape, not the empty corner). */
+  border: 3px solid #eaf3ff;
+  filter: drop-shadow(0 0 5px rgba(99, 165, 250, 0.95)) drop-shadow(0 0 11px rgba(99, 165, 250, 0.55));
 }
 .camFrame span:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
 .camFrame span:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
 .camFrame span:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
 .camFrame span:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
-.scanCaptured .camFrame span { border-color: #2ee27a; }
+.scanCaptured .camFrame span {
+  border-color: #d7ffe9;
+  filter: drop-shadow(0 0 5px rgba(46, 226, 122, 0.95)) drop-shadow(0 0 11px rgba(46, 226, 122, 0.55));
+}
 
 .camHint {
   position: absolute;
@@ -903,7 +911,7 @@
 }
 .modeSheetPanel {
   position: relative; z-index: 1;
-  background: #fff; border-radius: 20px 20px 0 0;
+  background: #fff; border-radius: 16px 16px 0 0;
   padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
   /* dvh, not vh: vh measures behind the mobile browser chrome, which clipped the
      bottom rows + actions and left nothing to scroll. dvh tracks the visible area. */
@@ -918,14 +926,14 @@
   display: flex; align-items: flex-start; gap: 10px;
 }
 .modeSheetThumb {
-  width: 44px; height: 44px; border-radius: 10px;
+  width: 44px; height: 44px; border-radius: 8px;
   background: #f3f5f8; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; overflow: hidden;
 }
 .modeSheetThumb img { width: 100%; height: 100%; object-fit: contain; }
 .modeSheetThumb svg { width: 22px; height: 22px; color: #8d9aab; }
 .modeSheetProductInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.modeSheetProductName { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.modeSheetProductName { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.3; }
 .modeSheetProductName svg { width: 16px; height: 16px; color: #0a8553; flex-shrink: 0; margin-top: 1px; }
 /* Long product names get 2 lines max so the sheet doesn't grow tall enough to
    push the lower rows off-screen. */
@@ -934,10 +942,10 @@
   overflow: hidden;
 }
 .modeSheetSku {
-  max-width: 100%; font-size: 12px; color: var(--muted);
+  max-width: 100%; font-size: 11.5px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.modeSheetFields { display: flex; flex-direction: column; gap: 0; border: 1px solid #e6ebf2; border-radius: 12px; overflow: hidden; }
+.modeSheetFields { display: flex; flex-direction: column; gap: 0; border: 1px solid #e6ebf2; border-radius: 10px; overflow: hidden; }
 .modeSheetRow {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; border-bottom: 1px solid #f0f2f5;
@@ -1000,6 +1008,104 @@
 .modeSheetActions .btnPrimary { flex: 2; }
 .optionalLabel { font-size: 11.5px; color: var(--muted); font-weight: 400; }
 
+/* ── Reorder-scan drawer (/app/scan) ────────────────────────────────────
+   Compact post-scan sheet, capped near a third of the screen. The captured
+   fields sit in a horizontal swipe strip so the sheet stays shallow even when
+   they don't all fit across — overrides .modeSheetPanel's tall layout. */
+.reorderPanel { max-height: 34dvh; gap: 12px; }
+.reorderStrip {
+  display: flex; gap: 8px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  /* bleed to the panel edges so cards scroll in from the screen edge */
+  margin: 0 -16px; padding: 2px 16px;
+}
+.reorderStrip::-webkit-scrollbar { display: none; }
+.reorderField {
+  flex: 0 0 auto; width: 150px;
+  scroll-snap-align: start;
+  display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid #e6ebf2; border-radius: 10px;
+  padding: 9px 12px; background: #fbfcfe;
+}
+.reorderFieldLabel {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 400; color: var(--muted);
+}
+.reorderFieldLabel svg {
+  flex-shrink: 0; width: 14px; height: 14px; color: var(--muted);
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+.reorderFieldControl {
+  position: relative;
+  display: flex; align-items: center; min-height: 22px;
+}
+.reorderFieldInput, .reorderFieldSelect {
+  flex: 1; min-width: 0;
+  border: 0; background: transparent; padding: 0;
+  font-size: 13.5px; font-weight: 500; color: var(--ink);
+  outline: none; -webkit-appearance: none; appearance: none;
+}
+.reorderFieldInput::placeholder { font-weight: 400; color: #aab4c0; }
+.reorderFieldSelect { cursor: pointer; }
+.reorderFieldText {
+  flex: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 500; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Floating "Item added successfully" badge over the camera while the drawer is
+   up, anchored just under the context strip (the mode/location pills). */
+.scanAddedBadge {
+  position: absolute;
+  top: calc(112px + env(safe-area-inset-top));
+  left: 50%; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px;
+  background: #e3f6ec; color: #0a7a4d;
+  font-size: 13px; font-weight: 400; white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(8, 40, 24, 0.18);
+  z-index: 6;
+}
+.scanAddedBadge svg { width: 16px; height: 16px; flex-shrink: 0; color: #0a9861; }
+
+/* ── Unmatched-scan drawer (/app/scan) ──────────────────────────────────
+   Shown when a scan resolves to no catalog product: an alert header, three
+   next-step actions (capture / search / skip), and a pending-item footnote. */
+.unmatchedPanel { gap: 14px; }
+.unmatchedHead { display: flex; align-items: flex-start; gap: 12px; padding-top: 2px; }
+.unmatchedIcon { flex-shrink: 0; display: inline-flex; color: #c2710c; }
+.unmatchedIcon svg { width: 30px; height: 30px; stroke-width: 1.8; }
+.unmatchedHeadText { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.unmatchedTitle { font-size: 16px; font-weight: 600; color: var(--ink); }
+.unmatchedSub { font-size: 13px; font-weight: 400; color: var(--muted); line-height: 1.35; }
+
+.unmatchedActions { display: flex; gap: 8px; }
+.unmatchedAction {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 12px 11px; border-radius: 10px;
+  border: 1px solid #d8dee8; background: #fff;
+  text-align: left; cursor: pointer;
+}
+.unmatchedAction svg {
+  width: 20px; height: 20px; margin-bottom: 4px; color: var(--blue); stroke-width: 1.8;
+}
+.unmatchedActionTitle { font-size: 13px; font-weight: 500; color: var(--ink); }
+.unmatchedActionSub { font-size: 11px; font-weight: 400; color: var(--muted); line-height: 1.3; }
+.unmatchedActionPrimary { border: 0; background: #2F5BD6; }
+.unmatchedActionPrimary svg { color: #fff; }
+.unmatchedActionPrimary .unmatchedActionTitle { color: #fff; }
+.unmatchedActionPrimary .unmatchedActionSub { color: rgba(255, 255, 255, 0.85); }
+
+.unmatchedFootnote {
+  display: flex; align-items: center; gap: 7px;
+  padding-top: 11px; border-top: 1px solid #eef1f5;
+  font-size: 12px; font-weight: 400; color: var(--muted);
+}
+.unmatchedFootnote svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); stroke-width: 1.8; }
+
 /* ── Shelf audit status picker ──────────────────────────────────────── */
 .auditStatuses { display: flex; flex-direction: column; gap: 8px; }
 .auditStatusesLabel { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 2px; }
@@ -1029,7 +1135,7 @@
   display: inline-flex; align-items: center; gap: 4px;
   align-self: flex-start; flex-shrink: 0;
   padding: 4px 9px; border-radius: 999px;
-  font-size: 12px; font-weight: 600; white-space: nowrap;
+  font-size: 11.5px; font-weight: 500; white-space: nowrap;
 }
 .badge svg { width: 13px; height: 13px; }
 .badgeGreen { color: #0a8553; background: #e3f6ec; }
