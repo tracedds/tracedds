@@ -794,7 +794,7 @@ export function daysUntil(iso) {
 }
 
 
-export function makeScanDraftItem(code, product) {
+export function makeScanDraftItem(code, product, scanned) {
   const base = {
     id: newItemId(),
     source: "scan",
@@ -812,6 +812,11 @@ export function makeScanDraftItem(code, product) {
     // A barcode carries no price, so there's no savings anchor until the buyer
     // tells us what they currently pay (captured in the item detail panel).
     paidUnitPrice: null,
+    // Lot / expiry the backend decoded off the package (GS1 / HIBC `scanned`
+    // block) so the post-scan drawer pre-fills traceability without re-keying.
+    // Absent on plain SKU scans and catalog adds.
+    lot: scanned?.lot || "",
+    expirationDate: scanned?.expiry || null,
   };
   // Real catalog match from the lookup endpoint.
   if (product) {

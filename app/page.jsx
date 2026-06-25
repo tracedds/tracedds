@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { CatalogCategoryView, CatalogSearchView, CatalogSupplierView, CatalogView, ProductDetail, SearchResults } from "./catalog";
 import { BrandMark, Icon, IconSprite } from "./icons";
-import { APP_STATE_KEY, DEFAULT_BUYING_PREFS, FREE_SCAN_KEY, FREE_SCAN_LIMIT, NAV_COLLAPSED_KEY, SHOPIFY_STOCK_MAX_ITEMS, SHOPIFY_STOCK_SESSION_KEY, UPLOAD_TIMEOUT_MS, applyLiveStock, buildShippingByName, computePlanTotals, deriveListStatus, deriveMatchRows, groupRowsBySupplier, isPlanIncluded, lookupScannedProduct, makeScanDraftItem, mapSearchOffer, mergeDraftState, money, newItemId, parseAttributes, pathForView, shopifyStockKey, slimHandoffRow, statusFromItem, traceApi, viewFromPath } from "./lib";
+import { APP_STATE_KEY, DEFAULT_BUYING_PREFS, FREE_SCAN_KEY, FREE_SCAN_LIMIT, NAV_COLLAPSED_KEY, SHOPIFY_STOCK_MAX_ITEMS, SHOPIFY_STOCK_SESSION_KEY, UPLOAD_TIMEOUT_MS, applyLiveStock, buildShippingByName, computePlanTotals, deriveListStatus, deriveMatchRows, groupRowsBySupplier, isPlanIncluded, makeScanDraftItem, mapSearchOffer, mergeDraftState, money, newItemId, parseAttributes, pathForView, scanLookup, shopifyStockKey, slimHandoffRow, statusFromItem, traceApi, viewFromPath } from "./lib";
 import { AddLocationView, LocationDetailView, LocationsBoardView } from "./locations";
 import { ScanSessionsView, ScanSessionView } from "./scansessions";
 import { MobileReorderScan } from "./scanmobile";
@@ -1048,8 +1048,10 @@ export default function Home() {
     }
 
     // Resolve against the real catalog: GTIN/UPC barcode first, then exact SKU.
-    const product = await lookupScannedProduct(code);
-    const item = makeScanDraftItem(code, product);
+    // scanLookup also returns the lot/expiry decoded off a GS1/HIBC barcode so
+    // the post-scan drawer pre-fills traceability fields.
+    const { product, scanned } = await scanLookup(code);
+    const item = makeScanDraftItem(code, product, scanned);
 
     setDraftItems((items) => {
       if (code && items.some((it) => it.barcode === code && it.included !== false)) return items; // race guard
@@ -1769,7 +1771,8 @@ export default function Home() {
                 onScan={handleScanComplete}
                 onClearScanResult={() => setScanResult(null)}
                 onApplyDetails={applyScanDetails}
-                onRemoveItem={removeDraftItem}
+                onLinkProduct={linkProductToItem}
+                onCaptureLabel={() => showToast("Label capture is coming soon — saved as a pending item")}
                 onReview={() => { setScanResult(null); navigate("/app/reorder-list"); }}
                 onBack={() => { setScanResult(null); navigate("/app"); }}
               />
