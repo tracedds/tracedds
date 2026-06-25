@@ -795,6 +795,51 @@ function formatPriceRange(it) {
   return money(lo ?? hi);
 }
 
+// Per-row kebab for the items table: a single "Remove item" action that deletes
+// the lot-at-location record (a mis-scan or wrong item). Self-contained so each
+// row owns its own open state + outside-click handling, the same pattern as the
+// table-header kebab and the Select dropdowns.
+function RowActions({ onRemove }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className={s.rowKebabWrap} ref={ref}>
+      <button
+        type="button"
+        className={`${s.rowKebab} ${open ? s.rowKebabOpen : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Item actions"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name="icon-more-vertical" />
+      </button>
+      {open && (
+        <ul className={s.rowMenu} role="menu">
+          <li role="none">
+            <button type="button" role="menuitem" className={`${s.headMenuItem} ${s.headMenuDanger}`} onClick={() => { setOpen(false); onRemove(); }}>
+              <Icon name="icon-trash" />Remove item
+            </button>
+          </li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function LocationDetailView({ locationId, onBack, onStartScan, onToast, onNavigate }) {
   const [location, setLocation] = useState(null);
   const [items, setItems] = useState([]);
@@ -918,6 +963,18 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
     try { await traceApi.pull(it.id, { reason: "manual" }); onToast?.(`Marked pulled — ${it.name}`); reload(); }
     catch { onToast?.("Couldn't mark pulled."); }
   };
+  // Remove a single inventory record (a mis-scan or wrong item). Optimistically
+  // drop it from the list; the 3s poll reconciles. Like Clear list, this deletes
+  // the evidence record on the backend.
+  const onRemove = async (it) => {
+    try {
+      await traceApi.removeItem(it.id);
+      setItems((prev) => prev.filter((x) => x.id !== it.id));
+      onToast?.(`Removed — ${it.name}`);
+    } catch {
+      onToast?.("Couldn't remove the item.");
+    }
+  };
   // "Clear list" permanently deletes every item captured here. It's a real
   // backend wipe (not a view-only blank), so it sticks and syncs to every device
   // — otherwise the 3s poll just restores everything. Gate it behind a confirm.
@@ -998,7 +1055,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                     className={s.mItem}
                     onClick={() => it.canonical_product_id && onNavigate?.(`/app/product/${it.canonical_product_id}`)}
                   >
-                    <ProductThumb image={it.photo_url} alt={it.name} />
+                    <ProductThumb image={it.image_url || it.photo_url} alt={it.name} />
                     <div className={s.mItemBody}>
                       <span className={s.mItemName}>{it.name}</span>
                       <span className={s.mItemMeta}>
@@ -1030,90 +1087,65 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
         <p className={s.subtitle}>Inventory, traceability coverage, and reorder needs for this location.</p>
       </header>
 
-      <div className={s.stats}>
-        <Stat icon="icon-package" tint={s.tBlue} label="Tracked items" value={top.tracked} />
-        <Stat icon="icon-shield-check" tint={s.tGreen} label="Lot &amp; expiry captured" value={`${tracePct}%`} />
-        <Stat icon="icon-clock" tint={s.tAmber} label="Expiring soon" value={top.expiring} />
-        <Stat icon="icon-alert-triangle" tint={s.tRed} label="Expired (pull now)" value={top.expired} />
-      </div>
-
-      <section className={s.locHeader}>
-        <div className={s.locHeadMain}>
-          <span className={`${s.cardIcon} ${meta.tint}`}><Icon name={meta.icon} /></span>
-          <div className={s.locHeadBody}>
-            <div className={s.cardTitleRow}>
-              <span className={s.locHeadName}>{location.name}</span>
-              <span className={`${s.badge} ${status.badge}`}>{status.label}</span>
-            </div>
-            <div className={s.cardSub}>{meta.label}{location.qr_code ? ` · ${location.qr_code}` : ""}</div>
-          </div>
-        </div>
-
-        <div className={s.locProgress}>
-          {session ? (
-            <>
-              <span className={s.locProgressLabel}>Scan progress</span>
-              <div className={s.progress}>
-                <span className={s.progressTrack}>
-                  <span className={`${s.progressFill} ${scanPct === 100 ? s.complete : ""}`} style={{ width: `${scanPct}%` }} />
-                </span>
-                <span className={s.progressPct}>{scanPct}%</span>
-              </div>
-              <div className={s.locMeta}>
-                <span className={s.locMetaItem}><Icon name="icon-scan" />Scanned<small>{session.counts?.scanned ?? 0}</small></span>
-                <span className={s.locMetaItem}><Icon name="icon-clock" />Last scan<small>{relativeTime(session.updated_at) || "just now"}</small></span>
-              </div>
-            </>
-          ) : (
-            <div className={s.locNoScan}>
-              <span className={s.locNoScanIcon}><Icon name="icon-scan" /></span>
-              <div>
-                <div className={s.locNoScanTitle}>No scan in progress</div>
-                <div className={s.locNoScanSub}>Scan to capture lot &amp; expiry off each package.</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className={s.locActions}>
-          <button type="button" className={s.scanBtn} onClick={() => onStartScan?.()}>
-            <Icon name="icon-scan" />{session?.status === "active" ? "Resume scan" : "Scan this location"}
-          </button>
-          <button type="button" className={s.addBtn} onClick={() => onNavigate?.("/app/locations/qr-labels")}>
-            <Icon name="icon-grid" />Print QR label
-          </button>
-        </div>
-      </section>
-
       <div className={s.detailGrid}>
         <div className={s.detailMain}>
-          <section className={s.panel}>
-            <div className={s.cardHeadRow}>
-              <h2 className={s.panelTitle}>Items in this location</h2>
-              {items.length > 0 && (
-                <div className={s.headKebabWrap} ref={menuRef}>
-                  <button
-                    type="button"
-                    className={`${s.headKebab} ${menuOpen ? s.headKebabOpen : ""}`}
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    aria-label="List actions"
-                    onClick={() => setMenuOpen((v) => !v)}
-                  >
-                    <Icon name="icon-more-vertical" />
-                  </button>
-                  {menuOpen && (
-                    <ul className={s.headMenu} role="menu">
-                      <li role="none">
-                        <button type="button" role="menuitem" className={`${s.headMenuItem} ${s.headMenuDanger}`} onClick={handleClearList}>
-                          <Icon name="icon-trash" />Clear list
-                        </button>
-                      </li>
-                    </ul>
-                  )}
+          <div className={s.stats}>
+            <Stat icon="icon-package" tint={s.tBlue} label="Tracked items" value={top.tracked} />
+            <Stat icon="icon-shield-check" tint={s.tGreen} label="Lot &amp; expiry captured" value={`${tracePct}%`} />
+            <Stat icon="icon-clock" tint={s.tAmber} label="Expiring soon" value={top.expiring} />
+            <Stat icon="icon-alert-triangle" tint={s.tRed} label="Expired (pull now)" value={top.expired} />
+          </div>
+
+          <section className={s.locHeader}>
+            <div className={s.locHeadMain}>
+              <span className={`${s.cardIcon} ${meta.tint}`}><Icon name={meta.icon} /></span>
+              <div className={s.locHeadBody}>
+                <div className={s.cardTitleRow}>
+                  <span className={s.locHeadName}>{location.name}</span>
+                  <span className={`${s.badge} ${status.badge}`}>{status.label}</span>
+                </div>
+                <div className={s.cardSub}>{meta.label}{location.qr_code ? ` · ${location.qr_code}` : ""}</div>
+              </div>
+            </div>
+
+            <div className={s.locProgress}>
+              {session ? (
+                <>
+                  <span className={s.locProgressLabel}>Scan progress</span>
+                  <div className={s.progress}>
+                    <span className={s.progressTrack}>
+                      <span className={`${s.progressFill} ${scanPct === 100 ? s.complete : ""}`} style={{ width: `${scanPct}%` }} />
+                    </span>
+                    <span className={s.progressPct}>{scanPct}%</span>
+                  </div>
+                  <div className={s.locMeta}>
+                    <span className={s.locMetaItem}><Icon name="icon-scan" />Scanned<small>{session.counts?.scanned ?? 0}</small></span>
+                    <span className={s.locMetaItem}><Icon name="icon-clock" />Last scan<small>{relativeTime(session.updated_at) || "just now"}</small></span>
+                  </div>
+                </>
+              ) : (
+                <div className={s.locNoScan}>
+                  <span className={s.locNoScanIcon}><Icon name="icon-scan" /></span>
+                  <div>
+                    <div className={s.locNoScanTitle}>No scan in progress</div>
+                    <div className={s.locNoScanSub}>Scan to capture lot &amp; expiry off each package.</div>
+                  </div>
                 </div>
               )}
             </div>
+
+            <div className={s.locActions}>
+              <button type="button" className={s.scanBtn} onClick={() => onStartScan?.()}>
+                <Icon name="icon-scan" />{session?.status === "active" ? "Resume scan" : "Scan this location"}
+              </button>
+              <button type="button" className={s.addBtn} onClick={() => onNavigate?.("/app/locations/qr-labels")}>
+                <Icon name="icon-grid" />Print QR label
+              </button>
+            </div>
+          </section>
+
+          <section className={s.panel}>
+            <h2 className={s.panelTitle}>Items in this location</h2>
             <div className={s.itemsToolbar}>
               <div className={s.itemsSearch}>
                 <Icon name="icon-search" />
@@ -1145,6 +1177,29 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
               <button type="button" className={s.filterBtn} onClick={() => onToast?.("Advanced filters are coming soon.")}>
                 <Icon name="icon-filter" />Filters
               </button>
+              {items.length > 0 && (
+                <div className={s.headKebabWrap} ref={menuRef}>
+                  <button
+                    type="button"
+                    className={`${s.headKebab} ${menuOpen ? s.headKebabOpen : ""}`}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    aria-label="List actions"
+                    onClick={() => setMenuOpen((v) => !v)}
+                  >
+                    <Icon name="icon-more-vertical" />
+                  </button>
+                  {menuOpen && (
+                    <ul className={s.headMenu} role="menu">
+                      <li role="none">
+                        <button type="button" role="menuitem" className={`${s.headMenuItem} ${s.headMenuDanger}`} onClick={handleClearList}>
+                          <Icon name="icon-trash" />Clear list
+                        </button>
+                      </li>
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
             {items.length === 0 ? (
@@ -1154,7 +1209,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                 <table className={s.table}>
                   <thead>
                     <tr>
-                      <th>Item</th><th>SDS</th><th>Expiration</th><th>Lot</th><th>Price</th><th>Status</th><th>Last scanned</th>
+                      <th>Item</th><th>SDS</th><th>Expiration</th><th>Lot</th><th>Price</th><th>Status</th><th>Last scanned</th><th aria-label="Actions" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1166,7 +1221,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                         <tr key={it.id}>
                           <td>
                             <div className={s.tItemCell}>
-                              <ProductThumb image={it.photo_url} alt={it.name} />
+                              <ProductThumb image={it.image_url || it.photo_url} alt={it.name} />
                               {it.canonical_product_id ? (
                                 <button type="button" className={s.tItemLink} onClick={() => onNavigate?.(`/app/product/${it.canonical_product_id}`)} title="View this product in the catalog">{it.name}</button>
                               ) : <span className={s.tItem}>{it.name}</span>}
@@ -1185,6 +1240,9 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                             )}
                           </td>
                           <td className={s.tMuted}>{it.last_counted_at ? formatTraceDate(it.last_counted_at) : "—"}</td>
+                          <td className={s.actionsCell}>
+                            <RowActions onRemove={() => onRemove(it)} />
+                          </td>
                         </tr>
                       );
                     })}
