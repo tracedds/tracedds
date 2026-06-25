@@ -7,8 +7,7 @@ import { APP_STATE_KEY, DEFAULT_BUYING_PREFS, FREE_SCAN_KEY, FREE_SCAN_LIMIT, NA
 import { AddLocationView, LocationDetailView, LocationsBoardView } from "./locations";
 import { ScanSessionsView, ScanSessionView } from "./scansessions";
 import { MobileReorderScan } from "./scanmobile";
-import { MobileBottomNav, MobileMoreSheet } from "./mobilebottom";
-import { MobileTodayView } from "./mobiletoday";
+import { getScanAudioCtx, loadMatchChime, playMatchChime, vibrateNoMatch } from "./scanSound";
 import { EvidenceView, EvidenceBinderView } from "./evidence";
 import { NeedsAttentionView, NEEDS_ATTENTION_BADGE } from "./needsattention";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
@@ -18,89 +17,10 @@ import { SettingsView } from "./settings";
 import StyleGuide from "./styleguide";
 import { ConfirmModal } from "./ui";
 
-// --- Scan feedback (audio + haptic) ----------------------------------------
-// A chime when a scan resolves to a product, a buzz when it doesn't. The chime
-// is a real bell struck off the brand intro sting (public/sounds/match-chime.mp3),
-// decoded once into an AudioBuffer; a synthesized two-note chime is the fallback
-// if the asset can't load. The shared AudioContext is unlocked + the clip
-// preloaded on the first user tap (iOS needs a gesture before WebAudio makes
-// sound). Vibration uses the Web Vibration API — works on Android; iOS Safari
-// has never implemented it, so the buzz is a silent no-op there.
-const MATCH_CHIME_URL = "/sounds/match-chime.mp3";
-let scanAudioCtx = null;
-let matchChimeBuffer = null;   // decoded clip, cached after first load
-let matchChimeLoading = false;
-
-function getScanAudioCtx() {
-  if (typeof window === "undefined") return null;
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return null;
-  if (!scanAudioCtx) {
-    try { scanAudioCtx = new Ctx(); } catch { return null; }
-  }
-  return scanAudioCtx;
-}
-
-// Fetch + decode the chime once. Safe to call repeatedly; no-ops once cached or
-// in flight. decodeAudioData needs a context, so this runs after one exists.
-function loadMatchChime(ctx) {
-  if (matchChimeBuffer || matchChimeLoading || !ctx || typeof fetch === "undefined") return;
-  matchChimeLoading = true;
-  fetch(MATCH_CHIME_URL)
-    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
-    .then((buf) => ctx.decodeAudioData(buf))
-    .then((decoded) => { matchChimeBuffer = decoded; })
-    .catch(() => {})            // asset missing/undecodable — synth fallback covers it
-    .finally(() => { matchChimeLoading = false; });
-}
-
-function playSynthChime(ctx) {
-  const t0 = ctx.currentTime;
-  // Quick rising "ding-dong" (B5 → E6) that reads as a positive confirmation.
-  for (const [freq, offset] of [[988, 0], [1319, 0.11]]) {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = freq;
-    const start = t0 + offset;
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(start);
-    osc.stop(start + 0.24);
-  }
-}
-
-function playMatchChime() {
-  const ctx = getScanAudioCtx();
-  if (!ctx) return;
-  try {
-    if (ctx.state === "suspended") ctx.resume();
-    if (matchChimeBuffer) {
-      const src = ctx.createBufferSource();
-      src.buffer = matchChimeBuffer;
-      const gain = ctx.createGain();
-      gain.gain.value = 0.9;
-      src.connect(gain).connect(ctx.destination);
-      src.start();
-      return;
-    }
-    // Not decoded yet — start loading for next time, sound the synth for now.
-    loadMatchChime(ctx);
-    playSynthChime(ctx);
-  } catch {
-    // audio unavailable — stay silent
-  }
-}
-
-function vibrateNoMatch() {
-  try {
-    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([90, 60, 90]);
-  } catch {
-    // Web Vibration API unsupported (e.g. iOS Safari) — no-op
-  }
-}
+// Scan feedback (audio + haptic) lives in ./scanSound so the reorder scanner
+// here and the receiving/shelf-audit scanner in scansessions.jsx share one
+// unlocked AudioContext + decoded chime. This component primes both on mount /
+// first gesture below.
 
 export default function Home() {
   const uploadFormRef = useRef(null);
@@ -123,9 +43,6 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  // Whether the mobile "More" overflow sheet is open (the bottom nav itself is
-  // persistent; its active tab is derived from `view`, not stored).
-  const [moreSheetOpen, setMoreSheetOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -538,9 +455,9 @@ export default function Home() {
     if (authed === false && isLoggedIn) {
       navigate("/login");
     } else if (authed === true && view === "publicScan") {
-      // A signed-in visitor to /scan (the QR target) lands straight in the
-      // scanner on a phone; desktop keeps going to the reorder-list home.
-      navigate(isMobile ? "/app/scan" : "/app");
+      // A signed-in visitor to /scan (the QR target) lands in the app home —
+      // the Start scan session screen on a phone, the reorder list on desktop.
+      navigate("/app");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, isLoggedIn, view]);
@@ -1579,32 +1496,16 @@ export default function Home() {
     ["settings", "icon-settings", "Settings"],
   ];
 
-  // Mobile bottom nav (persistent, per diagrams/mobile-ia.mmd). The bar renders
-  // on every authed mobile view, so the active tab is DERIVED from `view` and
-  // each drill-down keeps its parent tab lit. "More" destinations live in a sheet.
-  const MORE_VIEWS = new Set([
-    "evidence", "evidenceBinder", "savings", "history", "historyDetail",
-    "catalog", "catalogSearch", "catalogSupplier", "catalogCategory",
-    "productDetail", "settings",
-  ]);
-  const activeMobileTab =
-    view === "home" || view === "needsAttention" ? "today"
-    : view === "locations" || view === "locationAdd" || view === "locationDetail" ? "locations"
-    : view === "scanSessions" || view === "scanSession" ? "scan"
-    : view === "reorderList" || view === "plan" || view === "handoff" ? "reorder"
-    : MORE_VIEWS.has(view) ? "more"
-    : null;
-  const onMobileTab = (tab) => {
-    if (tab === "more") { setMoreSheetOpen(true); return; }
-    setMoreSheetOpen(false);
-    if (tab === "today") navigate("/app");
-    else if (tab === "locations") navigate("/app/locations");
-    else if (tab === "scan") navigate("/app/scan-sessions");
-    else if (tab === "reorder") navigate("/app/reorder-list");
-  };
-  // Visible on every mobile app view except the immersive full-screen scan
-  // session and the legacy add-item scan route.
-  const showMobileNav = isMobile && !mobileAddItemRoute && view !== "scanSession" && view !== "reorderList";
+  // The Start scan session screen — scan-first mobile home (`/app`) and the
+  // `/app/scan-sessions` route both render it (on mobile it's MobileScanStart;
+  // on desktop the sessions board). Defined once, reused in both places.
+  const scanStartEl = (
+    <ScanSessionsView
+      onOpenSession={(id) => navigate(`/app/scan-sessions/${id}`)}
+      onNavigate={navigate}
+      onToast={showToast}
+    />
+  );
 
   // The reorder list is the desktop home (`/app`) and, on mobile, a menu
   // destination at `/app/reorder-list`. Defined once and reused in both places.
@@ -1869,16 +1770,10 @@ export default function Home() {
                 onBack={() => { setScanResult(null); navigate("/app/reorder-list"); }}
               />
             ) : isMobile ? (
-              // Mobile home (`/app`) = the Today tab. Locations / Scan / Reorder
-              // are their own routes, reached via the persistent bottom nav.
-              <MobileTodayView
-                onResumeSession={(id) => navigate(`/app/scan-sessions/${id}`)}
-                onNavigate={(dest) => {
-                  if (dest === "needsAttention") navigate("/app/needs-attention");
-                  else navigate(`/app/${dest}`);
-                }}
-                onToast={showToast}
-              />
+              // Mobile home (`/app`) = the Start scan session screen (scan-first).
+              // Locations / Reorder / More are their own routes via the bottom nav;
+              // the center Scan FAB returns here.
+              scanStartEl
             ) : (
               reorderListEl
             )
@@ -1915,13 +1810,7 @@ export default function Home() {
             />
           )}
 
-          {view === "scanSessions" && (
-            <ScanSessionsView
-              onOpenSession={(id) => navigate(`/app/scan-sessions/${id}`)}
-              onNavigate={navigate}
-              onToast={showToast}
-            />
-          )}
+          {view === "scanSessions" && scanStartEl}
 
           {view === "scanSession" && (
             <ScanSessionView
@@ -2045,18 +1934,6 @@ export default function Home() {
             />
           )}
         </main>
-        {showMobileNav && (
-          <>
-            {moreSheetOpen && (
-              <MobileMoreSheet
-                onNavigate={(dest) => navigate(`/app/${dest}`)}
-                onClose={() => setMoreSheetOpen(false)}
-                onLogout={handleLogout}
-              />
-            )}
-            <MobileBottomNav activeTab={activeMobileTab} onTab={onMobileTab} />
-          </>
-        )}
         </div>
       </div>
 
