@@ -251,13 +251,19 @@ function toBoardCard(loc, session) {
   };
 }
 
-export function LocationsBoardView({ onStartScan, onAddLocation, onOpenLocation, onToast }) {
+export function LocationsBoardView({ onStartScan, onAddLocation, onOpenLocation, onNavigate, onToast }) {
   const [locations, setLocations] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [roomType, setRoomType] = useState("all");
   const [sort, setSort] = useState("attention");
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Mobile has no global nav, so the board needs an explicit way back to the
+  // scan-first home (this is where Manage-locations / needs-attention / a
+  // shelf-audit exit can land you).
+  useEffect(() => { setIsMobile(window.matchMedia("(max-width: 767px)").matches); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -335,6 +341,11 @@ export function LocationsBoardView({ onStartScan, onAddLocation, onOpenLocation,
 
   return (
     <div className={s.board}>
+      {isMobile && (
+        <button type="button" className={s.mBack} onClick={() => onNavigate?.("/app")}>
+          <Icon name="icon-chevron-left" /> Start scan
+        </button>
+      )}
       <header className={s.head}>
         <h1 className={s.title}>Location Board</h1>
         <p className={s.subtitle}>
