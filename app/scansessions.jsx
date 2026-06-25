@@ -14,6 +14,7 @@ import {
 } from "./lib";
 import { ScanHandoffQr, useProductSearch, ProductSearchResults } from "./ui";
 import { MobileScanStart, MobileScanSession } from "./scanmobile";
+import { playMatchChime, vibrateNoMatch } from "./scanSound";
 import s from "./scansessions.module.css";
 
 // Phase 2 — Scan Sessions. A stateful, resumable inventory audit: choose a
@@ -307,7 +308,10 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
         window.clearTimeout(flashTimer.current);
         flashTimer.current = window.setTimeout(() => setPendingLine(null), 2600);
       }
-      if (navigator.vibrate) navigator.vibrate(40);
+      // Same scan feedback as the reorder scanner: a chime when the code resolves
+      // to a product, a buzz when it doesn't.
+      if (product) playMatchChime();
+      else vibrateNoMatch();
     } catch {
       onToast?.("Scan failed — try again.");
     }

@@ -7006,13 +7006,10 @@ th {
 
 @media (max-width: 767px) {
   .app-body {
-    /* Reserve space for the bottom nav (64px) + safe area */
-    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    /* No mobile bottom nav — only clear the home-indicator safe area. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
-  /* The reorder list is a focused page in the scan loop — no bottom nav, so
-     reclaim the space the nav would have reserved. */
-  .mobile-reorder-shell .app-body { padding-bottom: 0; }
   .mobile-reorder-shell .app-main { padding-bottom: 24px; }
 
   .mobile-add-item-shell {

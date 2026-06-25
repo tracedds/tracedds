@@ -41,13 +41,6 @@
   color: #14202E;
   -webkit-font-smoothing: antialiased;
 }
-/* Navigation-level scan screens (mode picker, location picker, scan home) sit
-   ABOVE the persistent bottom nav rather than covering it — leave its height
-   clear. The immersive camera/review keep plain .screen (full-bleed). */
-.screenNav {
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -848,19 +841,10 @@
   transition: border-color 0.12s, background 0.12s;
 }
 .modeCard:active { background: #f7f9fc; }
-.modeCardSelected { border-color: var(--blue); background: #f5f8ff; }
-/* Radio + title row */
-.modeCardHeader { display: flex; align-items: center; gap: 10px; }
-.modeCardRadio {
-  width: 20px; height: 20px; border-radius: 50%;
-  border: 2px solid #c8d0db; flex-shrink: 0;
-  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
-}
-.modeCardRadioSelected {
-  border-color: var(--blue);
-  background: var(--blue);
-  box-shadow: inset 0 0 0 4px #fff;
-}
+/* Title + forward chevron row (tap the card to advance) */
+.modeCardHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modeCardChevron { color: #b6c0cd; flex-shrink: 0; }
+.modeCardChevron svg { width: 20px; height: 20px; }
 .modeCardTitle { font-size: 16px; font-weight: 700; color: var(--ink); }
 /* Illustration + content side-by-side */
 .modeCardBody { display: flex; align-items: flex-start; gap: 14px; }
@@ -1086,6 +1070,18 @@
   flex: 1; min-width: 0;
   font-size: 13.5px; font-weight: 500; color: var(--ink);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Location card: a tappable echo of the top-of-screen location pill — resets the
+   button chrome so it reads as a field, with a caret hinting it opens the picker. */
+.reorderFieldBtn {
+  flex: 1; min-width: 0; width: 100%;
+  display: flex; align-items: center; gap: 6px; min-height: 22px;
+  border: 0; background: transparent; padding: 0; margin: 0;
+  cursor: pointer; text-align: left;
+}
+.reorderFieldCaret {
+  flex-shrink: 0; width: 14px; height: 14px; margin-left: auto; color: var(--muted);
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
 
 /* Floating "Item added successfully" badge over the camera while the drawer is
