@@ -590,6 +590,7 @@ export const SUPPLIER_LOGOS = [
   { match: "dental city", src: "/suppliers/dentalcity.png" },
   { match: "patterson", src: "/suppliers/pattersondental.png" },
   { match: "pearson", src: "/suppliers/pearsondental.png" },
+  { match: "schein", src: "/suppliers/henryschein.png" },
   { match: "unimed", src: "/suppliers/unimedusa.png" },
   { match: "young", src: "/suppliers/youngspecialties.png" },
   { match: "zirc", src: "/suppliers/zirc.png" },
@@ -599,7 +600,6 @@ export const SUPPLIER_LOGOS = [
 export function supplierLogoSrc(name) {
   if (!name) return null;
   const key = name.toLowerCase();
-  if (key.includes("schein")) return "/schein-logo.png";
   return SUPPLIER_LOGOS.find((supplier) => key.includes(supplier.match))?.src || null;
 }
 
