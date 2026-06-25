@@ -269,8 +269,17 @@ export default function Home() {
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
       loadMatchChime(ctx);   // decode the bell now so the first match plays it
     };
-    window.addEventListener("pointerdown", unlock, { once: true });
-    return () => window.removeEventListener("pointerdown", unlock);
+    // Not one-shot: iOS suspends the AudioContext whenever the PWA is
+    // backgrounded, and only a user gesture can resume it — so re-arm on every
+    // tap (cheap; resume no-ops once running and the chime is cached). Returning
+    // to the foreground also retries a resume.
+    window.addEventListener("pointerdown", unlock);
+    const onVisible = () => { if (document.visibilityState === "visible") unlock(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   // Per-scan feedback: a chime when the scan matched a product, a buzz when it

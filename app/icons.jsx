@@ -395,40 +395,17 @@ export function BrandLogoMark({ className = "nav-icon" }) {
   );
 }
 
-// QR-in-scan-brackets glyph: four rounded corner brackets framing a QR (three
-// finder rings + data modules). Used for the upper-right scan button. Explicit
-// fill/stroke per group so it survives the `.camera svg` reset (fill:none /
-// stroke:currentColor) it renders inside.
+// Scan-frame glyph: four rounded corner brackets forming a viewfinder, nothing
+// inside. Used for the upper-right scan button. Explicit stroke so it survives
+// the `.camera svg` reset (fill:none / stroke:currentColor) it renders inside.
 export function QrScanGlyph({ className = "nav-icon" }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden="true">
-      {/* scan corner brackets */}
-      <g stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none">
-        <path d="M7 21 L7 13 Q7 7 13 7 L21 7" />
-        <path d="M43 7 L51 7 Q57 7 57 13 L57 21" />
-        <path d="M7 43 L7 51 Q7 57 13 57 L21 57" />
-        <path d="M43 57 L51 57 Q57 57 57 51 L57 43" />
-      </g>
-      {/* QR finder rings */}
-      <g stroke="currentColor" strokeWidth="3" fill="none">
-        <rect x="18" y="18" width="9" height="9" />
-        <rect x="37" y="18" width="9" height="9" />
-        <rect x="18" y="37" width="9" height="9" />
-      </g>
-      {/* QR data modules */}
-      <g fill="currentColor" stroke="none">
-        <rect x="31" y="18" width="3" height="3" />
-        <rect x="31" y="24" width="3" height="3" />
-        <rect x="18" y="31" width="3" height="3" />
-        <rect x="24" y="31" width="3" height="3" />
-        <rect x="31" y="31" width="3" height="3" />
-        <rect x="37" y="31" width="3" height="3" />
-        <rect x="43" y="31" width="3" height="3" />
-        <rect x="31" y="37" width="3" height="3" />
-        <rect x="37" y="37" width="3" height="3" />
-        <rect x="43" y="37" width="3" height="3" />
-        <rect x="37" y="43" width="3" height="3" />
-        <rect x="43" y="43" width="3" height="3" />
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <g stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none">
+        <path d="M4 9 V6.5 A2.5 2.5 0 0 1 6.5 4 H9" />
+        <path d="M15 4 H17.5 A2.5 2.5 0 0 1 20 6.5 V9" />
+        <path d="M20 15 V17.5 A2.5 2.5 0 0 1 17.5 20 H15" />
+        <path d="M9 20 H6.5 A2.5 2.5 0 0 1 4 17.5 V15" />
       </g>
     </svg>
   );

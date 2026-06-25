@@ -624,7 +624,12 @@ export function MobileReorderScan({
   const pulseTimer = useRef();
 
   const drawerOpen = Boolean(scanResult);
-  const cameraActive = active && !drawerOpen && sheet !== "manual";
+  const matched = drawerOpen && scanResult.status !== "Not found";
+  // Keep the camera running under the compact matched drawer so the buyer can
+  // scan the next item without dismissing it first — the drawer is non-blocking
+  // and the next scan replaces it. A full sheet (Enter code / Search) or the
+  // unmatched decision sheet still pauses scanning.
+  const cameraActive = active && !sheet && (!drawerOpen || matched);
 
   const { videoRef, cameraStatus, autoDetect, retry } = useBarcodeScanner({
     active: cameraActive,
@@ -705,8 +710,10 @@ export function MobileReorderScan({
       )}
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
-      {!drawerOpen && cameraStatus === "ready" && (
-        <div className={s.camHint}>{autoDetect ? "Point at a barcode" : "Tap Enter code to type it in"}</div>
+      {cameraStatus === "ready" && (!drawerOpen || matched) && (
+        <div className={s.camHint}>
+          {matched ? "Point at the next item to keep scanning" : autoDetect ? "Point at a barcode" : "Tap Enter code to type it in"}
+        </div>
       )}
 
       {!drawerOpen && (
@@ -726,7 +733,9 @@ export function MobileReorderScan({
           />
         ) : (
           <ReorderScanSheet
+            key={scanResult.item?.id}
             result={scanResult}
+            onPersist={onApplyDetails}
             onDismiss={(body) => {
               onApplyDetails?.(scanResult.item?.id, body);
               onClearScanResult?.();
@@ -805,13 +814,36 @@ function UnmatchedScanSheet({ onCaptureLabel, onSearch, onSkip }) {
 //
 // There are no confirm / undo buttons: the item is already on the reorder list
 // (added the moment it was scanned), so this drawer only captures lot / expiry /
-// location. Dismissing it (tap outside) persists whatever's shown, pre-filled or
-// edited — there's nothing to "submit".
-function ReorderScanSheet({ result, onDismiss }) {
+// location. It floats over a LIVE camera and doesn't block it: the next item can
+// be scanned right over the drawer (the new scan replaces it). Flicking the grip
+// down — or tapping it — dismisses, but that's optional; scanning the next item
+// is enough. Whatever's captured is persisted when the drawer is replaced or
+// dismissed, so a manually typed lot/expiry is never lost.
+function ReorderScanSheet({ result, onPersist, onDismiss }) {
   const item = result.item || {};
   const matched = result.status !== "Not found";
-  const [lot, setLot] = useState(item.lot || "");
-  const [exp, setExp] = useState(item.expirationDate ? String(item.expirationDate).slice(0, 10) : "");
+  const initialLot = item.lot || "";
+  const initialExp = item.expirationDate ? String(item.expirationDate).slice(0, 10) : "";
+  const [lot, setLot] = useState(initialLot);
+  const [exp, setExp] = useState(initialExp);
+  const [dragY, setDragY] = useState(0);
+  const startY = useRef(0);
+  const dragging = useRef(false);
+
+  // Persist edits when this drawer is torn down by the next scan (the keyed
+  // remount unmounts this one) so typed-in lot/expiry survive uninterrupted
+  // scanning. A ref carries the latest values into the cleanup; only fire when
+  // something actually changed so rapid scanning doesn't churn the list.
+  const latest = useRef();
+  latest.current = { lot, exp };
+  const persistRef = useRef(onPersist);
+  persistRef.current = onPersist;
+  const itemId = item.id;
+  useEffect(() => () => {
+    const { lot: l, exp: e } = latest.current;
+    if (l === initialLot && e === initialExp) return;
+    persistRef.current?.(itemId, { lot: l.trim() || null, expirationDate: e || null });
+  }, [itemId, initialLot, initialExp]);
 
   function dismiss() {
     onDismiss({
@@ -820,14 +852,43 @@ function ReorderScanSheet({ result, onDismiss }) {
     });
   }
 
+  // Flick the grip down to dismiss; a short drag snaps back. Handlers live on the
+  // grip only so the horizontal field strip and inputs keep their own gestures.
+  function onTouchStart(e) {
+    startY.current = e.touches[0].clientY;
+    dragging.current = true;
+  }
+  function onTouchMove(e) {
+    if (!dragging.current) return;
+    setDragY(Math.max(0, e.touches[0].clientY - startY.current));
+  }
+  function onTouchEnd() {
+    if (!dragging.current) return;
+    dragging.current = false;
+    if (dragY > 70) dismiss();
+    else setDragY(0);
+  }
+
   const name = item.product || item.canonicalName || item.extractedFrom || item.sku || "Unidentified item";
   const scannedAt = formatScanTime(item.updatedAt);
 
   return (
-    <div className={s.modeSheet}>
-      <div className={s.modeSheetBackdrop} onClick={dismiss} />
-      <div className={`${s.modeSheetPanel} ${s.reorderPanel}`}>
-        <div className={s.modeSheetGrip} aria-hidden="true" />
+    <div className={`${s.modeSheet} ${s.modeSheetLive}`}>
+      <div
+        className={`${s.modeSheetPanel} ${s.reorderPanel}`}
+        style={{ transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragging.current ? "none" : "transform .2s ease" }}
+      >
+        <button
+          type="button"
+          className={s.modeSheetGripBtn}
+          onClick={dismiss}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          aria-label="Dismiss"
+        >
+          <span className={s.modeSheetGrip} aria-hidden="true" />
+        </button>
         <div className={s.modeSheetProduct}>
           <span className={s.modeSheetThumb}>
             {item.imageUrl ? <img src={item.imageUrl} alt="" /> : <Icon name="icon-package" />}
