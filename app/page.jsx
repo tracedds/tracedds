@@ -1031,6 +1031,16 @@ export default function Home() {
       ? docs
       : [...docs, { id: "scan", name: "Barcode scans", itemCount: 0 }]);
 
+    // Resolve against the real catalog FIRST: GTIN/UPC barcode then exact SKU.
+    // scanLookup also returns the lot/expiry decoded off a GS1/HIBC barcode. We
+    // decode up front — before the dedup/revive branches — so a re-scan of an
+    // item already on the list still captures its traceability, not only a
+    // brand-new scan.
+    const { product, scanned } = await scanLookup(code);
+    const decoded = {};
+    if (scanned?.lot) decoded.lot = scanned.lot;
+    if (scanned?.expiry) decoded.expirationDate = scanned.expiry;
+
     // One instance per product: a code already ON the list (active) re-surfaces
     // so the buyer sees it registered, but never bumps the quantity — they set
     // quantity back on the reorder list. This keeps a barcode lingering in frame
@@ -1039,16 +1049,28 @@ export default function Home() {
     // re-scanning it should bring it back, not be rejected as a duplicate.
     const existing = code ? draftItems.find((item) => item.barcode === code && item.included !== false) : null;
     if (existing) {
-      setScanResult({ status: statusFromItem(existing), item: existing, isDuplicate: true, qty: existing.draftQty || 1 });
+      // Backfill lot/expiry the package now carries onto a row that lacks them
+      // (e.g. it was added before lot/expiry capture). Never clobber a value the
+      // buyer already has — only fill the gaps.
+      const item = {
+        ...existing,
+        lot: existing.lot || decoded.lot || "",
+        expirationDate: existing.expirationDate || decoded.expirationDate || null,
+      };
+      if (item.lot !== existing.lot || item.expirationDate !== existing.expirationDate) {
+        item.updatedAt = Date.now();
+        setDraftItems((items) => items.map((it) => (it.id === existing.id ? item : it)));
+      }
+      setScanResult({ status: statusFromItem(item), item, isDuplicate: true, qty: item.draftQty || 1 });
       showToast("Already on your list");
       return false;
     }
 
     // Re-scanning a removed/cleared item revives its tombstone in place (keeping
-    // any qty/notes/price it carried) rather than adding a parallel duplicate.
+    // any qty/notes/price it carried) and refreshes lot/expiry off this scan.
     const tombstone = code ? draftItems.find((item) => item.barcode === code && item.included === false) : null;
     if (tombstone) {
-      const revived = { ...tombstone, included: true, updatedAt: Date.now() };
+      const revived = { ...tombstone, ...decoded, included: true, updatedAt: Date.now() };
       setDraftItems((items) => items.map((it) => (it.id === tombstone.id ? revived : it)));
       setScanCount((n) => n + 1);
       setScanResult({ status: statusFromItem(revived), item: revived, isDuplicate: false, qty: revived.draftQty || 1 });
@@ -1056,10 +1078,6 @@ export default function Home() {
       return true;
     }
 
-    // Resolve against the real catalog: GTIN/UPC barcode first, then exact SKU.
-    // scanLookup also returns the lot/expiry decoded off a GS1/HIBC barcode so
-    // the post-scan drawer pre-fills traceability fields.
-    const { product, scanned } = await scanLookup(code);
     const item = makeScanDraftItem(code, product, scanned);
 
     setDraftItems((items) => {
