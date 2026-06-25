@@ -1788,6 +1788,7 @@ export default function Home() {
               onStartScan={startScanSession}
               onAddLocation={() => navigate("/app/locations/new")}
               onOpenLocation={(id) => navigate(`/app/locations/${id}`)}
+              onNavigate={navigate}
               onToast={showToast}
             />
           )}
