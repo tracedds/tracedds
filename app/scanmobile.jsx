@@ -1287,21 +1287,21 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
   const confirmedShown = showAllConfirmed ? confirmed : confirmed.slice(0, 2);
 
   return (
-    <div className={s.screen}>
-      <header className={s.topbar}>
+    <div className={`${s.screen} ${s.reviewScroll}`}>
+      <header className={`${s.topbar} ${s.reviewTopbar}`}>
         <button type="button" className={s.iconBtn} onClick={onBack} aria-label="Back"><Icon name="icon-chevron-left" /></button>
         <span className={s.barTitle}>Review {session.location_name || "location"}</span>
       </header>
-      <div className={s.body}>
+      <div className={`${s.body} ${s.reviewBodyScroll}`}>
         <div className={s.reviewTitle}>
           <span className={s.reviewSub}>Scan session review</span>
         </div>
 
         <div className={s.statGrid}>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-scan" className={s.txBlue} /><span className={s.statVal}>{counts.scanned}</span></div><span className={s.statLabel}>scanned</span></div>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-check-circle" className={s.txGreen} /><span className={s.statVal}>{counts.confirmed}</span></div><span className={s.statLabel}>confirmed</span></div>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-clock" className={s.txAmber} /><span className={s.statVal}>{counts.needs_details}</span></div><span className={s.statLabel}>need details</span></div>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-alert-triangle" className={s.txRed} /><span className={s.statVal}>{counts.needs_review}</span></div><span className={s.statLabel}>need review</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txBlue}`}><Icon name="icon-scan" /><span className={s.statVal}>{counts.scanned}</span></div><span className={s.statLabel}>scanned</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txGreen}`}><Icon name="icon-check-circle" /><span className={s.statVal}>{counts.confirmed}</span></div><span className={s.statLabel}>confirmed</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txAmber}`}><Icon name="icon-clock" /><span className={s.statVal}>{counts.needs_details}</span></div><span className={s.statLabel}>need details</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txRed}`}><Icon name="icon-alert-triangle" /><span className={s.statVal}>{counts.needs_review}</span></div><span className={s.statLabel}>need review</span></div>
         </div>
 
         {review.length > 0 && (
@@ -1397,7 +1397,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
 
         <div className={s.banner}><Icon name="icon-info" /> You can finish this location after saving.</div>
       </div>
-      <div className={s.footer}>
+      <div className={`${s.footer} ${s.reviewFooter}`}>
         <button type="button" className={s.btnOutline} onClick={onScanMore}><Icon name="icon-scan" /> Scan more</button>
         <button type="button" className={s.btnPrimary} onClick={onSave}><Icon name="icon-check" /> Save session</button>
       </div>
