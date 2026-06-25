@@ -48,13 +48,6 @@ const SCAN_MODE_META = {
   },
 };
 
-const AUDIT_STATUSES = [
-  { value: "present",   label: "Present",   icon: "icon-check-circle",  desc: "Item is on shelf" },
-  { value: "moved",     label: "Moved",     icon: "icon-arrow-right",   desc: "Location changed" },
-  { value: "not_found", label: "Not found", icon: "icon-search",        desc: "Not on shelf" },
-  { value: "removed",   label: "Removed",   icon: "icon-x-circle",      desc: "Pulled from use" },
-];
-
 function relTime(iso) {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso).getTime();
@@ -357,13 +350,10 @@ export function MobileScanSession({
   const pulseTimer = useRef();
   const [captured, setCaptured] = useState(false);
 
-  // Receiving floats a compact drawer over a LIVE camera (like the reorder
-  // scanner), so the next item can be aimed and scanned without dismissing it.
-  // Shelf Audit keeps its blocking verification sheet, so its camera pauses
-  // while a scan is pending.
-  const cameraActive =
-    active && viewMode === "scan" && !detail && !link &&
-    (localMode === "receiving" || !pendingLine);
+  // Both Receiving and Shelf Audit float a compact drawer over a LIVE camera
+  // (like the reorder scanner), so the next item can be aimed and scanned
+  // without dismissing the drawer first.
+  const cameraActive = active && viewMode === "scan" && !detail && !link;
 
   const { videoRef, cameraStatus, autoDetect, retry } = useBarcodeScanner({
     active: cameraActive,
@@ -507,12 +497,12 @@ export function MobileScanSession({
         />
       )}
       {pendingLine && localMode === "shelf_audit" && (
-        <ShelfAuditSheet
+        <ShelfAuditScanSheet
+          key={pendingLine.id}
           line={pendingLine}
-          locName={locName}
-          onClose={onClearPending}
-          onSave={(body) => { onPatchLine(pendingLine.id, body); onClearPending?.(); }}
-          onUndo={() => { onRemoveLine(pendingLine.id); onClearPending?.(); }}
+          locationName={locName}
+          onPersist={(id, body) => onPatchLine(id, body)}
+          onDismiss={(id, body) => { onPatchLine(id, body); onClearPending?.(); }}
         />
       )}
 
@@ -1042,102 +1032,118 @@ function ReceivingScanSheet({ line, locationName, locationId, onOpenLocation, on
   );
 }
 
-// ── Shelf audit bottom sheet ──────────────────────────────────────────
+// ── Shelf audit post-scan drawer ──────────────────────────────────────
+// The SAME compact live-camera drawer as Receiving (ReceivingScanSheet): a
+// shallow sheet over a running viewfinder capturing lot / expiry, with the
+// audited location shown read-only (an audit is scoped to the session's one
+// location). No status grid — scanning an item on the shelf verifies it's
+// present; not-found / removed are reconcile actions, not scans. No buttons:
+// it persists when the next scan replaces it (keyed remount) or it's flicked
+// down.
+function ShelfAuditScanSheet({ line, locationName, onPersist, onDismiss }) {
+  const matched = line.status !== "needs_review";
+  const initialLot = line.lot_number || "";
+  const initialExp = line.expiration_date ? String(line.expiration_date).slice(0, 10) : "";
+  const [lot, setLot] = useState(initialLot);
+  const [exp, setExp] = useState(initialExp);
+  const [dragY, setDragY] = useState(0);
+  const startY = useRef(0);
+  const dragging = useRef(false);
 
-function ShelfAuditSheet({ line, locName, onClose, onSave, onUndo }) {
-  const [status,  setStatus]  = useState("present");
-  const [lot,     setLot]     = useState(line.lot_number || "");
-  const [exp,     setExp]     = useState(line.expiration_date ? String(line.expiration_date).slice(0, 10) : "");
-
-  const isExpired = exp && new Date(exp) <= new Date();
-
-  function save() {
-    onSave({
-      lot_number:         lot.trim() || null,
-      expiration_date:    exp || null,
-      shelf_audit_status: status,
-    });
+  const latest = useRef();
+  latest.current = { lot, exp };
+  function body() {
+    const { lot: l, exp: e } = latest.current;
+    return {
+      lot_number:         l.trim() || null,
+      expiration_date:    e || null,
+      shelf_audit_status: "present",
+    };
   }
 
+  // Persist on teardown (next scan remounts) so typed lot/expiry survive
+  // uninterrupted scanning — unless a manual dismiss already saved.
+  const done = useRef(false);
+  const persistRef = useRef(onPersist);
+  persistRef.current = onPersist;
+  const itemId = line.id;
+  useEffect(() => () => {
+    if (done.current) return;
+    persistRef.current?.(itemId, body());
+  }, [itemId]);
+
+  function dismiss() {
+    done.current = true;
+    onDismiss(itemId, body());
+  }
+
+  function onTouchStart(e) { startY.current = e.touches[0].clientY; dragging.current = true; }
+  function onTouchMove(e) { if (!dragging.current) return; setDragY(Math.max(0, e.touches[0].clientY - startY.current)); }
+  function onTouchEnd() { if (!dragging.current) return; dragging.current = false; if (dragY > 70) dismiss(); else setDragY(0); }
+
+  const name = line.name || offerSku(line) || "Unidentified item";
+
   return (
-    <div className={s.modeSheet}>
-      <div className={s.modeSheetBackdrop} onClick={onClose} />
-      <div className={s.modeSheetPanel}>
-        <div className={s.modeSheetGrip} aria-hidden="true" />
-        <ModeSheetProductHeader line={line} modeBadge="Shelf audit" modeBadgeCls={s.badgeTeal} />
-
-        {isExpired && (
-          <div className={s.expiredBanner}>
-            <Icon name="icon-alert-triangle" />
-            Expired — verify removal or replacement before saving.
-          </div>
-        )}
-
-        <div className={s.auditStatuses}>
-          <p className={s.auditStatusesLabel}>Verify status</p>
-          <div className={s.auditStatusGrid}>
-            {AUDIT_STATUSES.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`${s.auditStatusBtn} ${status === opt.value ? s.auditStatusBtnActive : ""}`}
-                onClick={() => setStatus(opt.value)}
-              >
-                <Icon name={opt.icon} />
-                <span className={s.auditStatusLabel}>{opt.label}</span>
-                <span className={s.auditStatusDesc}>{opt.desc}</span>
-              </button>
-            ))}
+    <div className={`${s.modeSheet} ${s.modeSheetLive}`}>
+      <div
+        className={`${s.modeSheetPanel} ${s.reorderPanel}`}
+        style={{ transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragging.current ? "none" : "transform .2s ease" }}
+      >
+        <button
+          type="button"
+          className={s.modeSheetGripBtn}
+          onClick={dismiss}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          aria-label="Dismiss"
+        >
+          <span className={s.modeSheetGrip} aria-hidden="true" />
+        </button>
+        <div className={s.modeSheetProduct}>
+          <span className={s.modeSheetThumb}>
+            {line.image_url ? <img src={line.image_url} alt="" /> : <Icon name="icon-package" />}
+          </span>
+          <div className={s.modeSheetProductInfo}>
+            <span className={s.modeSheetProductName}>
+              <span className={s.modeSheetProductNameText}>{name}</span>
+            </span>
+            {offerSku(line) && <span className={s.modeSheetSku}>SKU: {offerSku(line)}</span>}
+            <span className={`${s.badge} ${matched ? s.badgeGreen : s.badgeAmber}`}>
+              <Icon name={matched ? "icon-check-circle" : "icon-clock"} />
+              {matched ? "Exact match" : "Needs review"}
+            </span>
           </div>
         </div>
 
-        <div className={s.modeSheetFields}>
-          <ModeSheetRow label="Lot number">
-            <input className={s.input} value={lot} onChange={(e) => setLot(e.target.value)} placeholder="e.g. A219" />
-          </ModeSheetRow>
-          <ModeSheetRow label="Expiration date">
-            <input className={s.input} type="date" value={exp} onChange={(e) => setExp(e.target.value)} />
-          </ModeSheetRow>
-          <ModeSheetRow label="Location">
-            <span className={s.modeSheetLocPill}><Icon name="icon-map-pin" /> {locName}</span>
-          </ModeSheetRow>
-        </div>
-
-        <div className={s.modeSheetActions}>
-          <button type="button" className={s.btnOutline} onClick={onUndo}>Undo scan</button>
-          <button type="button" className={s.btnPrimary} onClick={save}>Save verification</button>
+        <div className={s.reorderStrip}>
+          <div className={s.reorderField}>
+            <span className={s.reorderFieldLabel}><Icon name="icon-file-text" /> Lot number</span>
+            <div className={s.reorderFieldControl}>
+              <input className={s.reorderFieldInput} value={lot} onChange={(e) => setLot(e.target.value)} placeholder="e.g. A219" />
+            </div>
+          </div>
+          <div className={s.reorderField}>
+            <span className={s.reorderFieldLabel}><Icon name="icon-calendar" /> Expiration date</span>
+            <div className={s.reorderFieldControl}>
+              <span className={s.reorderFieldText}>{exp ? formatLongDate(exp) : "Select date"}</span>
+              <input
+                type="date"
+                className={s.dateOverlay}
+                value={exp || ""}
+                onChange={(e) => setExp(e.target.value)}
+                aria-label="Expiration date"
+              />
+            </div>
+          </div>
+          <div className={s.reorderField}>
+            <span className={s.reorderFieldLabel}><Icon name="icon-map-pin" /> Location</span>
+            <div className={s.reorderFieldControl}>
+              <span className={s.reorderFieldText}>{locationName || "—"}</span>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Shared sheet sub-components ───────────────────────────────────────
-
-function ModeSheetProductHeader({ line, modeBadge, modeBadgeCls }) {
-  return (
-    <div className={s.modeSheetProduct}>
-      <span className={s.modeSheetThumb}>
-        {line.image_url ? <img src={line.image_url} alt="" /> : <Icon name="icon-package" />}
-      </span>
-      <div className={s.modeSheetProductInfo}>
-        <span className={s.modeSheetProductName}>
-          <Icon name="icon-check-circle" />
-          <span className={s.modeSheetProductNameText}>{line.name}</span>
-        </span>
-        {offerSku(line) && <span className={s.modeSheetSku}>SKU: {offerSku(line)}</span>}
-        <span className={`${s.badge} ${s.badgeGreen}`}>Exact match</span>
-      </div>
-      {modeBadge && <span className={`${s.badge} ${modeBadgeCls}`}>{modeBadge}</span>}
-    </div>
-  );
-}
-
-function ModeSheetRow({ label, children }) {
-  return (
-    <div className={s.modeSheetRow}>
-      <span className={s.modeSheetLabel}>{label}</span>
-      <div className={s.modeSheetControl}>{children}</div>
     </div>
   );
 }
@@ -1476,20 +1482,33 @@ function SearchSheet({ title, hint, onClose, onPick }) {
 function LocationSheet({ locations, currentId, onClose, onPick, onManage }) {
   return (
     <SheetShell title="Scanning location" onClose={onClose}>
-      <div className={s.sheetScroll}>
-        <div className={s.locList}>
-          {locations.map((loc) => (
-            <button key={loc.id} type="button" className={s.locRow} onClick={() => onPick(loc)}>
-              <span className={s.locRowIcon}><Icon name={typeMeta(loc.type).icon} /></span>
-              <span className={s.locRowName}>{loc.name}</span>
-              {loc.id === currentId
-                ? <span className={s.lastUsedCheck}><Icon name="icon-check" /></span>
-                : <span className={s.locRowChevron}><Icon name="icon-chevron-right" /></span>}
-            </button>
-          ))}
+      {locations.length === 0 ? (
+        <div className={s.sheetEmpty}>
+          <span className={s.sheetEmptyIcon}><Icon name="icon-map-pin" /></span>
+          <strong>No locations yet</strong>
+          <p>Add a room, cabinet, or shelf to scan items into it.</p>
+          <button type="button" className={s.sheetBtn} onClick={onManage}>
+            <Icon name="icon-plus" /> Add a location
+          </button>
         </div>
-      </div>
-      <button type="button" className={s.manageLink} onClick={onManage} style={{ alignSelf: "center" }}>Manage locations</button>
+      ) : (
+        <>
+          <div className={s.sheetScroll}>
+            <div className={s.locList}>
+              {locations.map((loc) => (
+                <button key={loc.id} type="button" className={s.locRow} onClick={() => onPick(loc)}>
+                  <span className={s.locRowIcon}><Icon name={typeMeta(loc.type).icon} /></span>
+                  <span className={s.locRowName}>{loc.name}</span>
+                  {loc.id === currentId
+                    ? <span className={s.lastUsedCheck}><Icon name="icon-check" /></span>
+                    : <span className={s.locRowChevron}><Icon name="icon-chevron-right" /></span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button type="button" className={s.manageLink} onClick={onManage} style={{ alignSelf: "center" }}>Manage locations</button>
+        </>
+      )}
     </SheetShell>
   );
 }
