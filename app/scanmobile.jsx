@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandLogoMark, Icon, QrScanGlyph } from "./icons";
-import { formatTraceDate } from "./lib";
+import { formatTraceDate, SWIPE_REVEAL } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
 
@@ -437,6 +437,7 @@ export function MobileScanSession({
         onSave={onComplete}
         onDetail={(line) => setDetail(line)}
         onLink={(line) => setLink(line)}
+        onRemoveLine={onRemoveLine}
         linkSheet={link}
         onCloseLink={() => setLink(null)}
         onPatchLine={onPatchLine}
@@ -1320,14 +1321,82 @@ function ShelfDetails({ line, locName, onCancel, onSave }) {
 
 // ── Review session ────────────────────────────────────────────────────
 
-function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onDetail, onLink, linkSheet, onCloseLink, onPatchLine }) {
+// Each review row swipes left to reveal a Remove action, matching the reorder
+// list gesture (see MobileReorderCard). The front layer carries the row content
+// and translates under the thumb; the red Remove sits flush to the screen edge.
+function SwipeRow({ onRemove, children }) {
+  const [dx, setDx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const startX = useRef(0);
+  const startY = useRef(0);
+  const dragging = useRef(false);
+  const moved = useRef(false);
+
+  function onTouchStart(event) {
+    const touch = event.touches[0];
+    startX.current = touch.clientX;
+    startY.current = touch.clientY;
+    dragging.current = true;
+    moved.current = false;
+  }
+  function onTouchMove(event) {
+    if (!dragging.current) return;
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - startX.current;
+    const deltaY = touch.clientY - startY.current;
+    // Ignore mostly-vertical gestures so the list can still scroll.
+    if (!moved.current && Math.abs(deltaX) < Math.abs(deltaY)) { dragging.current = false; return; }
+    if (Math.abs(deltaX) > 6) moved.current = true;
+    const base = open ? -SWIPE_REVEAL : 0;
+    setDx(Math.min(0, Math.max(-SWIPE_REVEAL, base + deltaX)));
+  }
+  function onTouchEnd() {
+    if (!dragging.current && !moved.current) return;
+    dragging.current = false;
+    const shouldOpen = dx <= -SWIPE_REVEAL / 2;
+    setOpen(shouldOpen);
+    setDx(shouldOpen ? -SWIPE_REVEAL : 0);
+  }
+  // Swallow the synthetic click that follows a swipe so it can't fire the row's
+  // inner Review/Edit buttons.
+  function onClickCapture(event) {
+    if (moved.current) { event.preventDefault(); event.stopPropagation(); moved.current = false; }
+  }
+
+  return (
+    <div className={`${s.swipeWrap} ${open ? s.swipeOpen : ""}`}>
+      <button
+        type="button"
+        className={s.swipeRemove}
+        tabIndex={open ? 0 : -1}
+        aria-label="Remove item from session"
+        onClick={() => { setOpen(false); setDx(0); onRemove(); }}
+      >
+        <Icon name="icon-trash-ios" />
+        <span>Remove</span>
+      </button>
+      <div
+        className={s.revRow}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClickCapture={onClickCapture}
+        style={{ transform: `translateX(${dx}px)`, transition: dragging.current ? "none" : "transform .2s ease" }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onDetail, onLink, onRemoveLine, linkSheet, onCloseLink, onPatchLine }) {
   const review    = lines.filter((l) => l.status === "needs_review");
   const details   = lines.filter((l) => l.status === "needs_details");
   const confirmed = lines.filter((l) => l.status === "confirmed");
 
   const [openReview,    setOpenReview]    = useState(true);
   const [openDetails,   setOpenDetails]   = useState(true);
-  const [openConfirmed, setOpenConfirmed] = useState(false);
+  const [openConfirmed, setOpenConfirmed] = useState(true);
   const [showAllDetails,   setShowAllDetails]   = useState(false);
   const [showAllConfirmed, setShowAllConfirmed] = useState(false);
 
@@ -1362,7 +1431,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
             {openReview && (
               <div className={s.revList}>
                 {review.map((line) => (
-                  <div key={line.id} className={s.revRow}>
+                  <SwipeRow key={line.id} onRemove={() => onRemoveLine(line.id)}>
                     <span className={s.revThumb}>{line.image_url ? <img src={line.image_url} alt="" /> : <Icon name="icon-alert-triangle" />}</span>
                     <div className={s.revBody}>
                       <span className={s.revName}>{line.name}</span>
@@ -1370,7 +1439,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
                       <span className={s.revLoc}><Icon name="icon-map-pin" /> {session.location_name}</span>
                     </div>
                     <button type="button" className={s.revBtn} onClick={() => onLink(line)}>Review</button>
-                  </div>
+                  </SwipeRow>
                 ))}
               </div>
             )}
@@ -1387,7 +1456,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
             {openDetails && (
               <div className={s.revList}>
                 {detailsShown.map((line) => (
-                  <div key={line.id} className={s.revRow}>
+                  <SwipeRow key={line.id} onRemove={() => onRemoveLine(line.id)}>
                     <span className={s.revThumb}>{line.image_url ? <img src={line.image_url} alt="" /> : <Icon name="icon-clock" />}</span>
                     <div className={s.revBody}>
                       <span className={s.revName}>{line.name}</span>
@@ -1399,7 +1468,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
                       </span>
                       <button type="button" className={s.revBtn} onClick={() => onDetail(line)}>Edit</button>
                     </div>
-                  </div>
+                  </SwipeRow>
                 ))}
                 {details.length > 4 && !showAllDetails && (
                   <button type="button" className={s.moreRow} onClick={() => setShowAllDetails(true)}>
@@ -1421,7 +1490,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
             {openConfirmed && (
               <div className={s.revList}>
                 {confirmedShown.map((line) => (
-                  <div key={line.id} className={s.revRow}>
+                  <SwipeRow key={line.id} onRemove={() => onRemoveLine(line.id)}>
                     <span className={s.revThumb}>{line.image_url ? <img src={line.image_url} alt="" /> : <Icon name="icon-check-circle" />}</span>
                     <div className={s.revBody}>
                       <span className={s.revName}>{line.name}</span>
@@ -1431,7 +1500,7 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
                       </span>
                     </div>
                     <span className={`${s.resultPill} ${s.pillGreen}`}><Icon name="icon-check-circle" /> Exact match</span>
-                  </div>
+                  </SwipeRow>
                 ))}
                 {confirmed.length > 2 && !showAllConfirmed && (
                   <button type="button" className={s.moreRow} onClick={() => setShowAllConfirmed(true)}>

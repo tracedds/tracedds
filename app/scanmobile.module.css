@@ -710,14 +710,18 @@
 .statVal { font-size: 19px; font-weight: 600; color: #14202E; line-height: 1; }
 .statLabel { font-size: 11px; color: #6a7889; text-align: center; line-height: 1.15; }
 
+/* Review groups run edge-to-edge as full-bleed bands (like the reorder list),
+   so swipe-to-remove reaches the screen edge and product names get the full
+   width. Negative margin cancels the .body side padding; rows pad themselves
+   back to the 16px content gutter. */
 .section {
-  border-radius: 14px; border: 1px solid #e7ecf3; background: #fff;
-  overflow: hidden;
+  margin: 0 -16px; background: #fff;
+  border-top: 1px solid #e7ecf3; border-bottom: 1px solid #e7ecf3;
 }
 .sectionRed { border-color: #f3d3d0; }
 .secHead {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 11px 14px; border: 0; background: none;
+  width: 100%; padding: 11px 16px; border: 0; background: none;
   cursor: pointer; text-align: left;
 }
 .secHeadIcon svg { width: 18px; height: 18px; }
@@ -727,9 +731,23 @@
 .secToggleOpen { transform: rotate(180deg); }
 
 .revList { display: flex; flex-direction: column; }
+
+/* Swipe-to-remove: the row content rides on .revRow (the front layer) and
+   translates left under the thumb to reveal the red Remove pinned to the edge.
+   Mirrors MobileReorderCard's gesture in reorder.jsx. */
+.swipeWrap { position: relative; overflow: hidden; }
+.swipeRemove {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 88px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border: 0; background: #dc2626; color: #fff;
+  font-size: 12px; font-weight: 500; letter-spacing: 0.01em; cursor: pointer;
+}
+.swipeRemove svg { width: 21px; height: 21px; color: #fff; }
+
 .revRow {
+  position: relative; z-index: 1; background: #fff;
   display: flex; align-items: center; gap: 11px;
-  padding: 9px 14px; border-top: 1px solid #eef1f6;
+  padding: 9px 16px; border-top: 1px solid #eef1f6;
 }
 .revThumb {
   width: 42px; height: 42px; border-radius: 10px;
@@ -753,7 +771,7 @@
 .revChevron { color: #b6c0cd; flex-shrink: 0; }
 .revChevron svg { width: 18px; height: 18px; }
 .moreRow {
-  width: 100%; padding: 11px 14px; border: 0; border-top: 1px solid #eef1f6;
+  width: 100%; padding: 11px 16px; border: 0; border-top: 1px solid #eef1f6;
   background: none; color: #2F5BD6; font-size: 13.5px; font-weight: 600; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
