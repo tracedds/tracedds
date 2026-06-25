@@ -360,6 +360,7 @@
   top: 0; left: 0; right: 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
   z-index: 3;
@@ -382,8 +383,19 @@
 .camCircle:active { background: rgba(255,255,255,0.28); }
 .camCircle svg { width: 20px; height: 20px; }
 .camCircleActive { background: rgba(255,210,51,0.85); color: #1c1402; }
+/* Absolutely centered on the header so the wordmark sits at the true screen
+   center regardless of how many controls flank it — a flex-centered brand sits
+   in the leftover space between the lone back button and the wider right-hand
+   controls, which pulls it off-center. pointer-events:none keeps the controls
+   beneath reachable if they ever meet. */
 .camBrand {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  position: absolute;
+  left: 50%;
+  top: calc(12px + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  height: 40px;
+  display: flex; align-items: center; gap: 7px;
+  pointer-events: none;
 }
 /* Composed wordmark over the live camera: blue mark, white "Trace", blue "DDS".
    Shadows lift it off arbitrary video so it stays legible past the scrim edge.
@@ -1013,6 +1025,24 @@
    fields sit in a horizontal swipe strip so the sheet stays shallow even when
    they don't all fit across — overrides .modeSheetPanel's tall layout. */
 .reorderPanel { max-height: 34dvh; gap: 12px; }
+
+/* The matched drawer floats over a LIVE camera: no dimming backdrop, and the
+   container lets touches above the panel pass through to the camera so the next
+   item can be aimed and scanned without dismissing first. A shadow lifts the
+   panel off the live feed; the panel itself stays interactive. */
+.modeSheetLive { pointer-events: none; background: transparent; }
+.modeSheetLive .modeSheetPanel {
+  pointer-events: auto;
+  box-shadow: 0 -10px 34px rgba(5, 7, 11, 0.32);
+}
+/* Drag handle for flick-down dismiss — full-width hit area, the visual grip
+   stays centered inside it. touch-action:none so the vertical drag isn't eaten
+   by the browser's scroll. */
+.modeSheetGripBtn {
+  display: flex; justify-content: center; width: 100%;
+  border: 0; background: transparent; padding: 2px 0 6px; margin: 0;
+  cursor: pointer; touch-action: none;
+}
 .reorderStrip {
   display: flex; gap: 8px;
   overflow-x: auto; overflow-y: hidden;
