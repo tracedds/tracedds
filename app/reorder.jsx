@@ -568,7 +568,17 @@ export function MobileReorderList({ title, rows, stats, totalItems, tab, onTab, 
   return (
     <div className="m-list">
       <header className="m-topbar">
-        <h1>{title}</h1>
+        <div className="m-topbar-lead">
+          <button
+            className="m-iconbtn"
+            type="button"
+            aria-label="Back to start scan"
+            onClick={() => onNavigate?.("/app")}
+          >
+            <Icon name="icon-chevron-left" className="button-icon" />
+          </button>
+          <h1>{title}</h1>
+        </div>
         <div className="m-topbar-actions">
           <button
             className="m-scan-btn"

@@ -125,6 +125,7 @@
 .btnPrimary svg, .btnOutline svg { width: 18px; height: 18px; }
 
 /* ── Screen 1: Start scan session ──────────────────────────────────── */
+.resumeList { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .resumeCard {
   display: flex;
   flex-direction: column;
