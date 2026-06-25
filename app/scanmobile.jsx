@@ -130,27 +130,20 @@ export function MobileScanStart({
   loading, sessions, locations, starting, needsAttention,
   onOpenSession, onStart, onNavigate,
 }) {
-  // "home" | "choose-scan-mode" | "choose-location"
+  // "home" | "choose-scan-mode" | "audit-scanner"
   const [step, setStep] = useState("home");
-  const [scanMode, setScanMode] = useState(null);
 
   const attnItems = needsAttention?.items || 0;
   const attnLocs  = needsAttention?.locations || 0;
 
-  const active = useMemo(() => sessions.filter((x) => x.status === "active"), [sessions]);
-  const resume = active[0] || null;
-
-  const recentIds = useMemo(() => {
-    const seen = [];
-    for (const sess of sessions) {
-      if (sess.location_id && !seen.includes(sess.location_id)) seen.push(sess.location_id);
-    }
-    return seen;
-  }, [sessions]);
-  const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
-  const lastUsed = recentIds.map((id) => byId.get(id)).find(Boolean) || null;
-  const others = locations.filter((l) => l.id !== lastUsed?.id);
-  const recentNames = recentIds.slice(0, 3).map((id) => byId.get(id)?.name).filter(Boolean);
+  // Every in-progress (active) session is resumable — receiving and shelf-audit
+  // both. Most-recently-updated first so the one you just left is on top.
+  const active = useMemo(
+    () => sessions
+      .filter((x) => x.status === "active")
+      .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0)),
+    [sessions],
+  );
 
   // Tapping a mode card moves forward immediately (no Continue step — same
   // single-tap pattern as the location rows below).
@@ -162,9 +155,9 @@ export function MobileScanStart({
     // Receiving fans out to many shelves, so it doesn't pick one location up
     // front — location is captured per item in the sheet.
     if (value === "receiving") { onStart(null, "receiving"); return; }
-    // Shelf Audit is an audit of one location, so it picks one next.
-    setScanMode(value);
-    setStep("choose-location");
+    // Shelf Audit goes straight to the scanner; the location is picked there
+    // (an audit is scoped to one location, so it's the first action).
+    setStep("audit-scanner");
   }
 
   // ── Screen: choose scan mode ────────────────────────────────────────
@@ -197,89 +190,16 @@ export function MobileScanStart({
     );
   }
 
-  // ── Screen: choose location ─────────────────────────────────────────
-  if (step === "choose-location") {
+  // ── Screen: shelf-audit scanner (location picked here, in the scanner) ──
+  if (step === "audit-scanner") {
     return (
-      <div className={s.screen}>
-        <header className={s.topbar}>
-          <button type="button" className={s.iconBtn} onClick={() => setStep("choose-scan-mode")} aria-label="Back">
-            <Icon name="icon-chevron-left" />
-          </button>
-          <span className={s.barTitle}>Choose location</span>
-        </header>
-        <div className={s.body}>
-          <div className={s.intro}>
-            <p className={s.sub}>Select where you&rsquo;re scanning so items stay organized.</p>
-          </div>
-
-          {locations.length === 0 ? (
-            <div className={s.emptyNote}>
-              No locations yet. Add one to start scanning its shelves.
-            </div>
-          ) : (
-            <>
-              {lastUsed && (
-                <>
-                  <div className={s.sectionLabel}>Last used</div>
-                  <button
-                    type="button"
-                    className={s.lastUsed}
-                    disabled={Boolean(starting)}
-                    onClick={() => onStart(lastUsed, scanMode)}
-                  >
-                    <span className={`${s.lastUsedIcon} ${typeMeta(lastUsed.type).tint}`}>
-                      <Icon name={typeMeta(lastUsed.type).icon} />
-                    </span>
-                    <span className={s.lastUsedBody}>
-                      <span className={s.lastUsedName}>{lastUsed.name}</span>
-                      <span className={s.lastUsedSub}>{starting === lastUsed.id ? "Starting…" : "Last used recently"}</span>
-                    </span>
-                    <span className={s.lastUsedCheck}><Icon name="icon-check" /></span>
-                  </button>
-                </>
-              )}
-
-              {others.length > 0 && (
-                <>
-                  <div className={s.sectionLabel}>Other locations</div>
-                  <div className={s.locList}>
-                    {others.map((loc) => (
-                      <button
-                        key={loc.id}
-                        type="button"
-                        className={s.locRow}
-                        disabled={Boolean(starting)}
-                        onClick={() => onStart(loc, scanMode)}
-                      >
-                        <span className={s.locRowIcon}><Icon name={typeMeta(loc.type).icon} /></span>
-                        <span className={s.locRowName}>{loc.name}</span>
-                        <span className={s.locRowChevron}><Icon name="icon-chevron-right" /></span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {recentNames.length > 0 && (
-                <button type="button" className={s.recent} onClick={() => lastUsed && onStart(lastUsed, scanMode)}>
-                  <span className={s.recentIcon}><Icon name="icon-clock" /></span>
-                  <span className={s.recentBody}>
-                    <span className={s.recentTitle}>Recent locations</span>
-                    <span className={s.recentNames}>{recentNames.join(" · ")}</span>
-                  </span>
-                </button>
-              )}
-            </>
-          )}
-
-          <div className={s.manage}>
-            <span className={s.manageHint}>Don&rsquo;t see what you need?</span>
-            <button type="button" className={s.manageLink} onClick={() => onNavigate?.("/app/locations")}>
-              Manage locations
-            </button>
-          </div>
-        </div>
-      </div>
+      <MobileAuditLocationGate
+        locations={locations}
+        starting={starting}
+        onPick={(loc) => onStart(loc, "shelf_audit")}
+        onBack={() => setStep("choose-scan-mode")}
+        onManage={() => onNavigate?.("/app/locations")}
+      />
     );
   }
 
@@ -309,29 +229,40 @@ export function MobileScanStart({
           <div className={s.emptyNote}>Loading…</div>
         ) : (
           <>
-            {resume && (
-              <div className={s.resumeCard}>
-                <button
-                  type="button"
-                  className={s.resumeTop}
-                  onClick={() => onOpenSession(resume.id)}
-                  style={{ border: 0, background: "none", padding: 0, textAlign: "left", cursor: "pointer", width: "100%" }}
-                >
-                  <span className={s.resumeIcon}><Icon name="icon-refresh" /></span>
-                  <span className={s.resumeBody}>
-                    <span className={s.resumeKicker}>IN PROGRESS</span>
-                    <span className={s.resumeTitle}>Continue {resume.location_name || (resume.capture_type === "receiving" ? "receiving" : "location")}</span>
-                    <span className={s.resumeMeta}><Icon name="icon-calendar" /> {resume.counts?.scanned || 0} items scanned</span>
-                    <span className={s.resumeMeta}><Icon name="icon-clock" /> Last updated {relTime(resume.updated_at) || "recently"}</span>
-                  </span>
-                  <span className={s.resumeChevron}><Icon name="icon-chevron-right" /></span>
-                </button>
-                <button type="button" className={s.resumeBtn} onClick={() => onOpenSession(resume.id)}>Resume</button>
-              </div>
+            {active.length > 0 && (
+              <>
+                <div className={s.sectionLabel}>In progress</div>
+                <div className={s.resumeList}>
+                  {active.map((sess) => {
+                    const modeLabel = SCAN_MODE_META[sess.capture_type]?.label || "Scan session";
+                    const where = sess.location_name || (sess.capture_type === "receiving" ? "receiving" : "location");
+                    return (
+                      <div key={sess.id} className={s.resumeCard}>
+                        <button
+                          type="button"
+                          className={s.resumeTop}
+                          onClick={() => onOpenSession(sess.id)}
+                          style={{ border: 0, background: "none", padding: 0, textAlign: "left", cursor: "pointer", width: "100%" }}
+                        >
+                          <span className={s.resumeIcon}><Icon name="icon-refresh" /></span>
+                          <span className={s.resumeBody}>
+                            <span className={s.resumeKicker}>{modeLabel}</span>
+                            <span className={s.resumeTitle}>Continue {where}</span>
+                            <span className={s.resumeMeta}><Icon name="icon-calendar" /> {sess.counts?.scanned || 0} items scanned</span>
+                            <span className={s.resumeMeta}><Icon name="icon-clock" /> Last updated {relTime(sess.updated_at) || "recently"}</span>
+                          </span>
+                          <span className={s.resumeChevron}><Icon name="icon-chevron-right" /></span>
+                        </button>
+                        <button type="button" className={s.resumeBtn} onClick={() => onOpenSession(sess.id)}>Resume</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
 
             <div className={s.actionList}>
-              <button type="button" className={s.actionRow} onClick={() => { setScanMode(null); setStep("choose-scan-mode"); }}>
+              <button type="button" className={s.actionRow} onClick={() => setStep("choose-scan-mode")}>
                 <span className={s.actionIcon}><Icon name="icon-plus" /></span>
                 <span className={s.actionText}>
                   <span className={s.actionTitle}>Start new scan session</span>
@@ -348,6 +279,58 @@ export function MobileScanStart({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Shelf-audit location gate ─────────────────────────────────────────
+// Shelf Audit goes straight to the scanner; the location is chosen here rather
+// than on a separate screen first. An audit is scoped to one location and its
+// items file to the session's location, so picking the location is the first
+// action — it starts (or resumes) that location's session, then scanning begins.
+function MobileAuditLocationGate({ locations, starting, onPick, onBack, onManage }) {
+  const [sheetOpen, setSheetOpen] = useState(true);
+
+  return (
+    <div className={s.camera} aria-label="Choose a location to audit">
+      <div className={s.cameraScrim} aria-hidden="true" />
+
+      <div className={s.camTop}>
+        <button type="button" className={s.camCircle} onClick={onBack} aria-label="Back">
+          <Icon name="icon-chevron-left" />
+        </button>
+        <span className={s.camBrand}>
+          <BrandLogoMark className={s.camBrandMark} />
+          <span className={s.camWordmark}>
+            <span className={s.camWordTrace}>Trace</span>{" "}<span className={s.camWordDds}>DDS</span>
+          </span>
+        </span>
+        <span className={s.camRight} />
+      </div>
+
+      <div className={s.contextStrip}>
+        <span className={`${s.modeBadge} ${s.modeBadgeAudit}`}>
+          <Icon name="icon-clipboard-check" /> Shelf Audit
+        </span>
+        <button type="button" className={s.locPill} onClick={() => setSheetOpen(true)}>
+          <Icon name="icon-map-pin" />
+          <span className={s.locPillName}>Set location</span>
+          <span className={s.locPillCaret}><Icon name="icon-chevron-down" /></span>
+        </button>
+      </div>
+
+      <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
+      <div className={s.camHint}>{starting ? "Starting…" : "Choose a location to start the audit"}</div>
+
+      {sheetOpen && (
+        <LocationSheet
+          locations={locations}
+          currentId={null}
+          onClose={() => setSheetOpen(false)}
+          onPick={(loc) => { if (!starting) onPick(loc); }}
+          onManage={onManage}
+        />
+      )}
     </div>
   );
 }

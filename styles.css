@@ -9212,8 +9212,10 @@ th {
 
 /* Mobile list */
 .m-list { display: flex; flex-direction: column; gap: 16px; }
-.m-topbar { display: flex; align-items: center; justify-content: space-between; }
-.m-topbar-actions { display: flex; align-items: center; gap: 8px; }
+.m-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.m-topbar-lead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.m-topbar-lead h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .m-menu-wrap { position: relative; }
 .m-actions-menu { left: auto; right: 0; }
 .m-iconbtn .crl-kebab-dots { width: 20px; height: 20px; color: var(--ink); }
