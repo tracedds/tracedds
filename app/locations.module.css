@@ -497,6 +497,7 @@
 }
 
 .progressFill {
+  display: block;
   height: 100%;
   border-radius: 999px;
   background: var(--blue);
