@@ -1288,9 +1288,28 @@
   .cards { grid-template-columns: 1fr; }
   .stats { grid-template-columns: 1fr; }
   .toolbarSpacer { display: none; }
-  .scanBtn { flex: 1 1 100%; justify-content: center; }
   .formRow { grid-template-columns: 1fr; }
   .useGrid { grid-template-columns: 1fr; }
+}
+
+/* On phones the toolbar is just the action buttons (search + filters are
+   hidden), so let them fill the row and split it evenly (equal widths) instead
+   of clustering content-width on the right. Height goes auto/min so a label
+   that wraps to two lines isn't clipped by the fixed desktop height. */
+@media (max-width: 767px) {
+  .toolbarActions { margin-left: 0; }
+  .toolbarActions .addBtn,
+  .toolbarActions .scanBtn {
+    flex: 1 1 0;
+    min-width: 0;
+    height: auto;
+    min-height: 40px;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.15;
+    padding: 8px 10px;
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════════ */
