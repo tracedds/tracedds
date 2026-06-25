@@ -830,6 +830,23 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationId]);
 
+  // Live updates: while this location is open and the tab is visible, re-fetch
+  // every 3s so items scanned on a phone (Receiving or Shelf Audit, both write
+  // last_counted_at) surface here on their own — the same live-propagation
+  // cadence the reorder list uses. Sorting by last_counted_at floats each fresh
+  // scan to the top as it lands. No loading flip, so the table never flickers.
+  useEffect(() => {
+    if (!locationId) return undefined;
+    const tick = () => {
+      if (document.visibilityState === "hidden") return;
+      traceApi.getLocation(locationId)
+        .then((data) => { setLocation(data.location || null); setItems(data.items || []); })
+        .catch(() => {});
+    };
+    const id = window.setInterval(tick, 3000);
+    return () => window.clearInterval(id);
+  }, [locationId]);
+
   const top = useMemo(() => {
     const active = items.filter((it) => !it.pulled_at);
     const traced = items.filter((it) => it.lot_number && it.expiration_date).length;
@@ -840,7 +857,14 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
 
   const visibleItems = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? items.filter((it) => (it.name || "").toLowerCase().includes(q)) : items;
+    const rows = q ? items.filter((it) => (it.name || "").toLowerCase().includes(q)) : items;
+    // Most recently scanned first, so a fresh phone scan pops to the top of the
+    // list the moment the poll picks it up. Items never counted sort last.
+    return [...rows].sort((a, b) => {
+      const ta = a.last_counted_at ? new Date(a.last_counted_at).getTime() : 0;
+      const tb = b.last_counted_at ? new Date(b.last_counted_at).getTime() : 0;
+      return tb - ta;
+    });
   }, [items, query]);
 
   const pullItems = useMemo(
@@ -1030,7 +1054,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                 <table className={s.table}>
                   <thead>
                     <tr>
-                      <th>Item</th><th>SDS</th><th>Expiration</th><th>Lot</th><th>Price</th><th>Status</th><th>Last counted</th>
+                      <th>Item</th><th>SDS</th><th>Expiration</th><th>Lot</th><th>Price</th><th>Status</th><th>Last scanned</th>
                     </tr>
                   </thead>
                   <tbody>
