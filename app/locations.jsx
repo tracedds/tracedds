@@ -799,7 +799,7 @@ function formatPriceRange(it) {
 // the lot-at-location record (a mis-scan or wrong item). Self-contained so each
 // row owns its own open state + outside-click handling, the same pattern as the
 // table-header kebab and the Select dropdowns.
-function RowActions({ onRemove }) {
+function RowActions({ onRemove, onPull }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -829,6 +829,13 @@ function RowActions({ onRemove }) {
       </button>
       {open && (
         <ul className={s.rowMenu} role="menu">
+          {onPull && (
+            <li role="none">
+              <button type="button" role="menuitem" className={s.headMenuItem} onClick={() => { setOpen(false); onPull(); }}>
+                <Icon name="icon-check-circle" />Mark pulled
+              </button>
+            </li>
+          )}
           <li role="none">
             <button type="button" role="menuitem" className={`${s.headMenuItem} ${s.headMenuDanger}`} onClick={() => { setOpen(false); onRemove(); }}>
               <Icon name="icon-trash" />Remove item
@@ -1235,13 +1242,10 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                           <td className={price ? "" : s.tMuted}>{price || "—"}</td>
                           <td>
                             <span className={`${s.badge} ${PILL_TONE[st.tone]}`}>{st.label}</span>
-                            {lc === "expired" && (
-                              <button type="button" className={s.pullBtn} onClick={() => onPull(it)}>Mark pulled</button>
-                            )}
                           </td>
                           <td className={s.tMuted}>{it.last_counted_at ? formatTraceDate(it.last_counted_at) : "—"}</td>
                           <td className={s.actionsCell}>
-                            <RowActions onRemove={() => onRemove(it)} />
+                            <RowActions onRemove={() => onRemove(it)} onPull={lc === "expired" ? () => onPull(it) : undefined} />
                           </td>
                         </tr>
                       );
