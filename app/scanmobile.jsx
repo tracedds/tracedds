@@ -1298,10 +1298,10 @@ function ReviewSession({ session, lines, counts, onBack, onScanMore, onSave, onD
         </div>
 
         <div className={s.statGrid}>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-scan" className={s.txBlue} /><span className={s.statVal}>{counts.scanned}</span></div><span className={s.statLabel}>scanned</span></div>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-check-circle" className={s.txGreen} /><span className={s.statVal}>{counts.confirmed}</span></div><span className={s.statLabel}>confirmed</span></div>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-clock" className={s.txAmber} /><span className={s.statVal}>{counts.needs_details}</span></div><span className={s.statLabel}>need details</span></div>
-          <div className={s.statCard}><div className={s.statTop}><Icon name="icon-alert-triangle" className={s.txRed} /><span className={s.statVal}>{counts.needs_review}</span></div><span className={s.statLabel}>need review</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txBlue}`}><Icon name="icon-scan" /><span className={s.statVal}>{counts.scanned}</span></div><span className={s.statLabel}>scanned</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txGreen}`}><Icon name="icon-check-circle" /><span className={s.statVal}>{counts.confirmed}</span></div><span className={s.statLabel}>confirmed</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txAmber}`}><Icon name="icon-clock" /><span className={s.statVal}>{counts.needs_details}</span></div><span className={s.statLabel}>need details</span></div>
+          <div className={s.statCard}><div className={`${s.statTop} ${s.txRed}`}><Icon name="icon-alert-triangle" /><span className={s.statVal}>{counts.needs_review}</span></div><span className={s.statLabel}>need review</span></div>
         </div>
 
         {review.length > 0 && (
