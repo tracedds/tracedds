@@ -44,11 +44,13 @@ fi
 
 log "=== tick start (dry_run=$DRY_RUN) ==="
 
-# --- 3. Usage gate ----------------------------------------------------------
-if ! "$here/usage-gate.sh" 2>>"$LOG"; then
+# --- 3. Usage gate → pick engine (claude if >50% left, else codex if >25%) ---
+engine="$("$here/usage-gate.sh" 2>>"$LOG")" || true
+if [ -z "${engine:-}" ]; then
   log "usage gate closed — skipping this tick."
   exit 0
 fi
+log "engine: $engine"
 
 # --- 4. Refresh the loop's own checkout ------------------------------------
 if [ ! -d "$REPO_DIR/.git" ]; then
@@ -159,7 +161,7 @@ if [ "$needs_db" = "1" ]; then
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
-  log "dry-run: would invoke Claude now (category=$category, $mode). Stopping before the model call."
+  log "dry-run: would invoke $engine now (category=$category, $mode). Stopping before the model call."
   exit 0
 fi
 
@@ -190,18 +192,30 @@ else
   prompt+="- Task source: AUTONOMOUS — follow the playbook above (category '$category')."$'\n'
 fi
 
-model_args=(); [ -n "${CLAUDE_MODEL:-}" ] && model_args=(--model "$CLAUDE_MODEL")
-
-log "invoking Claude (category=$category, $mode, timeout=${RUN_TIMEOUT}s)…"
-(
-  cd "$wt" || exit 1
-  [ "$needs_db" = "1" ] && export DATABASE_URL="$LOOP_DATABASE_URL"
-  timeout "$RUN_TIMEOUT" "$CLAUDE_BIN" -p "$prompt" \
-    --permission-mode bypassPermissions \
-    --output-format stream-json --verbose "${model_args[@]}"
-) >>"$LOOP_HOME/logs/run-$stamp.jsonl" 2>&1
-rc=$?
-log "Claude run exit=$rc (transcript: logs/run-$stamp.jsonl)"
+log "invoking $engine (category=$category, $mode, timeout=${RUN_TIMEOUT}s)…"
+if [ "$engine" = "codex" ]; then
+  cmodel=(); [ -n "${CODEX_MODEL:-}" ] && cmodel=(-m "$CODEX_MODEL")
+  (
+    cd "$wt" || exit 1
+    [ "$needs_db" = "1" ] && export DATABASE_URL="$LOOP_DATABASE_URL"
+    # codex reads the prompt from stdin; bypass approvals/sandbox for unattended work.
+    timeout "$RUN_TIMEOUT" "${CODEX_BIN:-codex}" exec \
+      --dangerously-bypass-approvals-and-sandbox "${cmodel[@]}" <<<"$prompt"
+  ) >>"$LOOP_HOME/logs/run-$stamp.codex.log" 2>&1
+  rc=$?
+  log "codex run exit=$rc (transcript: logs/run-$stamp.codex.log)"
+else
+  model_args=(); [ -n "${CLAUDE_MODEL:-}" ] && model_args=(--model "$CLAUDE_MODEL")
+  (
+    cd "$wt" || exit 1
+    [ "$needs_db" = "1" ] && export DATABASE_URL="$LOOP_DATABASE_URL"
+    timeout "$RUN_TIMEOUT" "$CLAUDE_BIN" -p "$prompt" \
+      --permission-mode bypassPermissions \
+      --output-format stream-json --verbose "${model_args[@]}"
+  ) >>"$LOOP_HOME/logs/run-$stamp.jsonl" 2>&1
+  rc=$?
+  log "claude run exit=$rc (transcript: logs/run-$stamp.jsonl)"
+fi
 
 # --- 8. Report --------------------------------------------------------------
 pr_url="$(cd "$wt" 2>/dev/null && gh pr view --json url --jq .url 2>/dev/null || true)"

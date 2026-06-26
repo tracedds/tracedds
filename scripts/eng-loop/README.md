@@ -4,7 +4,8 @@ An unattended loop (for the NUC) that continuously improves TraceDDS — **QA/de
 bug-fixing, and catalog data quality** — and **piles up pull requests** (and
 data-quality issues). Each PR is **one focused change** with **before/after
 verification** (screenshots for UI, a dry-run metrics diff for clustering). It is
-**usage-aware**: it only runs when more than 50% of your Claude Code limit remains.
+**usage-aware**: it prefers **Claude** when >50% of its limit remains, otherwise
+falls back to **Codex** when >25% of *its* limit remains, otherwise skips the tick.
 **It never merges, and never mutates prod data** — you review and merge.
 
 ## How it works
@@ -12,9 +13,10 @@ verification** (screenshots for UI, a dry-run metrics diff for clustering). It i
 A cron job runs `run-loop.sh` every few hours. Each tick:
 
 1. **flock** so two ticks never overlap; skips if a `PAUSE` file exists.
-2. **Usage gate** (`usage-gate.sh`): reads the *real* numbers from
-   `claude -p "/usage"` and proceeds only if remaining budget > threshold.
-   Fails **closed** (skips) if it can't read usage.
+2. **Usage gate → engine** (`usage-gate.sh`): reads Claude's real numbers from
+   `claude -p "/usage"`. If Claude has >50% remaining → run on **Claude**. Else, if
+   `CODEX_ENABLED`, read Codex's remaining from its TUI `/status` panel (scraped via
+   tmux in `usage-codex.sh`); if >25% → run on **Codex**. Else skip. Fails **closed**.
 3. Branches off the latest `origin/main` in an isolated git worktree.
 4. **Picks work**: a labeled issue (`eng-loop`/`qa`) if any, else the next
    **playbook category** in rotation (see `CATEGORIES`) — `qa-design`, `clustering`,
@@ -28,11 +30,14 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
 
 ### Why this design
 
-- **No usage API exists.** There is no `claude usage` subcommand and no JSON flag
-  for account limits. `claude -p "/usage"` is the only source of the real numbers,
-  so the gate parses its output. The headline session/week percentages are your
-  account-wide limit state (server-provided); the "what's contributing" breakdown
-  below them is local/approximate — the gate reads only the headline.
+- **No usage API exists (either CLI).** There is no `claude usage` subcommand/JSON
+  flag — `claude -p "/usage"` is the only source of the real numbers, so the gate
+  parses its output (the headline week/session % are account-wide; the breakdown
+  below is local/approximate — the gate reads only the headline). Codex is worse:
+  `codex exec` reports only per-invocation tokens, so we read its real 5h/weekly
+  "% left" from the interactive `/status` panel, driven inside **tmux**
+  (`expect` can't — codex's TUI needs a real terminal). Whichever engine wins runs
+  the same prompt+playbook; Codex has your gstack skills + the `$B` browse CLI too.
 - **cron, not `/loop`.** `/loop` needs one long-lived interactive session (context
   grows over days, one crash kills it, doesn't survive reboot). A fresh `claude -p`
   per tick is clean-context, crash-isolated, and reboot-safe.
@@ -45,7 +50,8 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
 |---|---|
 | `run-loop.sh` | One tick: lock → gate → worktree → pick work + category → run Claude → teardown → log |
 | `deploy-nuc.sh` | Deploy/update the loop on the NUC from your Mac (`npm run deploy:eng-loop`) |
-| `usage-gate.sh` | Read `/usage`, parse %, threshold check, fail-closed |
+| `usage-gate.sh` | Pick the engine: Claude if >50% left, else Codex if >25%, else skip |
+| `usage-codex.sh` | Read Codex remaining % from its TUI `/status` panel via tmux |
 | `loop-prompt.md` | Common rules (PR/issue, evidence, safety, auth) for every run |
 | `playbooks/qa-design.md` | UI QA / design / bug-fixing — screenshot evidence |
 | `playbooks/clustering.md` | Over/under-clustering fix — dry-run metrics-diff evidence |
@@ -78,13 +84,22 @@ need doing once on the host; the deploy prints a readiness check for them.
 
 ## NUC setup (one time)
 
-Prereqs on the NUC host: `git`, `node`/`npx`, `flock` (util-linux), `jq`, plus:
+Prereqs on the NUC host: `git`, `node`/`npx`, `flock` (util-linux), `jq`, and
+`tmux` (for the Codex usage check), plus:
 
 1. **Claude Code, installed and authenticated** (interactive login once):
    ```sh
    claude          # complete login, then /quit
    claude -p "/usage"   # sanity check: prints your real usage panel
    ```
+1b. **Codex CLI (optional fallback), installed + logged in** with your Codex Pro
+   account, and launched once so it finishes any self-update:
+   ```sh
+   codex login     # then launch `codex` once; in it, run /status to confirm limits
+   ```
+   The loop reads Codex limits by scraping `/status` in tmux. (Heads-up: verify
+   `codex` is authed as your **Pro** account — `/status` shows the account + plan;
+   set `CODEX_ENABLED=false` to disable the fallback entirely.)
 2. **GitHub CLI, authenticated** with rights to push branches + open PRs:
    ```sh
    gh auth status
@@ -166,9 +181,10 @@ scripts/prompt stay current — though it always branches off fresh `origin/main
   can't complete (with a comment) so it won't retry them forever. Data-quality
   problems it finds but can't safely auto-fix are filed as `data-quality` issues
   (deduped, at most one per tick) — which then feed back into its own queue.
-- **Tune:** `config.env` — `GATE_THRESHOLD`, `GATE_WINDOW` (`week`/`session`/`both`),
-  `LOOP_LABELS`, `CATEGORIES` (rotation), `BACKEND_TARGET`, `LOOP_DATABASE_URL`,
-  `PRICING_ENABLED`, `RUN_TIMEOUT`, `CLAUDE_MODEL`.
+- **Tune:** `config.env` — `GATE_THRESHOLD` (Claude %), `CODEX_ENABLED`/`CODEX_THRESHOLD`
+  (fallback), `GATE_WINDOW` (`week`/`session`/`both`), `LOOP_LABELS`, `CATEGORIES`
+  (rotation), `BACKEND_TARGET`, `LOOP_DATABASE_URL`, `PRICING_ENABLED`, `RUN_TIMEOUT`,
+  `CLAUDE_MODEL`/`CODEX_MODEL`.
 
 ## Notes / limitations
 

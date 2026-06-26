@@ -11,6 +11,10 @@ Two blocks below the rules tell you what to do this run:
 - **RUN CONTEXT** (at the very end) — your worktree (cwd), branch, dev URL, repo,
   and whether you're fixing a specific GitHub issue.
 
+You may be running under **Claude Code or Codex** — both have the gstack skills and
+the `$B` browse CLI available. If a `/skill` isn't wired into your runtime, invoke
+its binary directly (e.g. the gstack `browse` binary) — the procedure is the same.
+
 ## Non-negotiable rules
 
 1. **One focused change.** Smallest diff/finding that delivers a real quality win.

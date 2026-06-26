@@ -75,6 +75,8 @@ fi
 echo "--- readiness ---"
 bash -lc 'command -v claude >/dev/null' && echo "  claude: on PATH" || echo "  claude: NOT on PATH (login once: claude)"
 bash -lc 'command -v gh >/dev/null'     && echo "  gh: on PATH"     || echo "  gh: NOT on PATH"
+bash -lc 'command -v codex >/dev/null'  && echo "  codex: on PATH (fallback engine)" || echo "  codex: NOT on PATH (Codex fallback off until installed+login)"
+command -v tmux >/dev/null 2>&1         && echo "  tmux: present (needed for Codex usage check)" || echo "  tmux: MISSING (Codex fallback can't read usage — apt install tmux)"
 [ -f "$HOME/.eng-loop.secrets" ] && echo "  secrets: present (clustering enabled if LOOP_DATABASE_URL set)" \
                                   || echo "  secrets: none → loop runs qa-design + ocr only (no DB categories)"
 [ -f "$LOOP_HOME/PAUSE" ] && echo "  PAUSE file present — loop is paused (remove to run)." || true
