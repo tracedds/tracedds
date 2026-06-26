@@ -44,6 +44,7 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
 | File | Purpose |
 |---|---|
 | `run-loop.sh` | One tick: lock → gate → worktree → pick work + category → run Claude → teardown → log |
+| `deploy-nuc.sh` | Deploy/update the loop on the NUC from your Mac (`npm run deploy:eng-loop`) |
 | `usage-gate.sh` | Read `/usage`, parse %, threshold check, fail-closed |
 | `loop-prompt.md` | Common rules (PR/issue, evidence, safety, auth) for every run |
 | `playbooks/qa-design.md` | UI QA / design / bug-fixing — screenshot evidence |
@@ -54,6 +55,26 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
 | `ocr/cases.json` | Ground-truth corpus: raw OCR text → expected lot/expiry (grows over time) |
 | `config.env` | Tunables (threshold, window, labels, categories, paths, backend, DB, timeout) |
 | `README.md` | This file |
+
+## Deploy from your Mac (no git on the NUC)
+
+`npm run deploy:eng-loop` mirrors `deploy:airflow`: it ssh's to the NUC and
+clones-or-syncs a loop-owned checkout, makes the scripts executable, installs deps
+if needed, and (with `--cron`) installs the crontab entry — so you never run git on
+the NUC.
+
+```sh
+npm run deploy:eng-loop                # sync current branch's loop code to the NUC
+npm run deploy:eng-loop -- --backend   # + install backend deps (enables clustering)
+npm run deploy:eng-loop -- --cron      # + install/refresh the cron schedule
+npm run deploy:eng-loop -- --print     # just show what would run on the NUC
+```
+
+Env knobs: `NUC_HOST` (default `nuc`), `BRANCH` (default current branch),
+`CRON_SCHEDULE` (default `0 */4 * * *`). Re-run it any time to push updated
+scripts/playbooks. The cron entry runs via `bash -lc` so it gets your login PATH
+(`claude`, `gh`, `node`). The one-time prereqs below (auth, secrets, labels) still
+need doing once on the host; the deploy prints a readiness check for them.
 
 ## NUC setup (one time)
 
