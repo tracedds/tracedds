@@ -17,6 +17,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$here/config.env"
 # shellcheck source=/dev/null
 [ -f "$SECRETS_FILE" ] && . "$SECRETS_FILE"
+# Accept DB_URL as an alias for LOOP_DATABASE_URL (evaluated after secrets is sourced).
+LOOP_DATABASE_URL="${LOOP_DATABASE_URL:-${DB_URL:-}}"
 
 DRY_RUN=0
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
