@@ -9203,6 +9203,36 @@ th {
 .crl-cand-per { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
 .crl-cand-rec { display: inline-block; margin-top: 3px; padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--green) 12%, var(--surface)); color: var(--green); font-size: 10px; font-weight: 600; }
 
+.crl-offer-table { display: grid; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.crl-offer-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 8px;
+  min-height: 44px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.crl-offer-row:last-child { border-bottom: 0; }
+.crl-offer-row:hover { background: var(--surface-2); }
+.crl-offer-row.active { background: var(--blue-2); box-shadow: inset 3px 0 0 var(--blue); }
+.crl-offer-row.oos { cursor: not-allowed; background: var(--bg); }
+.crl-offer-row.oos .crl-offer-supplier,
+.crl-offer-row.oos .crl-offer-price,
+.crl-offer-row.oos .crl-offer-ea,
+.crl-offer-row.oos .crl-offer-stock { opacity: 0.55; }
+.crl-offer-row input { width: 16px; height: 16px; accent-color: var(--blue); }
+.crl-offer-supplier { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.crl-offer-supplier img { width: 22px; max-width: 36px; height: 18px; object-fit: contain; flex: 0 0 auto; border-radius: 2px; }
+.crl-offer-logo-fallback { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 auto; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 11px; font-weight: 600; }
+.crl-offer-supplier strong { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.crl-offer-price,
+.crl-offer-ea { color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.crl-offer-price { grid-column: 3; font-weight: 600; }
+.crl-offer-ea { grid-column: 2; color: var(--muted); font-weight: 500; text-align: left; }
+.crl-offer-stock { display: flex; grid-column: 3; justify-self: end; min-width: 0; }
+
 .crl-drawer-link { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--blue); font-weight: 500; font-size: 13px; }
 .crl-drawer-link .button-icon { width: 15px; height: 15px; }
 .crl-drawer-search { width: 100%; }
@@ -9334,6 +9364,26 @@ th {
 .m-match-right { display: grid; justify-items: end; gap: 2px; text-align: right; }
 .m-match-right strong { color: var(--ink); font-size: 14px; }
 .m-match-right small { color: var(--muted); font-size: 11px; }
+.m-offer-table { display: grid; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.m-offer-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.m-offer-row:last-child { border-bottom: 0; }
+.m-offer-row.active { background: var(--blue-2); box-shadow: inset 3px 0 0 var(--blue); }
+.m-offer-row.oos { opacity: 0.6; }
+.m-offer-row input { width: 17px; height: 17px; accent-color: var(--blue); }
+.m-offer-supplier { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.m-offer-supplier img { width: 22px; max-width: 34px; height: 18px; object-fit: contain; flex: 0 0 auto; border-radius: 2px; }
+.m-offer-supplier strong { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.m-offer-price { color: var(--ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.m-offer-ea { grid-column: 2; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.m-offer-stock { grid-column: 3; justify-self: end; }
 .m-itemdetails { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
 .m-itemdetails small { display: block; color: var(--muted); font-size: 11px; }
 .m-itemdetails strong { color: var(--ink); font-size: 15px; }

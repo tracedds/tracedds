@@ -268,6 +268,30 @@ function BestPriceStock({ candidate }) {
   return <CandidateStock availability={candidate?.availability} liveAvailable={candidate?.liveAvailable} />;
 }
 
+function CompactOfferRow({ candidate, index, selected, name, mobile = false, onSelect }) {
+  const oos = !isOrderable(candidate);
+  const logo = supplierLogoSrc(candidate.supplier);
+  const rowClass = mobile ? "m-offer-row" : "crl-offer-row";
+  const supplierClass = mobile ? "m-offer-supplier" : "crl-offer-supplier";
+  const priceClass = mobile ? "m-offer-price" : "crl-offer-price";
+  const eaClass = mobile ? "m-offer-ea" : "crl-offer-ea";
+  const stockClass = mobile ? "m-offer-stock" : "crl-offer-stock";
+  return (
+    <label className={`${rowClass} ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos}>
+      <input type="radio" name={name} checked={selected === index} disabled={oos} onChange={() => onSelect(index)} />
+      <span className={supplierClass}>
+        {logo ? <img src={logo} alt="" /> : <span className="crl-offer-logo-fallback">{(candidate.supplier || candidate.name || "S").slice(0, 1)}</span>}
+        <strong>{candidate.supplier || candidate.name}</strong>
+      </span>
+      <strong className={priceClass}>{mrPriceLabel(candidate.price)}</strong>
+      <span className={eaClass}>
+        {showPerEa(candidate.perEa, candidate.price) ? `$${mrEa(candidate.perEa)}/ea` : (!(candidate.price > 0) ? "Login required" : "")}
+      </span>
+      <span className={stockClass}><CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
+    </label>
+  );
+}
+
 export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate }) {
   const isResolve = mode === "resolve";
   const isView = mode === "view";
@@ -449,29 +473,23 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
                   </label>
                 );
               })()}
-              {candidates.map((candidate, index) => {
-                if (index === bestPriceIndex) return null;
-                const oos = !isOrderable(candidate);
-                return (
-                <label key={candidate.key ?? index} className={`crl-cand ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos}>
-                  <input type="radio" name="crl-cand" checked={selected === index} disabled={oos} onChange={() => setSelected(index)} />
-                  <ProductThumb image={candidate.image} alt={candidate.name} />
-                  <span className="crl-cand-info">
-                    <CandidateName supplier={candidate.supplier} name={candidate.name} canonicalName={row.canonicalName} productUrl={candidate.productUrl} />
-                    {candidate.packLabel && <small>{candidate.packLabel}</small>}
-                    <CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} />
-                  </span>
-                  <span className="crl-cand-right">
-                    <strong>{mrPriceLabel(candidate.price)}</strong>
-                    {showPerEa(candidate.perEa, candidate.price) && <span className="crl-cand-per">${mrEa(candidate.perEa)} / ea</span>}
-                    <span className="crl-cand-tags">
-                      {candidate.recommended && <span className="crl-cand-rec">Recommended</span>}
-                      {selected === index && !candidate.recommended && <span className="crl-cand-sel">Selected</span>}
-                    </span>
-                  </span>
-                </label>
-                );
-              })}
+              {candidates.some((_, index) => index !== bestPriceIndex) && (
+                <div className="crl-offer-table" aria-label="Other vendor offers">
+                  {candidates.map((candidate, index) => {
+                    if (index === bestPriceIndex) return null;
+                    return (
+                      <CompactOfferRow
+                        key={candidate.key ?? index}
+                        candidate={candidate}
+                        index={index}
+                        selected={selected}
+                        name="crl-cand"
+                        onSelect={setSelected}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <button className="crl-drawer-link" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
           </section>
@@ -853,18 +871,23 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
             </section>
             {candidates.length > 1 && (
               <section className="m-detail-sec">
-                <span className="m-detail-label">Other possible matches</span>
+                <span className="m-detail-label">Other vendors</span>
+                <div className="m-offer-table" aria-label="Other vendor offers">
                 {candidates.map((candidate, index) => {
                   if (index === bestPriceHeroIndex) return null;
-                  const oos = !isOrderable(candidate);
                   return (
-                  <label className={`m-match ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index}>
-                    <input type="radio" name="m-cand" checked={selected === index} disabled={oos} onChange={() => setSelected(index)} />
-                    <span className="m-match-info"><CandidateName supplier={candidate.supplier} name={candidate.name} canonicalName={row.canonicalName} productUrl={candidate.productUrl} />{candidate.packLabel && <small>{candidate.packLabel}</small>}<CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
-                    <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrPriceLabel(candidate.price)}</strong>{showPerEa(candidate.perEa, candidate.price) && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
-                  </label>
+                    <CompactOfferRow
+                      key={candidate.key ?? index}
+                      candidate={candidate}
+                      index={index}
+                      selected={selected}
+                      name="m-cand"
+                      mobile
+                      onSelect={setSelected}
+                    />
                   );
                 })}
+                </div>
               </section>
             )}
             <button className="crl-drawer-link m-detail-relink" type="button" onClick={() => { setSearching(true); search.setQuery(""); }}><Icon name="icon-search" className="button-icon" />Search for another product</button>
