@@ -48,7 +48,7 @@ function gs1Expiry(raw) {
 // label layouts: a year on the left is Y-M(-D); a year on the right is M(-D)-Y.
 export function normalizeExpiry(raw) {
   if (!raw) return null;
-  const t = String(raw).trim().toUpperCase().replace(/\s+/g, " ");
+  const t = String(raw).trim().toUpperCase().replace(/[;!]/g, "1").replace(/\s+/g, " ");
 
   // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
   let m = t.match(/\b(20\d{2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/);
@@ -208,10 +208,11 @@ export function parseLotExpiry(text, { barcode } = {}) {
     const candidates = [];
     let prevEnd = 0; // end of the last date seen — the marker window never crosses
     // it, so an earlier date's "MFG" tag can't leak onto the next date.
-    for (const m of flat.matchAll(/\b\d[\d\-/. ]{4,11}\d\b|\b[A-Z]{3}[-/. ]20\d{2}\b|\b20\d{2}[-/. ][A-Z]{3}\b/g)) {
-      const iso = normalizeExpiry(m[0]);
+    for (const m of flat.matchAll(/(?:^|[^A-Z0-9])(\d[\d\-/. ;!]{4,11}[\d;!])(?=$|[^A-Z0-9])|\b([A-Z]{3}[-/. ]20\d{2})\b|\b(20\d{2}[-/. ][A-Z]{3})\b/g)) {
+      const iso = normalizeExpiry(m[1] || m[2] || m[3]);
       if (!iso) continue;
-      const before = flat.slice(Math.max(prevEnd, m.index - 14), m.index);
+      const dateIndex = m.index + (m[0].length - (m[1] || m[2] || m[3]).length);
+      const before = flat.slice(Math.max(prevEnd, dateIndex - 14), dateIndex);
       prevEnd = m.index + m[0].length;
       if (/\b(?:REV|MFG|MFD|MANUF|MADE)/.test(before)) continue;
       candidates.push(iso);
