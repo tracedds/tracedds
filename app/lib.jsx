@@ -702,6 +702,25 @@ export function isQrUrl(code) {
   return false;
 }
 
+// A scanned QR that points back into the app at a specific location — our printed
+// cabinet/shelf placards encode `…/app/scan-sessions?location=<id>` (see
+// qrlabels.jsx). Scanning one in the scanner should switch which location scans
+// file into, so pull the location id back out. Returns null for any other URL QR
+// (a marketing link, the styleguide), which the scanner still skips as a
+// non-product.
+export function parseLocationQr(code) {
+  const raw = String(code || "").trim();
+  if (!raw) return null;
+  try {
+    // A base lets scheme-less placards (www.tracedds.com/…) parse too.
+    const url = new URL(raw, "https://tracedds.com");
+    if (!/\/app\/scan-sessions\/?$/.test(url.pathname)) return null;
+    return url.searchParams.get("location") || null;
+  } catch {
+    return null;
+  }
+}
+
 // Why a scan didn't resolve to a catalog product, phrased for the buyer. Turns a
 // silent "Needs review" into an explanation: a QR that's only a marketing URL, an
 // HIBC/GTIN we don't carry yet, or a code that isn't a product at all (an
