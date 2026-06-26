@@ -8,5 +8,6 @@
   { "name": "mon-yyyy-front",     "text": "EXP MAR 2028  LOT XJ4471",            "expectLot": "XJ4471", "expectExpiry": "2028-03-31" },
   { "name": "shape-fallback-lot", "text": "M607840",                             "expectLot": "M607840", "expectExpiry": null },
   { "name": "expiry-only-iso",    "text": "EXP 2026-09",                         "expectLot": null, "expectExpiry": "2026-09-30" },
-  { "name": "yyyymm-slash",       "text": "LOT 88123  EXP 2025/07",              "expectLot": "88123", "expectExpiry": "2025-07-31" }
+  { "name": "yyyymm-slash",       "text": "LOT 88123  EXP 2025/07",              "expectLot": "88123", "expectExpiry": "2025-07-31" },
+  { "name": "gs1-ai-ultradent",   "text": "(01)00883205106100\n(17)230622\n(10)BG7ZP\nREF-UP 1204", "expectLot": "BG7ZP", "expectExpiry": "2023-06-22" }
 ]

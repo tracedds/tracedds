@@ -34,6 +34,15 @@ function isoFrom(year, month, day) {
   return `${year}-${pad2(month)}-${pad2(d)}`;
 }
 
+// GS1 AI (17) prints expiry as YYMMDD. A day of 00 means month precision.
+function gs1Expiry(raw) {
+  const m = String(raw || "").match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return null;
+  const yy = +m[1];
+  const year = yy >= 90 ? 1900 + yy : 2000 + yy;
+  return isoFrom(year, +m[2], +m[3]);
+}
+
 // Parse one date-ish token into an ISO `YYYY-MM-DD`, or null. The 4-digit year
 // anchors the format, which avoids the MM/DD vs DD/MM ambiguity for the common
 // label layouts: a year on the left is Y-M(-D); a year on the right is M(-D)-Y.
@@ -165,6 +174,10 @@ export function parseLotExpiry(text, { barcode } = {}) {
   ) {
     lot = lotMatch[1];
   } else {
+    const aiLot = flat.match(/\(10\)\s*([A-Z0-9][A-Z0-9\-/]{0,19})/);
+    if (aiLot && !(barcode && sameCode(aiLot[1], barcode))) lot = aiLot[1];
+  }
+  if (!lot) {
     // No usable "LOT" marker — the box edges defeated the classifier entirely (on
     // a real Patterson label "LOT" read as "[ETI"), or the batch is printed bare.
     // Fall back to a batch-number SHAPE among the tokens. See findBatchToken.
@@ -177,6 +190,10 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // shelf is exactly what we want to surface.
   const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*([0-9A-Z][0-9A-Z\-/. ]{4,11})/);
   if (expKw) expiry = normalizeExpiry(expKw[1]);
+  if (!expiry) {
+    const aiExp = flat.match(/\(17\)\s*(\d{6})\b/);
+    if (aiExp) expiry = gs1Expiry(aiExp[1]);
+  }
   if (!expiry) {
     // No keyword (many labels mark expiry only with the ISO hourglass symbol,
     // which OCR can't read). Fall back to a bare date — but tightened, because a
