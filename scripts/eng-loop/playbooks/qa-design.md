@@ -3,6 +3,11 @@
 Goal: find the **single highest-value, low-risk** user-facing defect in the running
 app and fix it, verified with **before/after screenshots**.
 
+> **Any visual change MUST follow the "Visual fidelity (UI/visual work)" protocol in
+> the common rules** — read the target wireframe, use canonical tokens only, run the
+> anti-slop checklist, and iterate screenshot-vs-wireframe (do NOT one-shot). That
+> protocol is what keeps output faithful instead of cartoonish.
+
 #### 1. Bring up the app
 - Your cwd is the worktree. Start the dev server in the background: `npm run dev`
   (it runs on the port in RUN CONTEXT). Wait until it responds.
@@ -24,11 +29,15 @@ app and fix it, verified with **before/after screenshots**.
 
 #### 4. Fix it
 - Minimal, in-style change. Don't expand scope.
+- **Visual changes: run the compare loop** — screenshot, place beside the target
+  wireframe, fix the deltas, repeat (≥2 passes). Tokens only; anti-slop checklist.
 
 #### 5. Capture AFTER + verify
 - Re-render the same view/state, screenshot it the same way (`.../after.png`).
 - Confirm the fix works **and** that the surrounding view didn't regress (check the
   browser console for new errors).
+- For visual work, include the **target wireframe** alongside before/after and list
+  the deltas you closed against it.
 
 #### 6. Open the PR
 - Commit the evidence PNGs under `eng-loop-evidence/<stamp>/` **and** the code fix.

@@ -64,6 +64,37 @@ These need a logged-in session. Two safe options:
   `/api/auth/me` returns unauthenticated — screenshot promptly. **Never commit** any
   edit that neuters the client redirect; revert it before committing.
 
+## Visual fidelity (UI/visual work only)
+
+LLM-built UI drifts "cartoonish" when it's built from a description and never compared
+to the target. Don't do that. The target is **the wireframe + our design system** — you
+are matching the wireframe's layout/density/hierarchy rendered in **our tokens**, not
+inventing a look.
+
+1. **Look at the target first.** `Read` the wireframe image the issue references
+   (committed under `docs/design-targets/`). Open the live `/styleguide` and skim `DESIGN.md`.
+2. **Tokens only — no invented styles.** Use the canonical vars from `styles.css`:
+   `--ink #0b1533`, `--muted #67728a`, `--line #e4e9f2`, `--blue #155dfc`,
+   `--blue-2 #eef4ff`, `--surface`, `--surface-2`, `--shadow`, `--green/--gold/--red`.
+   **No hardcoded hex.** Reuse `ui.jsx`/`icons.jsx`. Follow DESIGN.md recipes: cards =
+   `--surface` + `1px --line` + one `--shadow`, `12–16px` radius; buttons rounded-rect
+   `10–12px`; inputs `1px --line`, `8–10px`, blue focus ring; drawer left-shadow
+   `-8px 0 28px rgba(11,21,51,.16)`.
+3. **Anti-slop checklist — fix these before shipping:** ❌ stacked/heavy shadows →
+   one `--shadow`; ❌ over-rounded / stadium-pill buttons → `10–12px` rounded-rect;
+   ❌ everything bold/oversized → lean weights (`600` titles, `700` only for real
+   numeric values, `tabular-nums`); ❌ three decorative cards → calm density, one
+   well-labeled card, whitespace from the spacing scale; ❌ gradients / emoji /
+   generic-blue-everything / heavy borders → restraint.
+4. **Compare loop — do NOT one-shot.** build → `$B screenshot` your view → put it
+   **beside the wireframe** → write the concrete deltas (layout, spacing, type
+   weight/size, color, radius, density, hierarchy) → fix → screenshot again → repeat
+   **until it matches**. Minimum two passes; one-shot output is the cartoonish output.
+5. **Designer's-eye pass.** Run a `/design-review`-style pass (spacing, hierarchy,
+   alignment, AI-slop) and fix what it finds.
+6. **Evidence includes the target.** The PR must show **before, after, AND the target
+   wireframe**, and list the deltas you closed against it.
+
 ## Clean up
 - Stop any dev server and the `/browse` daemon you started. Do not commit generated
   report dirs (e.g. `.medmkp/`).
