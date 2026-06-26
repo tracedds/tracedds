@@ -1,10 +1,11 @@
 # Engineering quality loop
 
-An unattended loop (for the NUC) that continuously improves TraceDDS — QA, design,
-and bug-fixing — and **piles up pull requests**. Each PR is **one focused change**
-with **before/after snapshot verification**. It is **usage-aware**: it only runs
-when more than 50% of your Claude Code limit remains. **It never merges** — you
-review and merge.
+An unattended loop (for the NUC) that continuously improves TraceDDS — **QA/design,
+bug-fixing, and catalog data quality** — and **piles up pull requests** (and
+data-quality issues). Each PR is **one focused change** with **before/after
+verification** (screenshots for UI, a dry-run metrics diff for clustering). It is
+**usage-aware**: it only runs when more than 50% of your Claude Code limit remains.
+**It never merges, and never mutates prod data** — you review and merge.
 
 ## How it works
 
@@ -15,11 +16,14 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
    `claude -p "/usage"` and proceeds only if remaining budget > threshold.
    Fails **closed** (skips) if it can't read usage.
 3. Branches off the latest `origin/main` in an isolated git worktree.
-4. **Picks work**: the oldest open issue labeled `eng-loop`/`qa`, else autonomous
-   discovery.
-5. Hands a **headless Claude run** (`loop-prompt.md`) the job: bring up the app,
-   find/repro one defect, capture **before**, fix it, capture **after**, and open
-   a PR embedding the evidence.
+4. **Picks work**: a labeled issue (`eng-loop`/`qa`) if any, else the next
+   **playbook category** in rotation (see `CATEGORIES`) — currently `qa-design`
+   and `clustering`, with `pricing` opt-in. Categories whose prerequisites aren't
+   met (e.g. no DB URL, harvester down) are skipped that tick.
+5. Hands a **headless Claude run** the common rules (`loop-prompt.md`) plus the
+   chosen **playbook** (`playbooks/*.md`): find one defect, capture **before**,
+   fix it, capture **after**, and open a PR — or, for a data-quality problem with
+   no safe code fix, file one `data-quality` issue.
 6. Tears down the worktree and logs the outcome (PR URL or "no PR").
 
 ### Why this design
@@ -39,10 +43,13 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
 
 | File | Purpose |
 |---|---|
-| `run-loop.sh` | One tick: lock → gate → worktree → pick work → run Claude → teardown → log |
+| `run-loop.sh` | One tick: lock → gate → worktree → pick work + category → run Claude → teardown → log |
 | `usage-gate.sh` | Read `/usage`, parse %, threshold check, fail-closed |
-| `loop-prompt.md` | The engineering procedure handed to the headless run |
-| `config.env` | Tunables (threshold, window, labels, paths, backend, timeout) |
+| `loop-prompt.md` | Common rules (PR/issue, evidence, safety, auth) for every run |
+| `playbooks/qa-design.md` | UI QA / design / bug-fixing — screenshot evidence |
+| `playbooks/clustering.md` | Over/under-clustering fix — dry-run metrics-diff evidence |
+| `playbooks/pricing.md` | Price/vendor coverage vs Net32 (opt-in) — files issues |
+| `config.env` | Tunables (threshold, window, labels, categories, paths, backend, DB, timeout) |
 | `README.md` | This file |
 
 ## NUC setup (one time)
@@ -59,25 +66,38 @@ Prereqs on the NUC host: `git`, `node`/`npx`, `flock` (util-linux), `jq`, plus:
    gh auth status
    ```
 3. **A dedicated checkout for the loop** (kept separate from `/opt/medmkp` so it
-   never races Airflow's deploy):
+   never races Airflow's deploy), with deps installed once so the `clustering`
+   playbook's worktrees can symlink them:
    ```sh
    mkdir -p ~/eng-loop
    git clone git@github.com:tracedds/tracedds.git ~/eng-loop/checkout
+   cd ~/eng-loop/checkout && npm install
+   npm install --prefix medusa-backend/apps/backend   # for products:match dry-run
    ```
-4. **Create the label** in the repo (once):
+4. **Create the labels** in the repo (once):
    ```sh
    gh label create eng-loop --repo tracedds/tracedds \
      --description "Worked by the engineering quality loop" --color 5319e7
+   gh label create data-quality --repo tracedds/tracedds \
+     --description "Catalog data-quality finding" --color fbca04
    ```
-5. **(Optional) test creds** for gated `/app/*` pages — keep out of git:
+5. **Secrets** (keep out of git) — the read-only prod DB URL is what enables the
+   `clustering` playbook; test creds are optional (gated `/app/*` QA):
    ```sh
    cat > ~/.eng-loop.secrets <<'EOF'
-   export LOOP_TEST_EMAIL=withloc@local.test
-   export LOOP_TEST_PASSWORD=...
+   export LOOP_DATABASE_URL='postgres://<readonly-prod-url>'   # enables clustering
+   export LOOP_TEST_EMAIL=withloc@local.test                   # optional
+   export LOOP_TEST_PASSWORD=...                               # optional
    EOF
    chmod 600 ~/.eng-loop.secrets
    ```
-6. Make the scripts executable: `chmod +x ~/eng-loop/checkout/scripts/eng-loop/*.sh`
+   Without `LOOP_DATABASE_URL` the `clustering` (and `pricing`) categories are
+   skipped and the loop runs `qa-design` only.
+6. **(Optional) enable the Net32 pricing playbook** once the harvester sidecar is
+   up: set `PRICING_ENABLED=true` (and `NET32_HARVESTER_URL` if not the default
+   `http://127.0.0.1:8791`) and add `pricing` to `CATEGORIES`. The loop pre-checks
+   the harvester each tick and skips pricing if it's unreachable.
+7. Make the scripts executable: `chmod +x ~/eng-loop/checkout/scripts/eng-loop/*.sh`
 
 Adjust `config.env` if your paths/labels differ (or export the same vars in cron).
 
@@ -118,16 +138,26 @@ scripts/prompt stay current — though it always branches off fresh `origin/main
 - **Logs:** `~/eng-loop/logs/YYYY-MM-DD.log` (human) and `run-<stamp>.jsonl` (full
   transcript per run).
 - **Feed it work:** open issues and label them `eng-loop`; they're drained before
-  autonomous discovery, oldest first. The loop removes the label from issues it
-  can't complete (with a comment) so it won't retry them forever.
+  the category rotation, oldest first. The loop removes the label from issues it
+  can't complete (with a comment) so it won't retry them forever. Data-quality
+  problems it finds but can't safely auto-fix are filed as `data-quality` issues
+  (deduped, at most one per tick) — which then feed back into its own queue.
 - **Tune:** `config.env` — `GATE_THRESHOLD`, `GATE_WINDOW` (`week`/`session`/`both`),
-  `LOOP_LABELS`, `BACKEND_TARGET`, `RUN_TIMEOUT`, `CLAUDE_MODEL`.
+  `LOOP_LABELS`, `CATEGORIES` (rotation), `BACKEND_TARGET`, `LOOP_DATABASE_URL`,
+  `PRICING_ENABLED`, `RUN_TIMEOUT`, `CLAUDE_MODEL`.
 
 ## Notes / limitations
 
 - Runs with `--permission-mode bypassPermissions` (required for unattended work).
-  Blast radius is contained: output is PRs only, work happens in a throwaway
+  Blast radius is contained: output is PRs/issues only, work happens in a throwaway
   worktree off `main`, and nothing is merged automatically.
+- **Data quality is read-only.** The `clustering`/`pricing` playbooks only ever run
+  the matching **dry-run** (`products:match` with no `--commit`) and read-only SQL.
+  The repo's `assertDestructiveDbOperationAllowed` guard also refuses any remote
+  `--commit`. A clustering PR is the *code change*; you run the prod commit/refresh
+  yourself, as you do today.
+- Gate default is `GATE_WINDOW=both` (runs only when both the weekly and 5-hour
+  windows have >50% remaining — the conservative choice).
 - Evidence PNGs live on the PR branch under `eng-loop-evidence/`; on squash-merge
   they'd land in `main`. If you want `main` pristine, a follow-up is to push
   evidence to an orphan `eng-loop-evidence` branch instead.

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Engineering quality loop — one tick.
 #
-# Usage-gated. Each tick: picks a unit of work (a labeled GitHub issue, else
-# autonomous QA/design discovery), spins up an isolated worktree off the latest
-# origin/main, and hands a headless Claude run the job of making ONE focused
-# improvement and opening a PR with before/after snapshot evidence.
-# It NEVER merges — you review and merge.
+# Usage-gated. Each tick: picks a unit of work (a labeled GitHub issue, else the
+# next autonomous playbook category in rotation — see CATEGORIES), spins up an
+# isolated worktree off the latest origin/main, and hands a headless Claude run
+# the job of making ONE focused improvement and opening a PR (or a data-quality
+# issue) with before/after evidence. It NEVER merges — you review and merge.
 #
 # Usage: run-loop.sh [--dry-run]
 #   --dry-run  do everything except the Claude model call (gate + work pick +
@@ -82,7 +82,46 @@ else
   mode="autonomous"; log "work: no labeled issues; autonomous discovery"
 fi
 
-# --- 6. Isolated worktree off origin/main ----------------------------------
+# --- 6. Choose a playbook category -----------------------------------------
+# A labeled issue overrides rotation. Otherwise round-robin CATEGORIES, honoring
+# each category's prerequisites (DB url; pricing toggle + harvester reachability).
+needs_db=0
+if [ -n "$issue_num" ]; then
+  category="issue"
+else
+  IFS=',' read -ra _cats <<< "$CATEGORIES"
+  cats=()
+  for c in "${_cats[@]}"; do
+    c="$(printf '%s' "$c" | xargs)"; [ -n "$c" ] || continue
+    [ "$c" = "pricing" ] && [ "${PRICING_ENABLED:-false}" != "true" ] && continue
+    cats+=("$c")
+  done
+  [ "${#cats[@]}" -gt 0 ] || { log "no enabled categories — skipping."; exit 0; }
+  last="$(cat "$LOOP_HOME/.rotation" 2>/dev/null || true)"
+  next_idx=0
+  for i in "${!cats[@]}"; do [ "${cats[$i]}" = "$last" ] && next_idx=$(( (i+1) % ${#cats[@]} )); done
+  category=""
+  for try in $(seq 0 $(( ${#cats[@]} - 1 ))); do
+    cand="${cats[$(( (next_idx + try) % ${#cats[@]} ))]}"
+    case "$cand" in
+      clustering)
+        [ -z "${LOOP_DATABASE_URL:-}" ] && { log "skip clustering: LOOP_DATABASE_URL unset"; continue; } ;;
+      pricing)
+        [ -z "${LOOP_DATABASE_URL:-}" ] && { log "skip pricing: LOOP_DATABASE_URL unset"; continue; }
+        curl -sS -o /dev/null -m 5 "$NET32_HARVESTER_URL" 2>/dev/null \
+          || { log "skip pricing: harvester $NET32_HARVESTER_URL unreachable"; continue; } ;;
+    esac
+    category="$cand"; break
+  done
+  [ -n "$category" ] || { log "no category's prerequisites met this tick — skipping."; exit 0; }
+  echo "$category" > "$LOOP_HOME/.rotation"
+fi
+case "$category" in clustering|pricing) needs_db=1 ;; esac
+# An issue could touch any area — give issue runs backend access when we have a DB URL.
+[ "$category" = "issue" ] && [ -n "${LOOP_DATABASE_URL:-}" ] && needs_db=1
+log "category: $category"
+
+# --- 7. Isolated worktree off origin/main ----------------------------------
 stamp="$(date +%Y%m%d-%H%M%S)"
 branch="eng-loop-${stamp}"          # no slash → clean raw.githubusercontent URLs
 wt="$LOOP_HOME/worktrees/$stamp"
@@ -107,34 +146,60 @@ git worktree add -b "$branch" "$wt" "$base_sha" >/dev/null 2>&1 \
 LOOP_PORT="$(sed -n 's/^MEDMKP_PORT=//p' "$wt/.env.local" 2>/dev/null | head -1)"
 log "worktree=$wt branch=$branch port=${LOOP_PORT:-?} backend=$BACKEND_TARGET"
 
+# Backend categories (clustering/pricing) need installed deps + a read-only DB
+# URL. Symlink the base checkout's node_modules (avoids a multi-minute install)
+# and pass DATABASE_URL through to the run.
+db_env=()
+if [ "$needs_db" = "1" ]; then
+  for nm in "node_modules" "medusa-backend/apps/backend/node_modules"; do
+    [ -d "$REPO_DIR/$nm" ] && [ ! -e "$wt/$nm" ] && ln -s "$REPO_DIR/$nm" "$wt/$nm" 2>/dev/null || true
+  done
+  db_env=(DATABASE_URL="$LOOP_DATABASE_URL")
+  log "backend category: symlinked node_modules; DATABASE_URL set (read-only prod)"
+fi
+
 if [ "$DRY_RUN" = "1" ]; then
-  log "dry-run: would invoke Claude now ($mode). Stopping before the model call."
+  log "dry-run: would invoke Claude now (category=$category, $mode). Stopping before the model call."
   exit 0
 fi
 
 # --- 7. Hand the job to a headless Claude run ------------------------------
 prompt="$(cat "$here/loop-prompt.md")"
-prompt+=$'\n\n---\nRUN CONTEXT (injected by run-loop.sh):\n'
+prompt+=$'\n\n## THIS RUN\'S PLAYBOOK\n\n'
+if [ "$category" = "issue" ]; then
+  prompt+="You are fixing a specific GitHub issue (see RUN CONTEXT). Read it, decide which "
+  prompt+="playbook applies, and consult scripts/eng-loop/playbooks/ for technique: "
+  prompt+="clustering.md (matching/cluster issues), pricing.md (price/vendor), "
+  prompt+="qa-design.md (UI/design/bug)."$'\n'
+else
+  prompt+="$(cat "$here/playbooks/$category.md")"$'\n'
+fi
+prompt+=$'\n---\nRUN CONTEXT (injected by run-loop.sh):\n'
+prompt+="- Category: $category"$'\n'
 prompt+="- Worktree (your cwd): $wt"$'\n'
 prompt+="- Dev URL once you start it: http://localhost:${LOOP_PORT:-3000}"$'\n'
 prompt+="- Branch (already created & checked out): $branch"$'\n'
 prompt+="- Repo: $LOOP_REPO"$'\n'
 prompt+="- Evidence raw-URL base: https://raw.githubusercontent.com/$LOOP_REPO/$branch/"$'\n'
+[ "$needs_db" = "1" ] && prompt+="- DATABASE_URL: set in your env (READ-ONLY prod — never --commit)."$'\n'
 if [ -n "$issue_num" ]; then
   prompt+="- Task source: GitHub issue #$issue_num — fix this specific issue."$'\n'
   prompt+="- Issue title: $issue_title"$'\n'
   prompt+="- Issue body:"$'\n'"$issue_body"$'\n'
 else
-  prompt+="- Task source: AUTONOMOUS — discover the single highest-value QA/design/bug fix."$'\n'
+  prompt+="- Task source: AUTONOMOUS — follow the playbook above (category '$category')."$'\n'
 fi
 
 model_args=(); [ -n "${CLAUDE_MODEL:-}" ] && model_args=(--model "$CLAUDE_MODEL")
 
-log "invoking Claude ($mode, timeout=${RUN_TIMEOUT}s)…"
-( cd "$wt" && timeout "$RUN_TIMEOUT" "$CLAUDE_BIN" -p "$prompt" \
+log "invoking Claude (category=$category, $mode, timeout=${RUN_TIMEOUT}s)…"
+(
+  cd "$wt" || exit 1
+  [ "$needs_db" = "1" ] && export DATABASE_URL="$LOOP_DATABASE_URL"
+  timeout "$RUN_TIMEOUT" "$CLAUDE_BIN" -p "$prompt" \
     --permission-mode bypassPermissions \
-    --output-format stream-json --verbose "${model_args[@]}" ) \
-  >>"$LOOP_HOME/logs/run-$stamp.jsonl" 2>&1
+    --output-format stream-json --verbose "${model_args[@]}"
+) >>"$LOOP_HOME/logs/run-$stamp.jsonl" 2>&1
 rc=$?
 log "Claude run exit=$rc (transcript: logs/run-$stamp.jsonl)"
 
@@ -143,6 +208,6 @@ pr_url="$(cd "$wt" 2>/dev/null && gh pr view --json url --jq .url 2>/dev/null ||
 if [ -n "$pr_url" ]; then
   log "PR opened: $pr_url"
 else
-  log "no PR this tick (no actionable improvement, or aborted for lack of evidence)."
+  log "no PR this tick (quiet tick, a data-quality issue may have been filed, or aborted for lack of evidence)."
 fi
 log "=== tick end ==="
