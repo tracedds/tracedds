@@ -4,6 +4,10 @@ Goal: find ONE **visual/design** defect versus the live `/styleguide` + `DESIGN.
 spacing, alignment, hierarchy, off-token colors, AI-slop, overflow/clipping — and fix it,
 verified with **before/after screenshots**. (Broken behavior belongs to the `qa` lane.)
 
+> **Follow the "Visual fidelity (UI/visual work)" protocol in the common rules** for
+> every change here: read the target wireframe, canonical tokens only, anti-slop
+> checklist, and the screenshot-vs-wireframe compare loop (≥2 passes — never one-shot).
+
 #### 1. Bring up the app
 - Your cwd is the worktree. `npm run dev` (background) on the RUN CONTEXT port; wait until it responds.
 - Use `/browse`: `$B goto <url>`, `$B screenshot <path>`, `$B snapshot -a -o <path>` (annotated),
