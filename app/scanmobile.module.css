@@ -279,10 +279,6 @@
 .locRowIcon { color: #2F5BD6; flex-shrink: 0; display: inline-flex; }
 .locRowIcon svg { width: 26px; height: 26px; }
 .locRowName { flex: 1; min-width: 0; font-size: 16px; font-weight: 500; color: #14202E; }
-/* Mode rows pair a label with a one-line description. */
-.modeRowBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.modeRowBody .locRowName { flex: 0 0 auto; }
-.modeRowDesc { font-size: 12.5px; color: #6a7889; line-height: 1.3; }
 .locRowChevron { color: #b6c0cd; flex-shrink: 0; }
 .locRowChevron svg { width: 19px; height: 19px; }
 
@@ -871,79 +867,7 @@
 .attnChevron { color: #cbb487; flex-shrink: 0; }
 .attnChevron svg { width: 20px; height: 20px; }
 
-/* ── Mode picker (Screen 1) ─────────────────────────────────────────── */
-.modeCards { display: flex; flex-direction: column; gap: 12px; }
-.modeCard {
-  display: flex; flex-direction: column; gap: 12px;
-  background: #fff; border: 2px solid #e6ebf2; border-radius: 18px;
-  padding: 16px; text-align: left; cursor: pointer; width: 100%;
-  transition: border-color 0.12s, background 0.12s;
-}
-.modeCard:active { background: #f7f9fc; }
-/* Title + forward chevron row (tap the card to advance) */
-.modeCardHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.modeCardChevron { color: #b6c0cd; flex-shrink: 0; }
-.modeCardChevron svg { width: 20px; height: 20px; }
-.modeCardTitle { font-size: 16px; font-weight: 700; color: var(--ink); }
-/* Illustration + content side-by-side */
-.modeCardBody { display: flex; align-items: flex-start; gap: 14px; }
-.modeCardIllustration {
-  font-size: 50px; line-height: 1;
-  width: 74px; height: 74px; min-width: 74px;
-  display: flex; align-items: center; justify-content: center;
-  background: #f3f5f8; border-radius: 14px;
-}
-.modeCardContent { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.modeCardDesc { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.45; }
-.modeCardPills { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-.modeCardPillsLabel { font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; width: 100%; margin-bottom: 1px; }
-.modeCardPill {
-  font-size: 11.5px; font-weight: 500; color: var(--blue);
-  background: #e8efff; border-radius: 999px; padding: 2px 9px;
-}
-.modeCardPillOpt { color: var(--muted); background: #eef1f6; }
-.modeCardStatuses { display: flex; flex-wrap: wrap; gap: 5px; }
-.modeCardStatus {
-  font-size: 11.5px; font-weight: 500; color: #0a8553;
-  background: #e3f6ec; border-radius: 999px; padding: 1px 8px;
-}
-.infoBanner {
-  display: flex; align-items: flex-start; gap: 8px;
-  background: #eef3ff; color: #2f5bd6; border-radius: 12px;
-  padding: 12px 14px; font-size: 13px; line-height: 1.5;
-}
-.infoBanner svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
-
-/* ── In-camera mode badge (shows selected mode, not a toggle) ───────── */
-/* Read-only mode identity. Colored by mode (blue Receiving / teal Shelf Audit),
-   no caret — distinguishes it from the interactive, outlined location pill. */
-.modeBadge {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 13px; font-weight: 500;
-  border-radius: 999px;
-  padding: 7px 11px;
-  white-space: nowrap;
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-}
-.modeBadge svg { width: 15px; height: 15px; }
-.modeBadgeReceiving {
-  background: rgba(55, 138, 221, 0.22);
-  border: 1px solid rgba(55, 138, 221, 0.55);
-  color: #9cc4f2;
-}
-.modeBadgeAudit {
-  background: rgba(29, 158, 117, 0.22);
-  border: 1px solid rgba(29, 158, 117, 0.55);
-  color: #7fd9bf;
-}
-/* The badge is a tappable selector (button element), so inherit the app font
-   and add a caret. */
-.modeBadgeBtn { font-family: inherit; cursor: pointer; }
-.modeBadgeCaret { display: inline-flex; opacity: 0.85; margin-left: -1px; }
-.modeBadgeCaret svg { width: 14px; height: 14px; }
-
-/* ── Mode-specific bottom sheets ────────────────────────────────────── */
+/* ── Post-scan bottom sheets ────────────────────────────────────────── */
 .modeSheet {
   position: absolute; inset: 0; z-index: 80;
   display: flex; flex-direction: column; justify-content: flex-end;

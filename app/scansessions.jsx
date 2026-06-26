@@ -90,12 +90,10 @@ export function ScanSessionsView({ startLocationId, onOpenSession, onNavigate, o
     return { items, locations: locs };
   }, [locations]);
 
-  async function startFor(location, captureType) {
+  async function startFor(location) {
     setStarting(location?.id || "__new__");
     try {
-      const body = {};
-      if (location?.id) body.location_id = location.id;
-      if (captureType) body.capture_type = captureType;
+      const body = location?.id ? { location_id: location.id } : {};
       const { session } = await traceApi.startSession(body);
       onOpenSession(session.id);
     } catch (err) {
@@ -311,8 +309,10 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
     try {
       const { product, scanned, kind } = await scanLookup(code);
       const payload = scanLinePayload(code, product, scanned);
-      const { line, counts } = await traceApi.addLine(sessionId, payload);
-      const merged = { ...line, _offer: product?.best_offer || product?.offers?.[0] || null };
+      const { line, counts, inventory_action } = await traceApi.addLine(sessionId, payload);
+      // inventory_action ("received" | "confirmed") drives the post-scan drawer
+      // header so it can say what the scan did without the buyer choosing a mode.
+      const merged = { ...line, inventory_action, _offer: product?.best_offer || product?.offers?.[0] || null };
       // A shelf-audit re-scan returns the existing line (the backend dedups the
       // same item+lot), so replace it in place and float it to the top rather
       // than stacking a duplicate row; a fresh item just prepends.
@@ -367,8 +367,8 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
     if (!active) return;
     try {
       const payload = scanLinePayload(null, product, null);
-      const { line, counts } = await traceApi.addLine(sessionId, payload);
-      const merged = { ...line, _offer: product?.best_offer || product?.offers?.[0] || null };
+      const { line, counts, inventory_action } = await traceApi.addLine(sessionId, payload);
+      const merged = { ...line, inventory_action, _offer: product?.best_offer || product?.offers?.[0] || null };
       setLines((prev) => [merged, ...prev.filter((l) => l.id !== merged.id)]);
       setSession((prev) => (prev ? { ...prev, counts } : prev));
       setPendingLine(merged);
@@ -430,20 +430,6 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
     }
   }
 
-  // Switch the record type from the scanner's mode selector. Each mode is its
-  // own session (receiving is location-less; an audit is scoped to a location),
-  // so start/resume the matching session and navigate into it.
-  async function switchMode(mode, location) {
-    try {
-      const body = { capture_type: mode };
-      if (mode !== "receiving" && location?.id) body.location_id = location.id;
-      const { session: next } = await traceApi.startSession(body);
-      onNavigate?.(`/app/scan-sessions/${next.id}`);
-    } catch {
-      onToast?.("Couldn't switch scan mode.");
-    }
-  }
-
   const counts = session?.counts || { scanned: 0, confirmed: 0, needs_details: 0, needs_review: 0 };
   const traced = useMemo(() => lines.filter((l) => l.lot_number && l.expiration_date).length, [lines]);
   const tracePct = counts.scanned ? Math.round((traced / counts.scanned) * 100) : 0;
@@ -467,7 +453,6 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
         counts={counts}
         active={active}
         pendingLine={pendingLine}
-        captureType={session.capture_type || "shelf_audit"}
         ocrBusy={Boolean(ocrMatch?.busy)}
         ocrSuggestion={ocrMatch && !ocrMatch.busy ? { lot: ocrMatch.lot, expiry: ocrMatch.expiry } : null}
         onScan={handleScan}
@@ -479,7 +464,6 @@ export function ScanSessionView({ sessionId, onBack, onNavigate, onToast }) {
         onClearPending={() => setPendingLine(null)}
         locations={locations}
         onSwitchLocation={switchLocation}
-        onSwitchMode={switchMode}
         onNavigate={onNavigate}
       />
     );

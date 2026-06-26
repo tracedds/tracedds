@@ -101,17 +101,14 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
     created = await medmkp.createScanSessionLines({ session_id: session.id, ...fields })
   }
 
-  const inventoryItemId = await syncInventoryFromLine(
-    medmkp,
-    created,
-    session.location_id,
-    actor,
-    session.capture_type ?? null
-  )
-  const line = inventoryItemId
-    ? await medmkp.updateScanSessionLines({ id: created.id, inventory_item_id: inventoryItemId })
+  const sync = await syncInventoryFromLine(medmkp, created, session.location_id, actor)
+  const line = sync
+    ? await medmkp.updateScanSessionLines({ id: created.id, inventory_item_id: sync.id })
     : created
 
+  // inventory_action tells the scanner whether this scan filed a new lot
+  // ("received") or confirmed one already on the shelf ("confirmed"), so the
+  // post-scan drawer can label it without the buyer choosing a mode.
   const lines = await medmkp.listScanSessionLines({ session_id: session.id })
-  res.status(201).json({ line, counts: sessionCounts(lines as any[]) })
+  res.status(201).json({ line, counts: sessionCounts(lines as any[]), inventory_action: sync?.action ?? null })
 }

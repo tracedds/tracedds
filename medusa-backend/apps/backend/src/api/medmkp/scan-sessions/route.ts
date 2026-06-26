@@ -2,7 +2,7 @@ import type { AuthenticatedMedusaRequest, MedusaResponse } from "@medusajs/frame
 import { MEDMKP_MODULE } from "../../../modules/medmkp"
 import type MedMKPModuleService from "../../../modules/medmkp/service"
 import { requirePractice } from "../../../utils/practice"
-import { loadOwnedLocation, CAPTURE_TYPES } from "../../../utils/inventory"
+import { loadOwnedLocation } from "../../../utils/inventory"
 import { SESSION_STATUSES, serializeSession } from "../../../utils/scan-sessions"
 
 // GET /medmkp/scan-sessions — the practice's scan sessions (optionally filtered
@@ -51,42 +51,15 @@ export async function POST(req: AuthenticatedMedusaRequest, res: MedusaResponse)
 
   const medmkp = req.scope.resolve<MedMKPModuleService>(MEDMKP_MODULE)
   const body = (req.body ?? {}) as Record<string, any>
-  const captureType =
-    typeof body.capture_type === "string" &&
-    (CAPTURE_TYPES as readonly string[]).includes(body.capture_type)
-      ? body.capture_type
-      : "shelf_audit"
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null
   const actor = req.auth_context?.actor_id ?? null
 
-  // Receiving isn't tied to one location — a delivery fans out to many shelves,
-  // so location is captured per line, not on the session. Resume an open
-  // receiving session rather than fork a half-logged delivery.
-  if (captureType === "receiving") {
-    const open = (await medmkp.listScanSessions({
-      practice_id: practiceId,
-      capture_type: "receiving",
-      status: "active",
-    })) as any[]
-    if (open.length) {
-      const lines = await medmkp.listScanSessionLines({ session_id: open[0].id })
-      res.status(200).json({ session: serializeSession(open[0], lines as any[], null), resumed: true })
-      return
-    }
-    const created = await medmkp.createScanSessions({
-      practice_id: practiceId,
-      location_id: null,
-      name,
-      status: "active",
-      capture_type: "receiving",
-      started_by: actor,
-    })
-    res.status(201).json({ session: serializeSession(created, [], null), resumed: false })
-    return
-  }
-
-  // Shelf audit is an audit of one location: require it, and keep at most one
-  // active session per location so the count isn't forked.
+  // One scanner, no mode: a session is scoped to one location. Scanning files
+  // items there — a lot not yet on the shelf is received, a lot already on file
+  // is confirmed present (syncInventoryFromLine infers which). Require the
+  // location and keep at most one active session per location so the count isn't
+  // forked. capture_type stays "shelf_audit" as the dedup flag; the
+  // received-vs-confirmed distinction now lives per evidence row, not here.
   const locationId = typeof body.location_id === "string" ? body.location_id.trim() : ""
   if (!locationId) {
     res.status(422).json({ error: "location_id is required." })

@@ -71,13 +71,8 @@ export async function PATCH(req: AuthenticatedMedusaRequest, res: MedusaResponse
     syncLocationId = saved.location_id
   }
 
-  const inventoryItemId = await syncInventoryFromLine(
-    medmkp,
-    saved,
-    syncLocationId,
-    actor,
-    session.capture_type ?? null
-  )
+  const sync = await syncInventoryFromLine(medmkp, saved, syncLocationId, actor)
+  const inventoryItemId = sync?.id ?? null
   let line2 = saved
   if (inventoryItemId !== saved.inventory_item_id) {
     line2 = await medmkp.updateScanSessionLines({ id: saved.id, inventory_item_id: inventoryItemId })
@@ -89,7 +84,7 @@ export async function PATCH(req: AuthenticatedMedusaRequest, res: MedusaResponse
   }
 
   const lines = await medmkp.listScanSessionLines({ session_id: session.id })
-  res.json({ line: line2, counts: sessionCounts(lines as any[]) })
+  res.json({ line: line2, counts: sessionCounts(lines as any[]), inventory_action: sync?.action ?? null })
 }
 
 // DELETE /medmkp/scan-lines/:id — remove a mis-scan. While the session is still
