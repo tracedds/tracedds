@@ -6,9 +6,11 @@ import { formatTraceDate, isQrUrl, SWIPE_REVEAL } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
 
-// Mobile scan flow. Two scan modes set intent before the camera opens:
-//   Receiving   — new shipment arrives; captures lot/expiry/supplier/qty/date
-//   Shelf Audit — verify items already on shelves; records presence/status
+// Mobile scan flow. One scanner, no modes: pick a location, then scan. Each scan
+// files to that location — a lot not yet on the shelf is received, a lot already
+// on file is confirmed present (the backend infers which; the post-scan drawer
+// labels it). Running low? That's the reorder scanner at /app/scan, reached from
+// the reorder list — a separate surface, not a mode here.
 // Desktop keeps its two-column layout in scansessions.jsx; this module is the
 // phone surface those views hand off to.
 
@@ -22,31 +24,6 @@ const TYPE_META = {
   other: { icon: "icon-map-pin", tint: s.tBlue },
 };
 const typeMeta = (type) => TYPE_META[type] || TYPE_META.other;
-
-const SCAN_MODE_META = {
-  receiving: {
-    label: "Receiving",
-    emoji: "📦",
-    emojiLabel: "Cardboard box",
-    desc: "Use when a new shipment arrives.",
-    records: ["Lot", "Expiry", "Received date", "Location"],
-  },
-  shelf_audit: {
-    label: "Shelf Audit",
-    emoji: "📋",
-    emojiLabel: "Clipboard",
-    desc: "Use when verifying items already in the office.",
-    records: ["Lot", "Expiry", "Location", "Status"],
-    statuses: ["Present", "Moved", "Not found", "Removed"],
-  },
-  reorder: {
-    label: "Reorder",
-    emoji: "🛒",
-    emojiLabel: "Shopping cart",
-    desc: "Use to add items running low to your reorder list.",
-    records: ["Reorder list", "Lot", "Expiry"],
-  },
-};
 
 function relTime(iso) {
   if (!iso) return "";
@@ -76,54 +53,13 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// ── Mode picker card ──────────────────────────────────────────────────
-
-function ModeCard({ value, onSelect, meta }) {
-  return (
-    <button
-      type="button"
-      className={s.modeCard}
-      onClick={() => onSelect(value)}
-    >
-      <div className={s.modeCardHeader}>
-        <span className={s.modeCardTitle}>{meta.label}</span>
-        <span className={s.modeCardChevron}><Icon name="icon-chevron-right" /></span>
-      </div>
-      <div className={s.modeCardBody}>
-        <span className={s.modeCardIllustration} role="img" aria-label={meta.emojiLabel}>
-          {meta.emoji}
-        </span>
-        <div className={s.modeCardContent}>
-          <p className={s.modeCardDesc}>{meta.desc}</p>
-          <div className={s.modeCardPills}>
-            <span className={s.modeCardPillsLabel}>Records</span>
-            {meta.records.map((r) => (
-              <span key={r} className={s.modeCardPill}>{r}</span>
-            ))}
-            {meta.optional?.map((r) => (
-              <span key={r} className={`${s.modeCardPill} ${s.modeCardPillOpt}`}>{r}</span>
-            ))}
-          </div>
-          {meta.statuses && (
-            <div className={s.modeCardStatuses}>
-              {meta.statuses.map((st) => (
-                <span key={st} className={s.modeCardStatus}>{st}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-// ── Screens 1 + 2: Start scan / Choose mode / Choose location ────────
+// ── Screens 1 + 2: Start scan / Choose location ──────────────────────
 
 export function MobileScanStart({
   loading, sessions, locations, starting, startLocationId, needsAttention,
   onOpenSession, onStart, onNavigate,
 }) {
-  // "home" | "choose-scan-mode" | "audit-scanner"
+  // "home" | "choose-location"
   const [step, setStep] = useState("home");
 
   // Deep-link from a printed location QR: the URL carries the location id, so
@@ -132,15 +68,14 @@ export function MobileScanStart({
     () => (startLocationId ? (locations || []).find((l) => l.id === startLocationId) : null),
     [startLocationId, locations],
   );
-  // Scanning a label drops straight into the camera: auto-start (or resume) a
-  // shelf-audit session for that location — Shelf Audit is the default, and the
-  // scanner's mode selector switches to Receiving. Fire once.
+  // Scanning a label drops straight into the camera: auto-start (or resume) the
+  // session for that location. Fire once.
   const autoStarted = useRef(false);
   useEffect(() => {
     if (autoStarted.current) return;
     if (startLocationId && scopedLocation) {
       autoStarted.current = true;
-      onStart(scopedLocation, "shelf_audit");
+      onStart(scopedLocation);
     }
   }, [startLocationId, scopedLocation, onStart]);
 
@@ -156,73 +91,30 @@ export function MobileScanStart({
     [sessions],
   );
 
-  // Tapping a mode card moves forward immediately (no Continue step — same
-  // single-tap pattern as the location rows below).
-  function chooseMode(value) {
-    if (starting) return;
-    // Reorder scans into the reorder list (no session, no location) — hand off
-    // to the dedicated /app/scan scanner.
-    if (value === "reorder") { onNavigate?.("/app/scan"); return; }
-    // Receiving fans out to many shelves, so it doesn't pick one location up
-    // front — location is captured per item in the sheet.
-    if (value === "receiving") { onStart(null, "receiving"); return; }
-    // Shelf Audit goes straight to the scanner; the location is picked there
-    // (an audit is scoped to one location, so it's the first action).
-    setStep("audit-scanner");
-  }
-
   // ── Screen: deep-link from a printed QR — auto-starting into the camera ──
-  // Hold on a quiet loading screen while the shelf-audit session is created and
-  // we navigate into the scanner. A stale/deleted location id falls through to
-  // the normal start screen rather than dead-ending.
+  // Hold on a quiet loading screen while the session is created and we navigate
+  // into the scanner. A stale/deleted location id falls through to the normal
+  // start screen rather than dead-ending.
   if (startLocationId && (scopedLocation || loading)) {
     return (
       <div className={s.screen}>
         <div className={`${s.body} ${s.bodyTop}`}>
-          <div className={s.emptyNote}>{scopedLocation ? "Starting shelf audit…" : "Loading…"}</div>
+          <div className={s.emptyNote}>{scopedLocation ? "Starting scan…" : "Loading…"}</div>
         </div>
       </div>
     );
   }
 
-  // ── Screen: choose scan mode ────────────────────────────────────────
-  if (step === "choose-scan-mode") {
+  // ── Screen: choose location, then straight into the scanner ─────────
+  // No scan "mode" to pick first — a session is scoped to one location, so
+  // choosing the location is the first (and only) thing before scanning.
+  if (step === "choose-location") {
     return (
-      <div className={s.screen}>
-        <header className={s.topbar}>
-          <button type="button" className={s.iconBtn} onClick={() => setStep("home")} aria-label="Back">
-            <Icon name="icon-chevron-left" />
-          </button>
-          <span className={s.barTitle}>Scan mode</span>
-        </header>
-        <div className={s.body}>
-          <div className={s.intro}>
-            <p className={s.sub}>Choose how this scan should be recorded.</p>
-          </div>
-
-          <div className={s.modeCards}>
-            {Object.entries(SCAN_MODE_META).map(([value, meta]) => (
-              <ModeCard key={value} value={value} onSelect={chooseMode} meta={meta} />
-            ))}
-          </div>
-
-          <div className={s.infoBanner}>
-            <Icon name="icon-info" />
-            Same scanner, different record type. Choose what matters most right now.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Screen: shelf-audit scanner (location picked here, in the scanner) ──
-  if (step === "audit-scanner") {
-    return (
-      <MobileAuditLocationGate
+      <MobileScanLocationGate
         locations={locations}
         starting={starting}
-        onPick={(loc) => onStart(loc, "shelf_audit")}
-        onBack={() => setStep("choose-scan-mode")}
+        onPick={(loc) => onStart(loc)}
+        onBack={() => setStep("home")}
         onManage={() => onNavigate?.("/app/locations")}
       />
     );
@@ -259,8 +151,7 @@ export function MobileScanStart({
                 <div className={s.sectionLabel}>In progress</div>
                 <div className={s.resumeList}>
                   {active.map((sess) => {
-                    const modeLabel = SCAN_MODE_META[sess.capture_type]?.label || "Scan session";
-                    const where = sess.location_name || (sess.capture_type === "receiving" ? "receiving" : "location");
+                    const where = sess.location_name || "location";
                     return (
                       <div key={sess.id} className={s.resumeCard}>
                         <button
@@ -271,7 +162,7 @@ export function MobileScanStart({
                         >
                           <span className={s.resumeIcon}><Icon name="icon-refresh" /></span>
                           <span className={s.resumeBody}>
-                            <span className={s.resumeKicker}>{modeLabel}</span>
+                            <span className={s.resumeKicker}>Scan session</span>
                             <span className={s.resumeTitle}>Continue {where}</span>
                             <span className={s.resumeMeta}><Icon name="icon-calendar" /> {sess.counts?.scanned || 0} items scanned</span>
                             <span className={s.resumeMeta}><Icon name="icon-clock" /> Last updated {relTime(sess.updated_at) || "recently"}</span>
@@ -287,11 +178,11 @@ export function MobileScanStart({
             )}
 
             <div className={s.actionList}>
-              <button type="button" className={s.actionRow} onClick={() => setStep("choose-scan-mode")}>
+              <button type="button" className={s.actionRow} onClick={() => setStep("choose-location")}>
                 <span className={s.actionIcon}><Icon name="icon-plus" /></span>
                 <span className={s.actionText}>
                   <span className={s.actionTitle}>Start new scan session</span>
-                  <span className={s.actionSub}>Choose scan mode then pick a location</span>
+                  <span className={s.actionSub}>Pick a location and scan its shelves</span>
                 </span>
                 <span className={s.actionChevron}><Icon name="icon-chevron-right" /></span>
               </button>
@@ -308,16 +199,15 @@ export function MobileScanStart({
   );
 }
 
-// ── Shelf-audit location gate ─────────────────────────────────────────
-// Shelf Audit goes straight to the scanner; the location is chosen here rather
-// than on a separate screen first. An audit is scoped to one location and its
-// items file to the session's location, so picking the location is the first
-// action — it starts (or resumes) that location's session, then scanning begins.
-function MobileAuditLocationGate({ locations, starting, onPick, onBack, onManage }) {
+// ── Scan location gate ────────────────────────────────────────────────
+// A session is scoped to one location and its items file there, so picking the
+// location is the first action — it starts (or resumes) that location's session,
+// then scanning begins. No scan "mode" to choose first.
+function MobileScanLocationGate({ locations, starting, onPick, onBack, onManage }) {
   const [sheetOpen, setSheetOpen] = useState(true);
 
   return (
-    <div className={s.camera} aria-label="Choose a location to audit">
+    <div className={s.camera} aria-label="Choose a location to scan">
       <div className={s.cameraScrim} aria-hidden="true" />
 
       <div className={s.camTop}>
@@ -334,9 +224,6 @@ function MobileAuditLocationGate({ locations, starting, onPick, onBack, onManage
       </div>
 
       <div className={s.contextStrip}>
-        <span className={`${s.modeBadge} ${s.modeBadgeAudit}`}>
-          <Icon name="icon-clipboard-check" /> Shelf Audit
-        </span>
         <button type="button" className={s.locPill} onClick={() => setSheetOpen(true)}>
           <Icon name="icon-map-pin" />
           <span className={s.locPillName}>Set location</span>
@@ -345,7 +232,7 @@ function MobileAuditLocationGate({ locations, starting, onPick, onBack, onManage
       </div>
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
-      <div className={s.camHint}>{starting ? "Starting…" : "Choose a location to start the audit"}</div>
+      <div className={s.camHint}>{starting ? "Starting…" : "Choose a location to start scanning"}</div>
 
       {sheetOpen && (
         <LocationSheet
@@ -364,27 +251,19 @@ function MobileAuditLocationGate({ locations, starting, onPick, onBack, onManage
 
 export function MobileScanSession({
   session, lines, counts, active,
-  pendingLine, captureType, ocrBusy, ocrSuggestion,
+  pendingLine, ocrBusy, ocrSuggestion,
   onScan, onAddProduct, onPatchLine, onRemoveLine, onComplete, onBack, onClearPending,
-  locations, onSwitchLocation, onSwitchMode, onNavigate,
+  locations, onSwitchLocation, onNavigate,
 }) {
   const [viewMode, setViewMode] = useState("scan"); // scan | review
   const [detail, setDetail] = useState(null);
   const [link, setLink]   = useState(null);
-  const [sheet, setSheet] = useState(null); // manual | search | help | location | mode
-  // Mode is fixed for the life of the session — chosen up front, never switched
-  // mid-scan (Receiving and Shelf Audit are different events, not two views).
-  const localMode = captureType || "shelf_audit";
-  // Receiving captures a destination per item; this remembers the last one picked
-  // so consecutive items in a delivery default to it — one tap only when the
-  // destination changes.
-  const [receivingLocId, setReceivingLocId] = useState(session.location_id || null);
+  const [sheet, setSheet] = useState(null); // manual | search | help | location
   const pulseTimer = useRef();
   const [captured, setCaptured] = useState(false);
 
-  // Both Receiving and Shelf Audit float a compact drawer over a LIVE camera
-  // (like the reorder scanner), so the next item can be aimed and scanned
-  // without dismissing the drawer first.
+  // The post-scan drawer floats over a LIVE camera (like the reorder scanner),
+  // so the next item can be aimed and scanned without dismissing it first.
   const cameraActive = active && viewMode === "scan" && !detail && !link;
 
   const { videoRef, cameraStatus, autoDetect, retry } = useBarcodeScanner({
@@ -393,7 +272,7 @@ export function MobileScanSession({
       onScan(code, getShot);
       // A location / website QR isn't a product — the parent shows a "not a
       // product" toast. Skip the green "captured" pulse so pointing at a
-      // location placard mid-audit doesn't strobe the viewfinder.
+      // location placard mid-scan doesn't strobe the viewfinder.
       if (isQrUrl(code)) return;
       setCaptured(true);
       window.clearTimeout(pulseTimer.current);
@@ -402,20 +281,6 @@ export function MobileScanSession({
   });
 
   const locName = session.location_name || "Location";
-  // Receiving has no session location — its top pill shows the sticky default
-  // (last place put away to); Shelf Audit shows the audited location.
-  const receivingLoc = locations.find((l) => l.id === receivingLocId) || locations[0] || null;
-  const locLabel = localMode === "receiving" ? (receivingLoc?.name || "Set location") : locName;
-
-  // The mode badge is a selector. Receiving and Shelf Audit are different
-  // sessions (receiving is location-less; an audit is scoped to one location),
-  // so switching starts/resumes the other session and navigates into it.
-  // Switching back to Shelf Audit reuses the location we're already pointed at.
-  function pickMode(mode) {
-    setSheet(null);
-    if (mode === localMode) return;
-    onSwitchMode?.(mode, mode === "receiving" ? null : receivingLoc);
-  }
 
   // ----- Shelf details (deep edit) -----
   if (detail) {
@@ -502,56 +367,33 @@ export function MobileScanSession({
         </span>
       </div>
 
-      {/* Context strip — mode selector + location, anchored under the header so
-          it holds its position across the scan → post-scan transition (the sheet
-          rises underneath it, nothing hops). Both are selectors: the mode badge
-          switches Shelf Audit ↔ Receiving; the location pill — for Receiving sets
-          the sticky default, for Shelf Audit switches the audited location. */}
+      {/* Context strip — the location is the only context, anchored under the
+          header so it holds its position across the scan → post-scan transition
+          (the sheet rises underneath it, nothing hops). It's a selector: tap to
+          switch which location scans file into. There's no scan "mode" — a new
+          lot here is received, a known lot is confirmed, inferred per scan. */}
       <div className={s.contextStrip}>
-        <button
-          type="button"
-          className={`${s.modeBadge} ${s.modeBadgeBtn} ${localMode === "receiving" ? s.modeBadgeReceiving : s.modeBadgeAudit}`}
-          onClick={() => setSheet("mode")}
-          aria-label={`Scan mode: ${SCAN_MODE_META[localMode]?.label}. Change mode.`}
-        >
-          <Icon name={localMode === "receiving" ? "icon-package" : "icon-clipboard-check"} />
-          {SCAN_MODE_META[localMode]?.label}
-          <span className={s.modeBadgeCaret}><Icon name="icon-chevron-down" /></span>
-        </button>
         <button type="button" className={s.locPill} onClick={() => setSheet("location")}>
           <Icon name="icon-map-pin" />
-          <span className={s.locPillName}>{locLabel}</span>
+          <span className={s.locPillName}>{locName}</span>
           <span className={s.locPillCaret}><Icon name="icon-chevron-down" /></span>
         </button>
       </div>
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
-      {cameraStatus === "ready" && (!pendingLine || localMode === "receiving") && (
+      {cameraStatus === "ready" && (
         <div className={s.camHint}>
-          {pendingLine && localMode === "receiving" ? "Point at the next item to keep scanning" : "Point at a barcode"}
+          {pendingLine ? "Point at the next item to keep scanning" : "Point at a barcode"}
         </div>
       )}
 
-      {/* Mode-specific bottom sheets after a scan. Receiving uses a compact
-          drawer over a LIVE camera (lot / expiry / received date / location in a
-          horizontal swipe strip) — keyed by line so the next scan remounts it and
-          the previous line's edits persist on unmount. Shelf Audit keeps its
-          fuller verification sheet. */}
-      {pendingLine && localMode === "receiving" && (
-        <ReceivingScanSheet
-          key={pendingLine.id}
-          line={pendingLine}
-          locationName={receivingLoc?.name || ""}
-          locationId={receivingLoc?.id || null}
-          ocrBusy={ocrBusy}
-          suggestion={ocrSuggestion}
-          onOpenLocation={() => setSheet("location")}
-          onPersist={(id, body) => onPatchLine(id, body)}
-          onDismiss={(id, body) => { onPatchLine(id, body); onClearPending?.(); }}
-        />
-      )}
-      {pendingLine && localMode === "shelf_audit" && (
-        <ShelfAuditScanSheet
+      {/* Post-scan drawer — one sheet, over a LIVE camera (lot / expiry in a
+          horizontal swipe strip), keyed by line so the next scan remounts it and
+          the previous line's edits persist on unmount. The header reflects what
+          the scan did (received a new lot vs confirmed one already on the shelf),
+          inferred by the backend — no mode to choose. */}
+      {pendingLine && (
+        <CaptureScanSheet
           key={pendingLine.id}
           line={pendingLine}
           locationName={locName}
@@ -563,19 +405,17 @@ export function MobileScanSession({
       )}
 
       {sheet === "manual"   && <ManualSheet onClose={() => setSheet(null)} onSubmit={(code) => { onScan(code); setSheet(null); }} />}
-      {sheet === "mode"     && <ModeSheet current={localMode} onClose={() => setSheet(null)} onPick={pickMode} />}
       {sheet === "search"   && <SearchSheet title="Search product" onClose={() => setSheet(null)} onPick={(p) => { onAddProduct(p); setSheet(null); }} />}
       {sheet === "location" && (
         <LocationSheet
           locations={locations}
-          currentId={localMode === "receiving" ? receivingLocId : session.location_id}
+          currentId={session.location_id}
           onClose={() => setSheet(null)}
           onPick={(loc) => {
             setSheet(null);
-            // Receiving: set the sticky default for upcoming scans (no session
-            // location to switch). Shelf Audit: switch the audited location.
-            if (localMode === "receiving") setReceivingLocId(loc.id);
-            else if (loc.id !== session.location_id) onSwitchLocation(loc);
+            // Switch which location scans file into (starts/resumes that
+            // location's session and navigates into it).
+            if (loc.id !== session.location_id) onSwitchLocation(loc);
           }}
           onManage={() => { setSheet(null); onNavigate?.("/app/locations"); }}
         />
@@ -604,11 +444,12 @@ export function MobileScanSession({
 }
 
 // ── /app/scan — quick scan into the reorder list (rich camera overlay) ─────
-// Reuses the Receiving/Shelf-Audit camera shell + bottom drawer, but its only
-// output is the reorder list: no scan session, no evidence log. Each scan opens
-// a drawer to capture lot / expiry / location / qty on the item (kept on the
-// reorder line), minus the shelf-audit status step. The top-right button is the
-// scan glyph with a running count that taps through to the reorder list.
+// Reuses the scanner camera shell + bottom drawer, but its only output is the
+// reorder list: no scan session, no evidence log, no location. Each scan opens a
+// drawer to capture lot / expiry on the item (kept on the reorder line). The
+// top-right button is the scan glyph with a running count that taps through to
+// the reorder list. This is the "running low" surface, separate from the
+// location scanner — reached from the reorder list, not as a scan mode.
 
 export function MobileReorderScan({
   active = true, scanResult, scanCount = 0,
@@ -941,18 +782,11 @@ function ReorderScanSheet({ result, onPersist, onDismiss }) {
   );
 }
 
-// ── Receiving post-scan drawer ────────────────────────────────────────
-// The same compact, live-camera drawer as the reorder scanner: a shallow sheet
-// (≤ 1/3 of the screen) over a running viewfinder, capturing lot / expiry /
-// received date / location in a horizontal swipe strip. No qty stepper, no
-// supplier picker, no Undo / Save buttons — the line is already on the session
-// (added the moment it was scanned), so this drawer only captures details and
-// persists them when the next scan replaces it (keyed remount) or it's flicked
-// down. The destination is the sticky location set by the top-of-screen pill;
-// the Location card echoes it and taps back to that picker.
-// When OCR has read lot/expiry off the package, surface it in the capture drawer:
-// a "reading…" note while it runs, then a confirm-it note once the fields are
-// pre-filled. Assistive — the values land in the editable fields, never silently.
+// ── Post-scan capture drawer ──────────────────────────────────────────
+// When OCR has read lot/expiry off the package, surface it in the capture
+// drawer: a "reading…" note while it runs, then a confirm-it note once the
+// fields are pre-filled. Assistive — the values land in the editable fields,
+// never silently.
 function OcrHint({ ocrBusy, suggestion }) {
   if (ocrBusy) {
     return (
@@ -980,8 +814,29 @@ function OcrHint({ ocrBusy, suggestion }) {
   );
 }
 
-function ReceivingScanSheet({ line, locationName, locationId, ocrBusy, suggestion, onOpenLocation, onPersist, onDismiss }) {
-  const matched = line.status !== "needs_review";
+// The result of a scan, for the drawer header — inferred by the backend, not
+// chosen as a mode. A lot not yet on the shelf was received; a lot already on
+// file was confirmed present; an unidentified scan needs review (link it later).
+function captureResult(line) {
+  if (line.status === "needs_review") return { cls: s.badgeAmber, icon: "icon-clock", label: "Needs review" };
+  if (line.inventory_action === "confirmed") return { cls: s.badgeGreen, icon: "icon-check-circle", label: "Confirmed present" };
+  return { cls: s.badgeGreen, icon: "icon-check-circle", label: "Added · received" };
+}
+
+// One post-scan drawer for the location scanner: a shallow sheet (≤ 1/3 screen)
+// over a running viewfinder, capturing lot / expiry in a horizontal swipe strip.
+// No mode, no qty stepper, no Undo / Save buttons — the line is already on the
+// session (added the moment it was scanned), so this drawer only captures details
+// and persists them when the next scan replaces it (keyed remount) or it's
+// flicked down. The header reflects what the scan did (received vs confirmed) and
+// the location is the session's, shown read-only (switch it from the top pill).
+// A received scan also captures a received date.
+function CaptureScanSheet({ line, locationName, ocrBusy, suggestion, onPersist, onDismiss }) {
+  const result = captureResult(line);
+  // Identified + not a confirm of an existing lot ⇒ a receive (captures a
+  // received date). Unidentified lines record neither until they're linked.
+  const isConfirmed = line.inventory_action === "confirmed";
+  const isReceived = line.status !== "needs_review" && !isConfirmed;
   const initialLot = line.lot_number || "";
   const initialExp = line.expiration_date ? String(line.expiration_date).slice(0, 10) : "";
   const initialReceived = line.received_date ? String(line.received_date).slice(0, 10) : todayIso();
@@ -999,24 +854,24 @@ function ReceivingScanSheet({ line, locationName, locationId, ocrBusy, suggestio
     if (suggestion?.expiry) setExp((v) => v || suggestion.expiry);
   }, [suggestion?.lot, suggestion?.expiry]);
 
-  // The captured body, read from the latest values at persist time. Location
-  // tracks the sticky default live (via a ref) so changing it from the top pill
-  // applies to the line currently in the drawer.
+  // The captured body, read from the latest values at persist time. A received
+  // scan stamps a received date; a confirmed one records that the lot was seen
+  // present on the shelf.
   const latest = useRef();
-  latest.current = { lot, exp, received, locationId };
+  latest.current = { lot, exp, received };
   function body() {
-    const { lot: l, exp: e, received: r, locationId: loc } = latest.current;
-    return {
+    const { lot: l, exp: e, received: r } = latest.current;
+    const out = {
       lot_number:      l.trim() || null,
       expiration_date: e || null,
-      received_date:   r || null,
-      location_id:     loc || null,
     };
+    if (isReceived) out.received_date = r || null;
+    if (isConfirmed) out.shelf_audit_status = "present";
+    return out;
   }
 
   // Persist on teardown (the next scan remounts this drawer) so typed lot/expiry
-  // and the chosen location survive uninterrupted scanning — unless a manual
-  // dismiss already saved.
+  // survive uninterrupted scanning — unless a manual dismiss already saved.
   const done = useRef(false);
   const persistRef = useRef(onPersist);
   persistRef.current = onPersist;
@@ -1076,9 +931,9 @@ function ReceivingScanSheet({ line, locationName, locationId, ocrBusy, suggestio
               <span className={s.modeSheetProductNameText}>{name}</span>
             </span>
             {offerSku(line) && <span className={s.modeSheetSku}>SKU: {offerSku(line)}</span>}
-            <span className={`${s.badge} ${matched ? s.badgeGreen : s.badgeAmber}`}>
-              <Icon name={matched ? "icon-check-circle" : "icon-clock"} />
-              {matched ? "Exact match" : "Needs review"}
+            <span className={`${s.badge} ${result.cls}`}>
+              <Icon name={result.icon} />
+              {result.label}
             </span>
           </div>
         </div>
@@ -1103,143 +958,21 @@ function ReceivingScanSheet({ line, locationName, locationId, ocrBusy, suggestio
               />
             </div>
           </div>
-          <div className={s.reorderField}>
-            <span className={s.reorderFieldLabel}><Icon name="icon-package" /> Received date</span>
-            <div className={s.reorderFieldControl}>
-              <span className={s.reorderFieldText}>{received ? formatLongDate(received) : "Select date"}</span>
-              <input
-                type="date"
-                className={s.dateOverlay}
-                value={received || ""}
-                onChange={(e) => setReceived(e.target.value)}
-                aria-label="Received date"
-              />
+          {isReceived && (
+            <div className={s.reorderField}>
+              <span className={s.reorderFieldLabel}><Icon name="icon-package" /> Received date</span>
+              <div className={s.reorderFieldControl}>
+                <span className={s.reorderFieldText}>{received ? formatLongDate(received) : "Select date"}</span>
+                <input
+                  type="date"
+                  className={s.dateOverlay}
+                  value={received || ""}
+                  onChange={(e) => setReceived(e.target.value)}
+                  aria-label="Received date"
+                />
+              </div>
             </div>
-          </div>
-          <div className={s.reorderField}>
-            <span className={s.reorderFieldLabel}><Icon name="icon-map-pin" /> Location</span>
-            <button type="button" className={s.reorderFieldBtn} onClick={onOpenLocation}>
-              <span className={s.reorderFieldText}>{locationName || "Set location"}</span>
-              <Icon name="icon-chevron-down" className={s.reorderFieldCaret} />
-            </button>
-          </div>
-        </div>
-        <OcrHint ocrBusy={ocrBusy} suggestion={suggestion} />
-      </div>
-    </div>
-  );
-}
-
-// ── Shelf audit post-scan drawer ──────────────────────────────────────
-// The SAME compact live-camera drawer as Receiving (ReceivingScanSheet): a
-// shallow sheet over a running viewfinder capturing lot / expiry, with the
-// audited location shown read-only (an audit is scoped to the session's one
-// location). No status grid — scanning an item on the shelf verifies it's
-// present; not-found / removed are reconcile actions, not scans. No buttons:
-// it persists when the next scan replaces it (keyed remount) or it's flicked
-// down.
-function ShelfAuditScanSheet({ line, locationName, ocrBusy, suggestion, onPersist, onDismiss }) {
-  const matched = line.status !== "needs_review";
-  const initialLot = line.lot_number || "";
-  const initialExp = line.expiration_date ? String(line.expiration_date).slice(0, 10) : "";
-  const [lot, setLot] = useState(initialLot);
-  const [exp, setExp] = useState(initialExp);
-  const [dragY, setDragY] = useState(0);
-  const startY = useRef(0);
-  const dragging = useRef(false);
-
-  // OCR arrives a beat after the drawer opens; fill only the empty fields.
-  useEffect(() => {
-    if (suggestion?.lot) setLot((v) => v || suggestion.lot);
-    if (suggestion?.expiry) setExp((v) => v || suggestion.expiry);
-  }, [suggestion?.lot, suggestion?.expiry]);
-
-  const latest = useRef();
-  latest.current = { lot, exp };
-  function body() {
-    const { lot: l, exp: e } = latest.current;
-    return {
-      lot_number:         l.trim() || null,
-      expiration_date:    e || null,
-      shelf_audit_status: "present",
-    };
-  }
-
-  // Persist on teardown (next scan remounts) so typed lot/expiry survive
-  // uninterrupted scanning — unless a manual dismiss already saved.
-  const done = useRef(false);
-  const persistRef = useRef(onPersist);
-  persistRef.current = onPersist;
-  const itemId = line.id;
-  useEffect(() => () => {
-    if (done.current) return;
-    persistRef.current?.(itemId, body());
-  }, [itemId]);
-
-  function dismiss() {
-    done.current = true;
-    onDismiss(itemId, body());
-  }
-
-  function onTouchStart(e) { startY.current = e.touches[0].clientY; dragging.current = true; }
-  function onTouchMove(e) { if (!dragging.current) return; setDragY(Math.max(0, e.touches[0].clientY - startY.current)); }
-  function onTouchEnd() { if (!dragging.current) return; dragging.current = false; if (dragY > 70) dismiss(); else setDragY(0); }
-
-  const name = line.name || offerSku(line) || "Unidentified item";
-
-  return (
-    <div className={`${s.modeSheet} ${s.modeSheetLive}`}>
-      <div
-        className={`${s.modeSheetPanel} ${s.reorderPanel}`}
-        style={{ transform: dragY ? `translateY(${dragY}px)` : undefined, transition: dragging.current ? "none" : "transform .2s ease" }}
-      >
-        <button
-          type="button"
-          className={s.modeSheetGripBtn}
-          onClick={dismiss}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          aria-label="Dismiss"
-        >
-          <span className={s.modeSheetGrip} aria-hidden="true" />
-        </button>
-        <div className={s.modeSheetProduct}>
-          <span className={s.modeSheetThumb}>
-            {line.image_url ? <img src={line.image_url} alt="" /> : <Icon name="icon-package" />}
-          </span>
-          <div className={s.modeSheetProductInfo}>
-            <span className={s.modeSheetProductName}>
-              <span className={s.modeSheetProductNameText}>{name}</span>
-            </span>
-            {offerSku(line) && <span className={s.modeSheetSku}>SKU: {offerSku(line)}</span>}
-            <span className={`${s.badge} ${matched ? s.badgeGreen : s.badgeAmber}`}>
-              <Icon name={matched ? "icon-check-circle" : "icon-clock"} />
-              {matched ? "Exact match" : "Needs review"}
-            </span>
-          </div>
-        </div>
-
-        <div className={s.reorderStrip}>
-          <div className={s.reorderField}>
-            <span className={s.reorderFieldLabel}><Icon name="icon-file-text" /> Lot number</span>
-            <div className={s.reorderFieldControl}>
-              <input className={s.reorderFieldInput} value={lot} onChange={(e) => setLot(e.target.value)} placeholder="e.g. A219" />
-            </div>
-          </div>
-          <div className={s.reorderField}>
-            <span className={s.reorderFieldLabel}><Icon name="icon-calendar" /> Expiration date</span>
-            <div className={s.reorderFieldControl}>
-              <span className={s.reorderFieldText}>{exp ? formatLongDate(exp) : "Select date"}</span>
-              <input
-                type="date"
-                className={s.dateOverlay}
-                value={exp || ""}
-                onChange={(e) => setExp(e.target.value)}
-                aria-label="Expiration date"
-              />
-            </div>
-          </div>
+          )}
           <div className={s.reorderField}>
             <span className={s.reorderFieldLabel}><Icon name="icon-map-pin" /> Location</span>
             <div className={s.reorderFieldControl}>
@@ -1632,34 +1365,6 @@ function SearchSheet({ title, hint, onClose, onPick }) {
       {hint && <p className={s.sheetHint}>{hint}</p>}
       <div className={s.sheetScroll}>
         <ProductSearchResults query={query} results={results} loading={loading} onPick={onPick} emptyHint="Type a product name to find it." />
-      </div>
-    </SheetShell>
-  );
-}
-
-// Mode selector — switch the session between Shelf Audit and Receiving. Reorder
-// isn't offered here: it scans into the reorder list, not this evidence session.
-function ModeSheet({ current, onClose, onPick }) {
-  return (
-    <SheetShell title="Scan mode" onClose={onClose}>
-      <div className={s.sheetScroll}>
-        <div className={s.locList}>
-          {["shelf_audit", "receiving"].map((m) => {
-            const meta = SCAN_MODE_META[m];
-            return (
-              <button key={m} type="button" className={s.locRow} onClick={() => onPick(m)}>
-                <span className={s.locRowIcon}><Icon name={m === "receiving" ? "icon-package" : "icon-clipboard-check"} /></span>
-                <span className={s.modeRowBody}>
-                  <span className={s.locRowName}>{meta.label}</span>
-                  <span className={s.modeRowDesc}>{meta.desc}</span>
-                </span>
-                {m === current
-                  ? <span className={s.lastUsedCheck}><Icon name="icon-check" /></span>
-                  : <span className={s.locRowChevron}><Icon name="icon-chevron-right" /></span>}
-              </button>
-            );
-          })}
-        </div>
       </div>
     </SheetShell>
   );

@@ -107,11 +107,20 @@ export function lineMatchesLine(a: any, b: any): boolean {
   return Boolean(ab && bb && ab === bb)
 }
 
+// What a scan did to the lot-at-location evidence: a lot never seen at this
+// location was filed (received); a lot already on file was refreshed (confirmed
+// present). One scanner, no mode — the system infers which from the data rather
+// than asking the buyer to declare it up front. capture_type on the evidence row
+// is stamped from this so the compliance distinction (a receiving event vs an
+// audit verification) is preserved without a user-chosen mode.
+export type InventoryAction = "received" | "confirmed"
+
 // Upsert the lot-at-location evidence record for an identified line. The grain is
 // one record per (item, lot, location): re-scanning the same lot refreshes the
-// existing record (no duplicate), while a different lot of the same product
-// creates a coexisting record (FEFO). Many scan lines can therefore point at one
-// shared record. A pulled lot stays as history — a fresh scan starts a new
+// existing record (no duplicate, action "confirmed"), while a lot not yet on file
+// at the location is created (action "received"). A different lot of the same
+// product creates a coexisting record (FEFO). Many scan lines can therefore point
+// at one shared record. A pulled lot stays as history — a fresh scan starts a new
 // active record rather than reviving it. Unidentified lines (needs review) never
 // touch inventory; orphan cleanup is reference-counted by the caller (see
 // cleanupOrphanInventory), so removing one line never deletes a lot another line
@@ -120,14 +129,16 @@ export async function syncInventoryFromLine(
   medmkp: MedMKPModuleService,
   line: any,
   locationId: string | null,
-  actor: string | null,
-  captureType: string | null = null
-): Promise<string | null> {
+  actor: string | null
+): Promise<{ id: string; action: InventoryAction } | null> {
   const identified = Boolean(line.canonical_product_id || line.supplier_product_id)
   if (!identified) return null
-  // No place to file the evidence yet — a receiving line whose destination
-  // hasn't been picked. Promotion happens once a location is set (the sheet save).
+  // No place to file the evidence yet — a line whose location hasn't been picked.
   if (!locationId) return null
+
+  const atLocation = (await medmkp.listInventoryItems({ location_id: locationId })) as any[]
+  const match = atLocation.find((it) => !it.pulled_at && lineMatchesItem(line, it))
+  const action: InventoryAction = match ? "confirmed" : "received"
 
   const fields = {
     canonical_product_id: line.canonical_product_id ?? null,
@@ -140,20 +151,21 @@ export async function syncInventoryFromLine(
     lot_number: line.lot_number ?? null,
     expiration_date: line.expiration_date ?? null,
     package_condition: line.package_condition ?? null,
-    capture_type: captureType,
+    // Provenance: a brand-new lot here is a receive; refreshing an existing one
+    // is an audit confirmation. Don't overwrite a prior receive with a later
+    // confirm — the row's capture_type records how the lot first entered.
+    ...(match ? {} : { capture_type: "receiving" }),
     last_counted_at: new Date(),
     counted_by: actor,
   }
 
-  const atLocation = (await medmkp.listInventoryItems({ location_id: locationId })) as any[]
-  const match = atLocation.find((it) => !it.pulled_at && lineMatchesItem(line, it))
   if (match) {
     await medmkp.updateInventoryItems({ id: match.id, ...fields })
-    return match.id
+    return { id: match.id, action }
   }
 
   const created = await medmkp.createInventoryItems({ location_id: locationId, ...fields })
-  return created.id
+  return { id: created.id, action }
 }
 
 // Delete an inventory record only if no scan line still references it — reference
