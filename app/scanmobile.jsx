@@ -296,6 +296,33 @@ export function MobileScanSession({
     },
   });
 
+  // Pre-warm the on-device OCR reader once the camera is live, so the first
+  // uncarried-barcode scan that needs a lot/expiry read isn't blocked on the
+  // one-time model download. Tesseract runs in a worker (off the main thread), and
+  // we wait for the camera to be ready so the download never competes with the
+  // jank-prone camera-startup moment.
+  const [ocrLoad, setOcrLoad] = useState({ phase: "idle", progress: 0 });
+  const cameraReady = cameraStatus === "ready";
+  useEffect(() => {
+    if (!cameraReady) return undefined;
+    let unsub;
+    let cancelled = false;
+    import("./ocrLabel").then((m) => {
+      if (cancelled) return;
+      unsub = m.onOcrLoad(setOcrLoad);
+      m.warmOcr();
+    });
+    return () => { cancelled = true; unsub?.(); };
+  }, [cameraReady]);
+  // Only surface the "preparing" pill if the load is actually slow (a fresh
+  // device); a cached load finishes before this fires and never flashes the bar.
+  const [showOcrLoad, setShowOcrLoad] = useState(false);
+  useEffect(() => {
+    if (ocrLoad.phase !== "loading") { setShowOcrLoad(false); return undefined; }
+    const t = setTimeout(() => setShowOcrLoad(true), 500);
+    return () => clearTimeout(t);
+  }, [ocrLoad.phase]);
+
   const locName = session.location_name || "Location";
 
   // Read lot/expiry off the label by OCR — but as a LOOP over fresh camera frames
@@ -450,12 +477,15 @@ export function MobileScanSession({
           <span className={s.locPillName}>{locName}</span>
           <span className={s.locPillCaret}><Icon name="icon-chevron-down" /></span>
         </button>
-        {/* OCR read-off-the-label hint, as a pill under the location pill (not
-            overlaid on the post-scan drawer): a "reading…" note while OCR runs,
-            then a confirm-it note once it's pre-filled the lot/expiry fields. */}
-        {pendingLine && (ocrBusy || ocrSuggestion) && (
+        {/* OCR hint pill under the location pill (not overlaid on the post-scan
+            drawer): a one-time "preparing reader" bar while the model downloads,
+            then a "reading…" note while OCR runs, then a confirm-it note once it's
+            pre-filled the lot/expiry fields. */}
+        {showOcrLoad ? (
+          <OcrLoadPill progress={ocrLoad.progress} />
+        ) : pendingLine && (ocrBusy || ocrSuggestion) ? (
           <OcrHintPill ocrBusy={ocrBusy} suggestion={ocrSuggestion} />
-        )}
+        ) : null}
       </div>
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
@@ -866,6 +896,24 @@ function ReorderScanSheet({ result, onPersist, onDismiss }) {
 // field it filled and which still has to be typed. Assistive — the values land in
 // the editable fields, never silently — and it lives in the top strip, not on the
 // drawer, so it doesn't crowd the captured fields.
+
+// One-time progress while the OCR core + model download. Only shows on a fresh
+// device (a cached load finishes before the parent's debounce and never renders
+// this), and disappears once the reader is ready — the read/confirm hints take
+// over from there. Same pill chrome as those, with a thin determinate bar.
+function OcrLoadPill({ progress }) {
+  const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  return (
+    <div className={`${s.ocrPill} ${s.ocrLoadPill}`} aria-live="polite">
+      <Icon name="icon-scan" />
+      <div className={s.ocrLoadBody}>
+        <span className={s.ocrPillText}>Preparing label reader…</span>
+        <div className={s.ocrBar}><div className={s.ocrBarFill} style={{ width: `${pct}%` }} /></div>
+      </div>
+    </div>
+  );
+}
+
 function OcrHintPill({ ocrBusy, suggestion }) {
   if (ocrBusy) {
     return (
