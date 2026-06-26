@@ -35,6 +35,29 @@ describe("search ranking — hot/prefix matching", () => {
   })
 })
 
+describe("search ranking — head-noun relevance", () => {
+  // The reported bug: searching "bib" returned only "Bib Clips" (an accessory)
+  // and buried the actual patient bibs, because the clip's shorter name won the
+  // trigram tiebreak even though "bib" is its head noun in neither case the user
+  // wants. The product whose TYPE is what was typed should rank first.
+  it("ranks the product type above the same word used as a modifier", () => {
+    expect(score("bib", 'Patient Bibs, 13" x 18", 500/Pkg, Blue')).toBeGreaterThan(
+      score("bib", "Spectrum Bib Clips, Blue")
+    )
+  })
+
+  it("generalizes to other accessory-vs-product collisions", () => {
+    expect(score("glove", "Nitrile Exam Gloves")).toBeGreaterThan(
+      score("glove", "Glove Box Holder Single/Double")
+    )
+  })
+
+  it("still surfaces the modifier match, just not first", () => {
+    // Bib clips legitimately match "bib"; they should stay above the threshold.
+    expect(score("bib", "Spectrum Bib Clips, Blue")).toBeGreaterThanOrEqual(THRESHOLD)
+  })
+})
+
 describe("tokenPrefixRecall", () => {
   it("counts a query token as a hit when a name token starts with it", () => {
     expect(tokenPrefixRecall(["glo"], ["nitrile", "glove"])).toBe(1)
