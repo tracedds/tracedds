@@ -36,7 +36,7 @@ const BRAND_ALIASES: Record<string, string> = {
   "dentsply sirona": "dentsply",
 }
 
-const NAME_STOP_TOKENS = new Set([
+export const NAME_STOP_TOKENS = new Set([
   "of",
   "the",
   "and",
@@ -61,12 +61,12 @@ const NAME_STOP_TOKENS = new Set([
   "count",
 ])
 
-const PACK_UNIT_WORDS =
+export const PACK_UNIT_WORDS =
   "pk|pack|pkg|bx|box|cs|case|bag|ct|count|tub|jar|roll|sleeve|carton|kit|cn|can|bottle|btl|tube|syringe|spool"
 
-const MEASURE_UNIT_SUFFIX = /^(\d+(\.\d+)?)(MM|CM|ML|CC|OZ|GA|GAUGE|GR|G|L|IN|KG|LB|PCT)$/
+export const MEASURE_UNIT_SUFFIX = /^(\d+(\.\d+)?)(MM|CM|ML|CC|OZ|GA|GAUGE|GR|G|L|IN|KG|LB|PCT)$/
 
-const COLOR_WORDS = [
+export const COLOR_WORDS = [
   "black",
   "blue",
   "brown",
