@@ -72,7 +72,7 @@ are matching the wireframe's layout/density/hierarchy rendered in **our tokens**
 inventing a look.
 
 1. **Look at the target first.** `Read` the wireframe image the issue references
-   (committed under `docs/wireframes/`). Open the live `/styleguide` and skim `DESIGN.md`.
+   (committed under `docs/design-targets/`). Open the live `/styleguide` and skim `DESIGN.md`.
 2. **Tokens only — no invented styles.** Use the canonical vars from `styles.css`:
    `--ink #0b1533`, `--muted #67728a`, `--line #e4e9f2`, `--blue #155dfc`,
    `--blue-2 #eef4ff`, `--surface`, `--surface-2`, `--shadow`, `--green/--gold/--red`.
