@@ -181,6 +181,19 @@ scripts/prompt stay current — though it always branches off fresh `origin/main
   can't complete (with a comment) so it won't retry them forever. Data-quality
   problems it finds but can't safely auto-fix are filed as `data-quality` issues
   (deduped, at most one per tick) — which then feed back into its own queue.
+- **Give feedback on a PR (revise mode):** review the PR with **"Request changes"**
+  and a plain-English comment — you can judge the **Vercel preview** and not read the
+  code. On its next tick (prioritized **above** new work), the loop checks out that
+  PR's branch, applies your feedback (for UI: re-renders + runs the compare loop),
+  pushes to the **same PR**, and replies — never a new PR, never a merge. It re-revises
+  only when you leave a *newer* changes-requested review than its last push, so there's
+  no loop. (For a one-line tweak it's often faster to just push the fix yourself.)
+- **Merge conflicts auto-resolved (reconcile mode):** when a loop PR goes
+  `CONFLICTING` with `main` (common when several PRs touch the same files), the loop —
+  before new work — checks out that branch, merges `main` in, resolves the conflicts
+  (preserving both sides), re-verifies, and pushes so the PR is mergeable again. You
+  still review the result; it never auto-merges. Loop PRs are identified by their
+  `eng-loop-…` branch prefix (their label is `eng-loop:<category>`).
 - **Tune:** `config.env` — `GATE_THRESHOLD` (Claude %), `CODEX_ENABLED`/`CODEX_THRESHOLD`
   (fallback), `GATE_WINDOW` (`week`/`session`/`both`), `LOOP_LABELS`, `CATEGORIES`
   (rotation), `MAX_OPEN_PER_CATEGORY` (backpressure cap), `BACKEND_TARGET`,

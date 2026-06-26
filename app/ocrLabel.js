@@ -48,7 +48,7 @@ function gs1Expiry(raw) {
 // label layouts: a year on the left is Y-M(-D); a year on the right is M(-D)-Y.
 export function normalizeExpiry(raw) {
   if (!raw) return null;
-  const t = String(raw).trim().toUpperCase().replace(/\s+/g, " ");
+  const t = String(raw).trim().toUpperCase().replace(/[;!]/g, "1").replace(/\s+/g, " ");
 
   // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
   let m = t.match(/\b(20\d{2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/);
@@ -163,13 +163,16 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // on medical labels: its frame OCRs as bracket/pipe junk glued to the value, so
   // Tesseract reads "[LoT]|260212" or "LOT] 24015414". The separator between the
   // marker and the value therefore allows those box glyphs, not just spaces and
-  // colons. Value allows common batch separators (A-219, 13593092, M607840).
+  // colons. Some labels spell the descriptor as "LOT Batch Code <value>", and
+  // OCR can drop "Batch" and leave "LOT Code <value>", so skip that wording
+  // before taking the value. Value allows common batch separators (A-219,
+  // 13593092, M607840).
   const lotMatch = flat.match(
-    /\bL[O0D][T1I]\b[\s.:#)\]\[|]*(?:N[O0]\.?|NUMBER)?[\s.:#)\]\[|]*([A-Z0-9][A-Z0-9\-/]{2,19})/,
+    /\bL[O0D][T1I]\b[\s.:#)\]\[|]*(?:(?:N[O0]\.?|NUMBER|BATCH(?:\s+CODE)?|CODE)[\s.:#)\]\[|]*)?([A-Z0-9][A-Z0-9\-/]{2,19})/,
   );
   if (
     lotMatch &&
-    !/^(?:N[O0]|NUMBER|NUM)$/.test(lotMatch[1]) &&
+    !/^(?:N[O0]|NUMBER|NUM|BATCH|CODE)$/.test(lotMatch[1]) &&
     !(barcode && sameCode(lotMatch[1], barcode)) // not the scanned code mis-tagged as LOT
   ) {
     lot = lotMatch[1];
@@ -205,10 +208,11 @@ export function parseLotExpiry(text, { barcode } = {}) {
     const candidates = [];
     let prevEnd = 0; // end of the last date seen — the marker window never crosses
     // it, so an earlier date's "MFG" tag can't leak onto the next date.
-    for (const m of flat.matchAll(/\b\d[\d\-/. ]{4,11}\d\b|\b[A-Z]{3}[-/. ]20\d{2}\b|\b20\d{2}[-/. ][A-Z]{3}\b/g)) {
-      const iso = normalizeExpiry(m[0]);
+    for (const m of flat.matchAll(/(?:^|[^A-Z0-9])(\d[\d\-/. ;!]{4,11}[\d;!])(?=$|[^A-Z0-9])|\b([A-Z]{3}[-/. ]20\d{2})\b|\b(20\d{2}[-/. ][A-Z]{3})\b/g)) {
+      const iso = normalizeExpiry(m[1] || m[2] || m[3]);
       if (!iso) continue;
-      const before = flat.slice(Math.max(prevEnd, m.index - 14), m.index);
+      const dateIndex = m.index + (m[0].length - (m[1] || m[2] || m[3]).length);
+      const before = flat.slice(Math.max(prevEnd, dateIndex - 14), dateIndex);
       prevEnd = m.index + m[0].length;
       if (/\b(?:REV|MFG|MFD|MANUF|MADE)/.test(before)) continue;
       candidates.push(iso);
