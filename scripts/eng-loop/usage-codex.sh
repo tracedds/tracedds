@@ -29,7 +29,9 @@ sess="codexgate_$$"   # no dot: tmux treats "." as a window.pane separator in -t
 cleanup() { tmux kill-session -t "$sess" 2>/dev/null || true; }
 trap cleanup EXIT
 tmux kill-session -t "$sess" 2>/dev/null || true
-tmux new-session -d -s "$sess" -x 200 -y 55 "$CODEX_BIN" || { log "tmux session failed"; exit 1; }
+# Launch from $HOME, not the repo: /status is account-level (cwd-independent), and
+# starting inside a git repo triggers codex's interactive directory-trust prompt.
+tmux new-session -d -s "$sess" -c "$HOME" -x 200 -y 55 "$CODEX_BIN" || { log "tmux session failed"; exit 1; }
 
 pane=""
 ready=0
