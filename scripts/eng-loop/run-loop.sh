@@ -288,6 +288,13 @@ else
   if [ -n "$pr_num" ]; then
     gh label create "eng-loop:$category" --repo "$LOOP_REPO" --color ededed 2>/dev/null || true
     gh pr edit "$pr_num" --repo "$LOOP_REPO" --add-label "eng-loop:$category" 2>/dev/null || true
+    # Drop the source issue's loop labels so a LATER tick won't re-pick an issue
+    # that already has an in-flight PR (the PR carries a "Closes #N" link; merging
+    # closes the issue). Re-label the issue to retry if the PR is closed unmerged.
+    if [ -n "${issue_num:-}" ]; then
+      gh issue edit "$issue_num" --repo "$LOOP_REPO" --remove-label eng-loop --remove-label qa 2>/dev/null || true
+      log "issue #$issue_num: removed loop labels (PR #$pr_num now carries it)"
+    fi
     log "PR opened: https://github.com/$LOOP_REPO/pull/$pr_num (eng-loop:$category)"
   else
     log "no PR this tick (quiet tick, a data-quality issue may have been filed, or aborted for lack of evidence)."
