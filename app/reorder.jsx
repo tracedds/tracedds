@@ -240,6 +240,21 @@ export function ScanModal({ onScan, scanResult, scanCount = 0, itemCount = 0, on
 // Status pills. "Matched" is our auto match; "Needs review" flags a
 // low-confidence match (informational — there's no user "verify" step).
 
+function candidateCost(candidate) {
+  const cost = candidate?.perEa ?? candidate?.price;
+  return cost != null && cost > 0 ? cost : Infinity;
+}
+
+function bestPriceIndex(candidates) {
+  let best = -1;
+  candidates.forEach((candidate, index) => {
+    if (!isOrderable(candidate)) return;
+    if (candidateCost(candidate) === Infinity) return;
+    if (best < 0 || candidateCost(candidate) < candidateCost(candidates[best])) best = index;
+  });
+  return best;
+}
+
 export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, onConfirmMatch, onLinkProduct, onRemoveItem, onNavigate }) {
   const isResolve = mode === "resolve";
   const isView = mode === "view";
@@ -247,7 +262,9 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
   // Start on the buyer's current selection (falls back to our recommendation).
   const selectedIndex = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
   const recommendedIndex = candidates.findIndex((candidate) => candidate.recommended);
-  const [selected, setSelected] = useState(selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex));
+  const cheapestIndex = bestPriceIndex(candidates);
+  const defaultIndex = cheapestIndex >= 0 ? cheapestIndex : selectedIndex >= 0 ? selectedIndex : Math.max(0, recommendedIndex);
+  const [selected, setSelected] = useState(defaultIndex);
   const [qty] = useState(row.qty || 1);
   const [notes, setNotes] = useState(row.note || "");
   // What the practice currently pays per pack — the savings anchor. Editable
@@ -265,6 +282,10 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
     : isView
       ? "Confirm or change the product matched to this item."
       : "Please confirm the best match for this imported item.";
+  const bestPriceCandidate = cheapestIndex >= 0 ? candidates[cheapestIndex] : null;
+  const otherCandidates = bestPriceCandidate
+    ? candidates.map((candidate, index) => ({ candidate, index })).filter((entry) => entry.index !== cheapestIndex)
+    : candidates.map((candidate, index) => ({ candidate, index }));
 
   // "Buy bigger, pay less per unit": among this product's own offers (same
   // canonical, different pack sizes), find a larger pack that beats the selected
@@ -395,7 +416,24 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
               </button>
             )}
             <div className="crl-cand-list">
-              {candidates.map((candidate, index) => {
+              {bestPriceCandidate && (
+                <label className={`crl-cand crl-cand-hero ${selected === cheapestIndex ? "active" : ""}`} aria-label={`Best price offer from ${bestPriceCandidate.supplier || bestPriceCandidate.name}`}>
+                  <input type="radio" name="crl-cand" checked={selected === cheapestIndex} onChange={() => setSelected(cheapestIndex)} />
+                  <span className="crl-cand-hero-top">
+                    <span className="crl-cand-best">Best price</span>
+                    <CandidateStock availability={bestPriceCandidate.availability} liveAvailable={bestPriceCandidate.liveAvailable} />
+                  </span>
+                  <span className="crl-cand-info">
+                    <CandidateName supplier={bestPriceCandidate.supplier} name={bestPriceCandidate.name} canonicalName={row.canonicalName} productUrl={bestPriceCandidate.productUrl} />
+                    {bestPriceCandidate.packLabel && <small>{bestPriceCandidate.packLabel}</small>}
+                  </span>
+                  <span className="crl-cand-hero-price">
+                    <strong>{mrPriceLabel(bestPriceCandidate.price)}</strong>
+                    {showPerEa(bestPriceCandidate.perEa, bestPriceCandidate.price) && <span>${mrEa(bestPriceCandidate.perEa)} / ea</span>}
+                  </span>
+                </label>
+              )}
+              {otherCandidates.map(({ candidate, index }) => {
                 const oos = !isOrderable(candidate);
                 return (
                 <label key={candidate.key ?? index} className={`crl-cand ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos}>
@@ -694,7 +732,11 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
   const recIdx = candidates.findIndex((candidate) => candidate.recommended);
   if (recIdx > 0) candidates.unshift(...candidates.splice(recIdx, 1));
   const initialSel = candidates.findIndex((candidate) => candidate.key === row.selectedOfferKey);
-  const [selected, setSelected] = useState(initialSel < 0 ? 0 : initialSel);
+  const mobileBestIndex = bestPriceIndex(candidates);
+  const mobileBestCandidate = mobileBestIndex >= 0 ? candidates[mobileBestIndex] : candidates[0];
+  const mobileBestActualIndex = mobileBestIndex >= 0 ? mobileBestIndex : 0;
+  const mobileOtherCandidates = candidates.map((candidate, index) => ({ candidate, index })).filter((entry) => entry.index !== mobileBestActualIndex);
+  const [selected, setSelected] = useState(mobileBestIndex >= 0 ? mobileBestIndex : initialSel < 0 ? 0 : initialSel);
   const [notes, setNotes] = useState(row.note || "");
   const [paid, setPaid] = useState(row.paidUnitPrice != null ? String(row.paidUnitPrice) : "");
   const [searching, setSearching] = useState(isResolve);
@@ -788,22 +830,22 @@ export function MobileItemDetail({ rows, row, mode, onClose, onOpenRow, onToast,
         ) : candidates.length ? (
           <>
             <section className="m-detail-sec">
-              <span className="m-detail-label">Recommended</span>
-              <label className={`m-match best ${selected === 0 ? "active" : ""} ${!isOrderable(candidates[0]) ? "oos" : ""}`} aria-disabled={!isOrderable(candidates[0])}>
-                <input type="radio" name="m-cand" checked={selected === 0} disabled={!isOrderable(candidates[0])} onChange={() => setSelected(0)} />
-                <ProductThumb image={candidates[0].image} alt={candidates[0].name} />
-                <span className="m-match-info"><CandidateName supplier={candidates[0].supplier} name={candidates[0].name} canonicalName={row.canonicalName} productUrl={candidates[0].productUrl} />{candidates[0].packLabel && <small>{candidates[0].packLabel}</small>}<CandidateStock availability={candidates[0].availability} liveAvailable={candidates[0].liveAvailable} /></span>
-                <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidates[0].confidence)}`}>{candidates[0].confidence}%</em><strong>{mrPriceLabel(candidates[0].price)}</strong>{showPerEa(candidates[0].perEa, candidates[0].price) ? <small>${mrEa(candidates[0].perEa)} / ea</small> : (!(candidates[0].price > 0) && candidates[0].supplier && candidates[0].supplier !== "—" && <small>Login required</small>)}</span>
+              <span className="m-detail-label">Best price</span>
+              <label className={`m-match best ${selected === mobileBestActualIndex ? "active" : ""} ${!isOrderable(mobileBestCandidate) ? "oos" : ""}`} aria-disabled={!isOrderable(mobileBestCandidate)}>
+                <input type="radio" name="m-cand" checked={selected === mobileBestActualIndex} disabled={!isOrderable(mobileBestCandidate)} onChange={() => setSelected(mobileBestActualIndex)} />
+                <ProductThumb image={mobileBestCandidate.image} alt={mobileBestCandidate.name} />
+                <span className="m-match-info"><CandidateName supplier={mobileBestCandidate.supplier} name={mobileBestCandidate.name} canonicalName={row.canonicalName} productUrl={mobileBestCandidate.productUrl} />{mobileBestCandidate.packLabel && <small>{mobileBestCandidate.packLabel}</small>}<CandidateStock availability={mobileBestCandidate.availability} liveAvailable={mobileBestCandidate.liveAvailable} /></span>
+                <span className="m-match-right"><em className="m-best-price-tag">Best price</em><strong>{mrPriceLabel(mobileBestCandidate.price)}</strong>{showPerEa(mobileBestCandidate.perEa, mobileBestCandidate.price) ? <small>${mrEa(mobileBestCandidate.perEa)} / ea</small> : (!(mobileBestCandidate.price > 0) && mobileBestCandidate.supplier && mobileBestCandidate.supplier !== "—" && <small>Login required</small>)}</span>
               </label>
             </section>
-            {candidates.length > 1 && (
+            {mobileOtherCandidates.length > 0 && (
               <section className="m-detail-sec">
                 <span className="m-detail-label">Other possible matches</span>
-                {candidates.slice(1).map((candidate, index) => {
+                {mobileOtherCandidates.map(({ candidate, index }) => {
                   const oos = !isOrderable(candidate);
                   return (
-                  <label className={`m-match ${selected === index + 1 ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index + 1}>
-                    <input type="radio" name="m-cand" checked={selected === index + 1} disabled={oos} onChange={() => setSelected(index + 1)} />
+                  <label className={`m-match ${selected === index ? "active" : ""} ${oos ? "oos" : ""}`} aria-disabled={oos} key={candidate.key ?? index}>
+                    <input type="radio" name="m-cand" checked={selected === index} disabled={oos} onChange={() => setSelected(index)} />
                     <span className="m-match-info"><CandidateName supplier={candidate.supplier} name={candidate.name} canonicalName={row.canonicalName} productUrl={candidate.productUrl} />{candidate.packLabel && <small>{candidate.packLabel}</small>}<CandidateStock availability={candidate.availability} liveAvailable={candidate.liveAvailable} /></span>
                     <span className="m-match-right"><em className={`m-conf ${mrConfTone(candidate.confidence)}`}>{candidate.confidence}%</em><strong>{mrPriceLabel(candidate.price)}</strong>{showPerEa(candidate.perEa, candidate.price) && <small>${mrEa(candidate.perEa)} / ea</small>}</span>
                   </label>
