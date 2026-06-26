@@ -4,8 +4,10 @@
 # Usage-gated. Each tick, in priority order:
 #   1. REVISE an open loop PR that has an unaddressed "Request changes" review
 #      (check out its branch, apply the feedback, push — never a new PR).
-#   2. Else work a labeled GitHub issue (eng-loop/qa).
-#   3. Else the next autonomous playbook category in rotation (CATEGORIES).
+#   2. RECONCILE an open loop PR that conflicts with main (merge main in, resolve,
+#      re-verify, push — never a new PR, never merge).
+#   3. Else work a labeled GitHub issue (eng-loop/qa).
+#   4. Else the next autonomous playbook category in rotation (CATEGORIES).
 # Spins up an isolated worktree, hands a headless Claude/Codex run the job, and
 # opens/updates exactly one PR (or a data-quality issue). It NEVER merges.
 #
@@ -71,7 +73,10 @@ needs_db=0
 # PR's head commit (so once we push a fix, it won't be re-revised until the next
 # changes-requested review).
 revise_pr=""; revise_branch=""; revise_feedback=""
-for n in $(gh pr list --repo "$LOOP_REPO" --state open --label eng-loop --json number -q '.[].number' 2>/dev/null); do
+# Loop PRs are identified by their branch prefix (their label is eng-loop:<category>,
+# not the bare eng-loop label, which is only on issues).
+for n in $(gh pr list --repo "$LOOP_REPO" --state open --json number,headRefName \
+            -q '.[]|select(.headRefName|startswith("eng-loop-"))|.number' 2>/dev/null); do
   data="$(gh pr view "$n" --repo "$LOOP_REPO" --json headRefName,commits,reviews 2>/dev/null)" || continue
   needs="$(printf '%s' "$data" | jq -r '
     ((.commits | last | .committedDate) // "") as $h
@@ -98,8 +103,27 @@ if [ -n "$revise_pr" ]; then
   log "revise: PR #$revise_pr ($revise_branch) has unaddressed change requests — prioritizing"
 fi
 
-# --- 6. Else pick new work: labeled issue, else autonomous category ---------
+# --- 5b. RECONCILE mode: an open loop PR that conflicts with main ------------
+# If nothing to revise, look for a PR blocked by merge conflicts and resolve them
+# (merge origin/main in, reconcile both sides, re-verify, push) so it's mergeable.
+reconcile_pr=""; reconcile_branch=""
 if [ -z "$revise_pr" ]; then
+  sel="$(gh pr list --repo "$LOOP_REPO" --state open --json number,mergeable,headRefName \
+        -q '([.[]|select((.headRefName|startswith("eng-loop-")) and .mergeable=="CONFLICTING")]|first) as $p | if $p then "\($p.number) \($p.headRefName)" else empty end' 2>/dev/null || true)"
+  if [ -n "$sel" ]; then
+    reconcile_pr="${sel%% *}"; reconcile_branch="${sel#* }"
+    category="reconcile"; mode="reconcile PR #$reconcile_pr"
+    [ -n "${LOOP_DATABASE_URL:-}" ] && needs_db=1
+    log "reconcile: PR #$reconcile_pr ($reconcile_branch) conflicts with main — resolving"
+  fi
+fi
+
+# Shared "working on an existing PR" state (revise or reconcile).
+pr_active="${revise_pr}${reconcile_pr}"
+pr_branch="${revise_branch:-$reconcile_branch}"
+
+# --- 6. Else pick new work: labeled issue, else autonomous category ---------
+if [ -z "$pr_active" ]; then
   issue_num=""; issue_title=""; issue_body=""
   IFS=',' read -ra _labels <<< "$LOOP_LABELS"
   for l in "${_labels[@]}"; do
@@ -162,12 +186,12 @@ if [ -z "$revise_pr" ]; then
   case "$category" in clustering|pricing) needs_db=1 ;; esac
   [ "$category" = "issue" ] && [ -n "${LOOP_DATABASE_URL:-}" ] && needs_db=1
 fi
-log "category: $category${revise_pr:+ (PR #$revise_pr)}"
+log "category: $category${pr_active:+ (PR #$pr_active)}"
 
-# --- 7. Worktree (revise: off the PR branch; else: off origin/main) ---------
+# --- 7. Worktree (PR work: off the PR branch; else: off origin/main) --------
 stamp="$(date +%Y%m%d-%H%M%S)"
-if [ -n "$revise_pr" ]; then
-  branch="$revise_branch"; wt="$LOOP_HOME/worktrees/revise-$revise_pr-$stamp"
+if [ -n "$pr_active" ]; then
+  branch="$pr_branch"; wt="$LOOP_HOME/worktrees/pr-$pr_active-$stamp"
 else
   branch="eng-loop-${category}-${stamp}"; wt="$LOOP_HOME/worktrees/$stamp"
 fi
@@ -182,10 +206,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ -n "$revise_pr" ]; then
-  git fetch --quiet origin "$revise_branch" || { log "fetch revise branch failed"; exit 1; }
-  git worktree add -B "$branch" "$wt" "origin/$revise_branch" >/dev/null 2>&1 \
-    || { log "worktree add (revise) failed"; exit 1; }
+if [ -n "$pr_active" ]; then
+  git fetch --quiet origin "$pr_branch" || { log "fetch PR branch failed"; exit 1; }
+  git worktree add -B "$branch" "$wt" "origin/$pr_branch" >/dev/null 2>&1 \
+    || { log "worktree add (PR) failed"; exit 1; }
 else
   git worktree add -b "$branch" "$wt" "$base_sha" >/dev/null 2>&1 \
     || { log "worktree add failed"; exit 1; }
@@ -226,6 +250,13 @@ if [ -n "$revise_pr" ]; then
   prompt+="summarizing what you changed. **Do NOT open a new PR; do NOT merge.**"$'\n'
   prompt+="- If the feedback is ambiguous or you can't satisfy it, comment on the PR asking for specifics and stop."$'\n'
   prompt+=$'\nReviewer feedback:\n'"$revise_feedback"$'\n'
+elif [ -n "$reconcile_pr" ]; then
+  prompt+=$'\n\n## THIS RUN: RESOLVE MERGE CONFLICTS ON A PR\n\n'
+  prompt+="**PR #$reconcile_pr** (its branch is checked out in your cwd) conflicts with \`main\`."$'\n'
+  prompt+="- Run \`git merge --no-edit origin/main\`, then resolve EVERY conflict so you keep BOTH this PR's intent AND the changes already on main — drop neither side."$'\n'
+  prompt+="- Re-run the relevant verification (tests, or the compare-loop for UI) to confirm nothing broke."$'\n'
+  prompt+="- Commit the merge and \`git push\` (updates the PR → mergeable). Do NOT change scope, merge the PR, or open a new PR."$'\n'
+  prompt+="- If you can't resolve it correctly: \`git merge --abort\`, comment on the PR explaining, and stop."$'\n'
 else
   prompt+=$'\n\n## THIS RUN\'S PLAYBOOK\n\n'
   if [ "$category" = "issue" ]; then
@@ -247,6 +278,8 @@ prompt+="- Evidence raw-URL base: https://raw.githubusercontent.com/$LOOP_REPO/$
 [ "$needs_db" = "1" ] && prompt+="- DATABASE_URL: set in your env (READ-ONLY prod — never --commit)."$'\n'
 if [ -n "$revise_pr" ]; then
   prompt+="- Task source: REVISE PR #$revise_pr per the feedback above (push to this branch; never a new PR)."$'\n'
+elif [ -n "$reconcile_pr" ]; then
+  prompt+="- Task source: RECONCILE PR #$reconcile_pr — merge origin/main, resolve conflicts, re-verify, push (never a new PR)."$'\n'
 elif [ -n "$issue_num" ]; then
   prompt+="- Task source: GitHub issue #$issue_num — fix this specific issue."$'\n'
   prompt+="- Issue title: $issue_title"$'\n'
@@ -281,8 +314,8 @@ else
 fi
 
 # --- 10. Report -------------------------------------------------------------
-if [ -n "$revise_pr" ]; then
-  log "revise done: PR #$revise_pr updated (re-review). exit=$rc"
+if [ -n "$pr_active" ]; then
+  log "$mode done: PR #$pr_active updated (re-review). exit=$rc"
 else
   pr_num="$(cd "$wt" 2>/dev/null && gh pr view --json number -q .number 2>/dev/null || true)"
   if [ -n "$pr_num" ]; then
