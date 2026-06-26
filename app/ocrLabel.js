@@ -68,6 +68,43 @@ export function normalizeExpiry(raw) {
   return null;
 }
 
+// A bare digit run that's really a date or year, not a lot: a 4-digit year, or a
+// YYYYMMDD compact date. Keeps the numeric fallback off dates. 6-digit runs are
+// deliberately NOT flagged — a real lot like 260212 reads as a YYMMDD date but is
+// a batch number, so we don't want to discard it.
+function isDateLikeDigits(d) {
+  if (/^(19|20)\d{2}$/.test(d)) return true; // a year on its own
+  if (/^(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(d)) return true; // YYYYMMDD
+  return false;
+}
+
+// Find a batch/lot token in OCR text when there's no readable "LOT" marker.
+// Conservative on purpose — a wrong lot on a recall pull-list is worse than a
+// blank one — so it walks the whitespace tokens in reading order and takes the
+// first that has a batch shape and survives every exclusion:
+//   • barcode / HIBC / GS1 prints (a token carrying + * $, or a digit run wrapped
+//     by GS1 AI parens) are never a lot;
+//   • catalog / reference / revision numbers (a REF/CAT/MODEL/SKU/REV neighbour,
+//     or the dashed xxx-xxxx shape REF numbers print as) are excluded;
+//   • bare dates / years are excluded.
+// Two accepted shapes: a letter + 5–8 digits (A00626, M607840 — the classic
+// stamped batch), and a run of 6–14 bare digits (24015414, 13593092 — the common
+// numeric lot; the dash exclusion keeps REF numbers like 112-6830 out).
+function findBatchToken(flat) {
+  const tokens = flat.split(/\s+/);
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (/[+*$]/.test(tok)) continue;            // part of a barcode / HIBC string
+    if (/[()]/.test(tok)) continue;             // GS1 AI parens, e.g. "17)291019"
+    const prev = tokens[i - 1] || "";
+    if (/(?:^|\b)(?:REF|REORDER|CAT|CATALOG|MODEL|SKU|REV)\b/.test(prev)) continue;
+    if (/^[A-Z]\d{5,8}$/.test(tok)) return tok; // letter + digits stamp (A00626)
+    const run = tok.match(/(?:^|[^0-9A-Z])(\d{6,14})(?:$|[^0-9A-Z])/);
+    if (run && !isDateLikeDigits(run[1]) && !/\d-\d/.test(tok)) return run[1];
+  }
+  return undefined;
+}
+
 // Pull lot + expiry out of raw OCR text. Returns { lot, expiry, raw } with
 // either field possibly undefined — partial reads are useful (a lot with no
 // expiry still pre-fills half the form).
@@ -78,35 +115,50 @@ export function parseLotExpiry(text) {
   const flat = raw.toUpperCase().replace(/\s+/g, " ").trim();
 
   let lot;
-  // LOT [NO|NUMBER|#] <value>. Keyword-anchored is the precise path; tolerate
-  // the usual OCR garbles of the three letters (L0T, LDT, LOI). Allow common
-  // batch separators inside the value (A-219, 13593092, M607840).
-  const lotMatch = flat.match(/\bL[O0D][T1I]\b\s*(?:NO\.?|NUMBER|#|:)?\s*[:.\-]?\s*([A-Z0-9][A-Z0-9\-/]{2,19})/);
-  if (lotMatch && !/^(?:NO|NUMBER|NUM)$/.test(lotMatch[1])) {
+  // LOT [NO|NUMBER|#] <value>. Keyword-anchored is the precise path; tolerate the
+  // usual garbles of the three letters (L0T, LDT, LOI) AND the boxed "LOT" marker
+  // on medical labels: its frame OCRs as bracket/pipe junk glued to the value, so
+  // Tesseract reads "[LoT]|260212" or "LOT] 24015414". The separator between the
+  // marker and the value therefore allows those box glyphs, not just spaces and
+  // colons. Value allows common batch separators (A-219, 13593092, M607840).
+  const lotMatch = flat.match(
+    /\bL[O0D][T1I]\b[\s.:#)\]\[|]*(?:N[O0]\.?|NUMBER)?[\s.:#)\]\[|]*([A-Z0-9][A-Z0-9\-/]{2,19})/,
+  );
+  if (lotMatch && !/^(?:N[O0]|NUMBER|NUM)$/.test(lotMatch[1])) {
     lot = lotMatch[1];
   } else {
-    // Fallback for when OCR mangles the boxed "LOT" marker entirely (the box
-    // edges confuse the classifier — on a real Patterson label "LOT" read as
-    // "[ETI"). A letter followed by 5–8 digits (M607840) is a distinctive
-    // batch-number shape that rarely collides with other label tokens; we skip
-    // it when it's clearly a catalog/reference number instead.
-    const shape = flat.match(/\b([A-Z]\d{5,8})\b/);
-    const before = shape ? flat.slice(Math.max(0, shape.index - 14), shape.index) : "";
-    if (shape && !/\b(?:REF|REORDER|CAT|CATALOG|MODEL|SKU)\b/.test(before)) lot = shape[1];
+    // No usable "LOT" marker — the box edges defeated the classifier entirely (on
+    // a real Patterson label "LOT" read as "[ETI"), or the batch is printed bare.
+    // Fall back to a batch-number SHAPE among the tokens. See findBatchToken.
+    lot = findBatchToken(flat);
   }
 
   let expiry;
   // Prefer a keyword-tagged date (EXP / USE BY / BEST BEFORE), which is
-  // unambiguous. Fall back to the most plausible bare date token on the label —
-  // many medical labels mark expiry only with the ISO hourglass symbol, which
-  // OCR can't read, leaving just the date.
+  // unambiguous — trusted even if it's in the past, since an expired item on the
+  // shelf is exactly what we want to surface.
   const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*([0-9A-Z][0-9A-Z\-/. ]{4,11})/);
   if (expKw) expiry = normalizeExpiry(expKw[1]);
   if (!expiry) {
-    for (const tok of flat.match(/\b\d[\d\-/. ]{4,11}\d\b|\b[A-Z]{3}[-/. ]20\d{2}\b|\b20\d{2}[-/. ][A-Z]{3}\b/g) || []) {
-      const iso = normalizeExpiry(tok);
-      if (iso) { expiry = iso; break; }
+    // No keyword (many labels mark expiry only with the ISO hourglass symbol,
+    // which OCR can't read). Fall back to a bare date — but tightened, because a
+    // wrong expiry is worse than a blank one. Drop dates tagged as manufacture or
+    // revision (REV/REV2/REVISED, MFG/MFD/MANUF, MADE — not expiries), then take
+    // the LATEST of what's left: the expiry is always the latest date on a label,
+    // so max() keeps a stray earlier print/mfg date from winning when neither
+    // carries a keyword (e.g. a glove box's manufacture date next to its expiry).
+    const candidates = [];
+    let prevEnd = 0; // end of the last date seen — the marker window never crosses
+    // it, so an earlier date's "MFG" tag can't leak onto the next date.
+    for (const m of flat.matchAll(/\b\d[\d\-/. ]{4,11}\d\b|\b[A-Z]{3}[-/. ]20\d{2}\b|\b20\d{2}[-/. ][A-Z]{3}\b/g)) {
+      const iso = normalizeExpiry(m[0]);
+      if (!iso) continue;
+      const before = flat.slice(Math.max(prevEnd, m.index - 14), m.index);
+      prevEnd = m.index + m[0].length;
+      if (/\b(?:REV|MFG|MFD|MANUF|MADE)/.test(before)) continue;
+      candidates.push(iso);
     }
+    if (candidates.length) expiry = candidates.sort()[candidates.length - 1];
   }
 
   return { lot, expiry, raw };

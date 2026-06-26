@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandLogoMark, Icon, QrScanGlyph } from "./icons";
-import { formatTraceDate, isQrUrl, SWIPE_REVEAL } from "./lib";
+import { formatTraceDate, isQrUrl, parseLocationQr, SWIPE_REVEAL } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
 
@@ -269,10 +269,22 @@ export function MobileScanSession({
   const { videoRef, cameraStatus, autoDetect, retry } = useBarcodeScanner({
     active: cameraActive,
     onScan: (code, getShot) => {
+      // A printed location placard QR (our cabinet labels) carries a location id —
+      // scanning one switches which location scans file into, rather than being
+      // filed as a non-product. It's not an item, so don't run the scan handler or
+      // flash the green capture pulse; switching navigates to that location's
+      // session, which is the visible feedback. Pointing at the current location's
+      // own placard is a no-op.
+      const locId = parseLocationQr(code);
+      if (locId) {
+        const loc = locId !== session.location_id && locations.find((l) => l.id === locId);
+        if (loc) onSwitchLocation(loc);
+        return;
+      }
       onScan(code, getShot);
-      // A location / website QR isn't a product — the parent shows a "not a
-      // product" toast. Skip the green "captured" pulse so pointing at a
-      // location placard mid-scan doesn't strobe the viewfinder.
+      // A website QR isn't a product — the parent shows a "not a product" toast.
+      // Skip the green "captured" pulse so pointing at one mid-scan doesn't strobe
+      // the viewfinder.
       if (isQrUrl(code)) return;
       setCaptured(true);
       window.clearTimeout(pulseTimer.current);
@@ -378,6 +390,12 @@ export function MobileScanSession({
           <span className={s.locPillName}>{locName}</span>
           <span className={s.locPillCaret}><Icon name="icon-chevron-down" /></span>
         </button>
+        {/* OCR read-off-the-label hint, as a pill under the location pill (not
+            overlaid on the post-scan drawer): a "reading…" note while OCR runs,
+            then a confirm-it note once it's pre-filled the lot/expiry fields. */}
+        {pendingLine && (ocrBusy || ocrSuggestion) && (
+          <OcrHintPill ocrBusy={ocrBusy} suggestion={ocrSuggestion} />
+        )}
       </div>
 
       <div className={s.camFrame} aria-hidden="true"><span /><span /><span /><span /></div>
@@ -397,7 +415,6 @@ export function MobileScanSession({
           key={pendingLine.id}
           line={pendingLine}
           locationName={locName}
-          ocrBusy={ocrBusy}
           suggestion={ocrSuggestion}
           onPersist={(id, body) => onPatchLine(id, body)}
           onDismiss={(id, body) => { onPatchLine(id, body); onClearPending?.(); }}
@@ -782,17 +799,18 @@ function ReorderScanSheet({ result, onPersist, onDismiss }) {
   );
 }
 
-// ── Post-scan capture drawer ──────────────────────────────────────────
-// When OCR has read lot/expiry off the package, surface it in the capture
-// drawer: a "reading…" note while it runs, then a confirm-it note once the
-// fields are pre-filled. Assistive — the values land in the editable fields,
-// never silently.
-function OcrHint({ ocrBusy, suggestion }) {
+// ── OCR read-off-the-label hint pill ──────────────────────────────────
+// Shown under the location pill while the post-scan drawer is up: a "reading…"
+// note while OCR runs, then a confirm-it note once it's pre-filled the lot/expiry
+// fields below. Assistive — the values land in the editable fields, never
+// silently — and it lives in the top strip, not on the drawer, so it doesn't
+// crowd the captured fields.
+function OcrHintPill({ ocrBusy, suggestion }) {
   if (ocrBusy) {
     return (
-      <div className={s.modeSheetInfo} aria-live="polite">
+      <div className={s.ocrPill} aria-live="polite">
         <Icon name="icon-scan" />
-        Reading lot &amp; expiry off the label…
+        <span className={s.ocrPillText}>Reading lot &amp; expiry off the label…</span>
       </div>
     );
   }
@@ -802,14 +820,15 @@ function OcrHint({ ocrBusy, suggestion }) {
   if (!suggestion) return null;
   const { lot, expiry } = suggestion;
   let msg;
+  let icon = "icon-check-circle";
   if (lot && expiry) msg = "Filled lot & expiry from the label — check they’re right.";
   else if (lot) msg = "Filled the lot from the label — check it’s right.";
   else if (expiry) msg = "Filled the expiry from the label — check it’s right.";
-  else msg = "Couldn’t read lot or expiry off the label — enter them below.";
+  else { msg = "Couldn’t read lot or expiry — enter them below."; icon = "icon-scan"; }
   return (
-    <div className={s.modeSheetInfo} aria-live="polite">
-      <Icon name="icon-scan" />
-      {msg}
+    <div className={s.ocrPill} aria-live="polite">
+      <Icon name={icon} />
+      <span className={s.ocrPillText}>{msg}</span>
     </div>
   );
 }
@@ -831,7 +850,7 @@ function captureResult(line) {
 // flicked down. The header reflects what the scan did (received vs confirmed) and
 // the location is the session's, shown read-only (switch it from the top pill).
 // A received scan also captures a received date.
-function CaptureScanSheet({ line, locationName, ocrBusy, suggestion, onPersist, onDismiss }) {
+function CaptureScanSheet({ line, locationName, suggestion, onPersist, onDismiss }) {
   const result = captureResult(line);
   // Identified + not a confirm of an existing lot ⇒ a receive (captures a
   // received date). Unidentified lines record neither until they're linked.
@@ -980,7 +999,6 @@ function CaptureScanSheet({ line, locationName, ocrBusy, suggestion, onPersist, 
             </div>
           </div>
         </div>
-        <OcrHint ocrBusy={ocrBusy} suggestion={suggestion} />
       </div>
     </div>
   );
