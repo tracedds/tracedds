@@ -39,6 +39,16 @@ its binary directly (e.g. the gstack `browse` binary) — the procedure is the s
 - `gh pr create` with the template below; embed images via the raw-URL base in
   RUN CONTEXT (committed files render). For non-visual fixes, put before/after
   command output in fenced code blocks instead.
+- **Preview line (be honest about what the Vercel preview shows).** Check whether
+  this PR touches the backend:
+  `git diff --name-only origin/main...HEAD | grep -q '^medusa-backend/'`.
+  - **Frontend-only** (no match): the PR's auto Vercel preview runs the branch
+    frontend against the **prod** backend, so it faithfully shows this change —
+    say so in the Preview section.
+  - **Backend-touching** (match): the Vercel preview's frontend hits the **prod**
+    backend (running `main`'s backend code), so it does **NOT** reflect this PR's
+    `medusa-backend/` changes — say so, and point to the real verification
+    (dry-run metrics / tests) instead of implying the preview is faithful.
 - **Do not merge.**
 
 ## Open an issue (playbook found a problem with no safe code fix)
@@ -110,6 +120,15 @@ inventing a look.
 
 ## Verification
 <before/after — screenshots for UI, metrics diff for data, command output for logic>
+
+## Preview
+<frontend-only PR:>
+▶ Vercel preview (branch frontend → prod backend, via the server-side proxy) — see the
+Vercel deployment linked on this PR. Faithful for this frontend change; log in to view `/app`.
+<backend-touching PR (touches medusa-backend/):>
+⚠️ The Vercel preview runs the frontend against the **prod** backend, so this PR's
+`medusa-backend/` changes are **NOT** reflected there. Verified instead by the evidence
+above (dry-run metrics / tests) — don't judge the backend change from the preview.
 
 ---
 🤖 Opened by the engineering quality loop. One focused change; verified above.
