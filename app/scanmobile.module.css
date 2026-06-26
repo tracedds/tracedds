@@ -511,6 +511,12 @@
 .ocrPill svg { width: 14px; height: 14px; flex-shrink: 0; color: #9ec5ff; }
 .ocrPillText { overflow: hidden; }
 
+/* One-time "preparing label reader" load pill: text over a thin determinate bar. */
+.ocrLoadPill { align-items: center; }
+.ocrLoadBody { display: flex; flex-direction: column; gap: 4px; min-width: 150px; overflow: hidden; }
+.ocrBar { height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+.ocrBarFill { height: 100%; border-radius: 999px; background: #9ec5ff; transition: width 0.25s ease; }
+
 .camFrame {
   position: absolute;
   top: 30%; left: 50%;

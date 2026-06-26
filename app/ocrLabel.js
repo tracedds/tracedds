@@ -166,18 +166,67 @@ export function parseLotExpiry(text) {
 
 // ── Browser OCR engine ────────────────────────────────────────────────
 
-// One lazy import of Tesseract (the WASM core + the English model are ~12 MB, so
-// we load them once) and one worker built from it — never pay that twice. Lazy so
-// none of it touches the initial bundle (same pattern as the @zxing QR writer).
+// One lazy import of Tesseract (the WASM core + the quantized LSTM English model
+// are ~5.5 MB combined, fetched once from the jsDelivr CDN and then cached by the
+// browser) and one worker built from it — never pay that twice. Lazy so none of
+// it touches the initial bundle (same pattern as the @zxing QR writer).
 let modulePromise = null;
 let workerPromise = null;
 function getModule() {
   if (!modulePromise) modulePromise = import("tesseract.js");
   return modulePromise;
 }
+
+// First-load progress, broadcast to any UI that wants to show a one-time
+// "preparing the reader" bar while those ~5.5 MB download. The worker is built
+// once, so this fires once per page; on a return visit the assets come from cache
+// and it completes near-instantly (the UI debounces so the bar never flashes).
+let loadState = { phase: "idle", progress: 0 }; // idle | loading | ready
+const loadListeners = new Set();
+function setLoad(next) {
+  loadState = { ...loadState, ...next };
+  for (const fn of loadListeners) fn(loadState);
+}
+// Subscribe to load progress; replays the current state immediately. Returns an
+// unsubscribe.
+export function onOcrLoad(fn) {
+  loadListeners.add(fn);
+  fn(loadState);
+  return () => loadListeners.delete(fn);
+}
+
+// Tesseract reports each load step with its own 0..1 progress; weight the steps
+// into one forward-only bar. The per-scan "recognizing text" step isn't a
+// download, so it's left out of the load bar.
+const LOAD_STAGES = {
+  "loading tesseract core": [0, 0.45],
+  "loading language traineddata": [0.45, 0.9],
+  "initializing tesseract": [0.9, 0.97],
+  "initializing api": [0.97, 1],
+};
+function logger(m) {
+  const stage = LOAD_STAGES[m.status];
+  if (!stage) return;
+  const p = stage[0] + (stage[1] - stage[0]) * (m.progress || 0);
+  if (p > loadState.progress) setLoad({ phase: "loading", progress: p });
+}
+
 function getWorker() {
-  if (!workerPromise) workerPromise = getModule().then(({ createWorker }) => createWorker("eng"));
+  if (!workerPromise) {
+    // oem is left at its default (LSTM_ONLY) — the small LSTM core + the quantized
+    // model. The logger drives the load bar above.
+    workerPromise = getModule()
+      .then(({ createWorker }) => createWorker("eng", undefined, { logger }))
+      .then((w) => { setLoad({ phase: "ready", progress: 1 }); return w; });
+  }
   return workerPromise;
+}
+
+// Pre-warm the reader (kick off the one-time core + model download) before it's
+// needed — called when the scanner camera opens so the first label read isn't
+// blocked on the download. Safe to call repeatedly; the worker is built once.
+export function warmOcr() {
+  getWorker().catch(() => {});
 }
 
 // Grayscale + per-frame contrast-stretch the captured frame onto a fresh canvas.
