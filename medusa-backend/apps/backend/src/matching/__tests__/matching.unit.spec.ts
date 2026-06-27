@@ -316,6 +316,16 @@ describe("identity matching (golden pairs from production data)", () => {
     expect([...(extractNumericAttrs("EZ-ID Tape System and Rolls, Roll, 10 ft., Green").get("color") ?? [])]).toEqual(["green"])
   })
 
+  it("captures bur diameter and length as separate hard-conflict attributes", () => {
+    const attrs = extractNumericAttrs(
+      "NTI Diamond Burs - Medium, Gray, Inverted Cone, # M805, 1.2 mm Diameter, 1.5 mm Length"
+    )
+
+    expect([...(attrs.get("bur_diameter") ?? [])]).toEqual(["1.2"])
+    expect([...(attrs.get("bur_length") ?? [])]).toEqual(["1.5"])
+    expect(extractNumericAttrs("Light Guide 8 mm Diameter").get("bur_diameter")).toBeUndefined()
+  })
+
   it("captures USP suture sizes as hard-conflict attributes", () => {
     expect([...(extractNumericAttrs('Look Nylon Monofilament Sutures, 4-0, 18", 12/Box').get("suture_size") ?? [])]).toEqual(["4-0"])
     expect([...(extractNumericAttrs("LOOK Nylon Black Monofilament Sutures - C6, 5–0").get("suture_size") ?? [])]).toEqual(["5-0"])
@@ -513,6 +523,67 @@ describe("identity matching (golden pairs from production data)", () => {
     expect(result.clusters).toHaveLength(2)
     expect(materialSets.some((values) => values.size === 1 && values.has("paper"))).toBe(true)
     expect(materialSets.some((values) => values.size === 1 && values.has("gutta_percha"))).toBe(true)
+  })
+
+  it("does not merge NTI HP diamond bur diameter variants through sparse supplier rows", () => {
+    // Prod regression: the Patterson M805 rows differed only by diameter
+    // (1.2/1.4/1.8 mm) but shared a 1.5 mm length. The generic mm axis saw the
+    // shared length as compatibility, so exact-SKU edges through sparse
+    // Dental City rows collapsed the whole diameter ladder into one canonical.
+    const rows = [
+      product({
+        supplier_id: "msup_dcdental_com",
+        manufacturer_sku: "865-M805-014HP",
+        brand: "Kerr Rotary",
+        name: "NTI HP Diamond Medium M805-014HP Each",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "M805-012HP",
+        brand: "Kerr Rotary",
+        name: "NTI Diamond Burs - Medium, Gray, Inverted Cone, # M805, 1.2 mm Diameter, 1.5 mm Length",
+      }),
+      product({
+        supplier_id: "msup_dentalcity_com",
+        manufacturer_sku: "M805-012HP",
+        brand: "Dental City",
+        name: "NTI Diamond HP Medium Inverted Cone M805-012HP",
+      }),
+      product({
+        supplier_id: "msup_dentalcity_com",
+        manufacturer_sku: "M805-014HP",
+        brand: "Dental City",
+        name: "NTI Diamond HP Medium Inverted Cone M805-014HP",
+      }),
+      product({
+        supplier_id: "msup_dentalcity_com",
+        manufacturer_sku: "M805-018HP",
+        brand: "Dental City",
+        name: "NTI Diamond HP Medium Inverted Cone M805-018HP",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "M805-014HP",
+        brand: "Kerr Rotary",
+        name: "NTI Diamond Burs - Medium, Gray, Inverted Cone, # M805, 1.4 mm Diameter, 1.5 mm Length",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "M805-018HP",
+        brand: "Kerr Rotary",
+        name: "NTI Diamond Burs - Medium, Gray, Inverted Cone, # M805, 1.8 mm Diameter, 1.5 mm Length",
+      }),
+    ]
+    const result = runMatching(rows.map(normalizeProduct))
+    const skuSets = result.clusters
+      .map((cluster) => [...new Set(cluster.members.map((member) => member.mfrSku))].sort())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+
+    expect(skuSets).toEqual([
+      ["865M805014HP", "M805014HP"],
+      ["M805012HP"],
+      ["M805018HP"],
+    ])
   })
 
   it("keeps Voco Grandio CAD block size and translucency variants in separate clusters", () => {
@@ -881,6 +952,25 @@ describe("identity matching (golden pairs from production data)", () => {
       }
     )
     expect(["exact", "variant"]).not.toContain(decision.status)
+  })
+
+  it("rejects bur variants with the same working length but different diameter", () => {
+    const decision = score(
+      {
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "M805-012HP",
+        brand: "Kerr Rotary",
+        name: "NTI Diamond Burs - Medium, Gray, Inverted Cone, # M805, 1.2 mm Diameter, 1.5 mm Length",
+      },
+      {
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "M805-014HP",
+        brand: "Kerr Rotary",
+        name: "NTI Diamond Burs - Medium, Gray, Inverted Cone, # M805, 1.4 mm Diameter, 1.5 mm Length",
+      }
+    )
+
+    expect(decision.status).toBe("reject")
   })
 
   it("matches Opti-Cide 3 rows whose distributor brands disagree but catalog code matches", () => {
