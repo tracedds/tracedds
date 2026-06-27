@@ -144,6 +144,10 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
   const [draggingId, setDraggingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // `${x},${y}` | "tray" | null
 
+  useEffect(() => {
+    setItems(locations);
+  }, [locations]);
+
   const placed = useMemo(() => items.filter((l) => l.layout_x != null && l.layout_y != null), [items]);
   const unplaced = useMemo(() => items.filter((l) => l.layout_x == null || l.layout_y == null), [items]);
   const selectedLocation = useMemo(() => items.find((l) => l.id === selectedId) || null, [items, selectedId]);
