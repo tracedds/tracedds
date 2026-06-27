@@ -10,3 +10,4 @@ __pycache__/
 .barcode-venv/
 .claude
 .gitignore
+backups/
