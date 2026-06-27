@@ -559,6 +559,13 @@ export function normalizeProduct(row: SupplierProductRow): NormalizedProduct {
   ) {
     numericAttrs.set("wallshoulders_model", new Set([wallShouldersModel]))
   }
+  const pdtInstrumentModel = mfrSku.match(/R\d{3}R?$/)?.[0]
+  if (
+    pdtInstrumentModel &&
+    (/\b(?:pdt|paradise\s+dental|amazing\s+gracey)\b/i.test(`${row.brand} ${row.name}`))
+  ) {
+    numericAttrs.set("pdt_instrument_model", new Set([pdtInstrumentModel]))
+  }
   // The prefix-stripped model is a hard-conflict axis: two products with
   // different models are different products. Only prefix-coded suppliers carry
   // it, so it can only ever veto a pair of THAT supplier's own listings —
