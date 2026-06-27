@@ -336,6 +336,16 @@ describe("identity matching (golden pairs from production data)", () => {
     expect([...(guttaPercha.get("endo_point_material") ?? [])]).toEqual(["gutta_percha"])
   })
 
+  it("captures CAD block size and translucency as hard-conflict attributes", () => {
+    const low12 = extractNumericAttrs("Grandio Blocs - A2, Low Translucency, Size 12")
+    const high14 = extractNumericAttrs("Grandio blocs HT Milling Blocks High Translucency 14L A2 For CEREC 5/Pk")
+
+    expect([...(low12.get("cad_block_size") ?? [])]).toEqual(["12"])
+    expect([...(low12.get("cad_block_translucency") ?? [])]).toEqual(["lt"])
+    expect([...(high14.get("cad_block_size") ?? [])]).toEqual(["14l"])
+    expect([...(high14.get("cad_block_translucency") ?? [])]).toEqual(["ht"])
+  })
+
   it("rejects same-SKU color variants instead of merging them", () => {
     const decision = score(
       {
@@ -433,6 +443,76 @@ describe("identity matching (golden pairs from production data)", () => {
     expect(result.clusters).toHaveLength(2)
     expect(materialSets.some((values) => values.size === 1 && values.has("paper"))).toBe(true)
     expect(materialSets.some((values) => values.size === 1 && values.has("gutta_percha"))).toBe(true)
+  })
+
+  it("keeps Voco Grandio CAD block size and translucency variants in separate clusters", () => {
+    // Prod regression: four A2 Grandio Blocs variants (LT/HT x Size 12/14L)
+    // collapsed into one canonical through same-name edges with no SKU evidence.
+    // The same-SKU cross-supplier pairs should still merge, but those four
+    // manufacturer SKUs must stay separate from each other.
+    const rows = [
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "6004",
+        brand: "Voco",
+        name: "Grandio Blocs - A2, Low Translucency, Size 12",
+        pack_size: "5/Pkg",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "6004",
+        brand: "VOCO AMERICA",
+        name: "Grandio blocs LT Milling Blocks Low Translucency 12 A2 For CEREC 5/Pk",
+        pack_size: "5/Pk",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "6013",
+        brand: "Voco",
+        name: "Grandio Blocs - A2,High Translucency, Size 12",
+        pack_size: "5/Pkg",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "6013",
+        brand: "VOCO AMERICA",
+        name: "Grandio blocs HT Milling Blocks High Translucency 12 A2 For CEREC 5/Pk",
+        pack_size: "5/Pk",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "6019",
+        brand: "Voco",
+        name: "Grandio Blocs - A2, Low Translucency, Size 14L",
+        pack_size: "5/Pkg",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "6019",
+        brand: "VOCO AMERICA",
+        name: "Grandio blocs LT Milling Blocks Low Translucency 14L A2 For CEREC 5/Pk",
+        pack_size: "5/Pk",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "6028",
+        brand: "Voco",
+        name: "Grandio Blocs - A2, High Translucency, Size 14L",
+        pack_size: "5/Pkg",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "6028",
+        brand: "VOCO AMERICA",
+        name: "Grandio blocs HT Milling Blocks High Translucency 14L A2 For CEREC 5/Pk",
+        pack_size: "5/Pk",
+      }),
+    ]
+    const result = runMatching(rows.map(normalizeProduct))
+    const skuSets = result.clusters.map((cluster) => new Set(cluster.members.map((member) => member.mfrSku)))
+
+    expect(result.clusters).toHaveLength(4)
+    expect(skuSets.every((skus) => skus.size === 1)).toBe(true)
   })
 
   it("does not merge distinct WallShoulders X-ray apron hanger models", () => {
