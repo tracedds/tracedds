@@ -36,6 +36,18 @@ function typeMeta(type) {
   return TYPE_META[type] || TYPE_META.other;
 }
 
+function positionOf(location) {
+  return {
+    id: location.id,
+    layout_x: location.layout_x ?? null,
+    layout_y: location.layout_y ?? null,
+  };
+}
+
+function samePosition(a, b) {
+  return (a?.layout_x ?? null) === (b?.layout_x ?? null) && (a?.layout_y ?? null) === (b?.layout_y ?? null);
+}
+
 // A single placeable location tile. Draggable everywhere (grid + tray); clicking
 // it reports a selection. The status dot is amber when the location needs
 // attention, green otherwise.
@@ -72,18 +84,32 @@ function LocationTile({ location, selected, onSelect, onDragStart, onDragEnd }) 
 // tiles with null coords wait in the "unplaced" tray and can be dragged onto the
 // grid. Positions are managed in local state for the demo and reported up via
 // the optional callbacks (onMoveLocation / onSelectLocation / onAddLocation).
-export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, onSelectLocation, onAddLocation }) {
+export function OfficeLayoutView({ locations = MOCK_LOCATIONS, loading = false, loadError = "", onMoveLocation, onSelectLocation, onAddLocation, onLayoutSaved }) {
   const [items, setItems] = useState(locations);
+  const [savedItems, setSavedItems] = useState(locations);
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // `${x},${y}` | "tray" | null
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     setItems(locations);
+    setSavedItems(locations);
     setSelectedId(null);
     setDraggingId(null);
     setDropTarget(null);
+    setSaveError("");
   }, [locations]);
+
+  const changedPositions = useMemo(() => {
+    const savedById = new Map(savedItems.map((location) => [location.id, positionOf(location)]));
+    return items
+      .map(positionOf)
+      .filter((position) => !samePosition(position, savedById.get(position.id)));
+  }, [items, savedItems]);
+
+  const dirty = changedPositions.length > 0;
 
   const placed = useMemo(() => items.filter((l) => l.layout_x != null && l.layout_y != null), [items]);
   const unplaced = useMemo(() => items.filter((l) => l.layout_x == null || l.layout_y == null), [items]);
@@ -114,23 +140,52 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
     setDropTarget(null);
   }
 
+  function updateDraftPosition(id, x, y) {
+    setSaveError("");
+    setItems((prev) => prev.map((l) => {
+      if (l.id !== id) return l;
+      if ((l.layout_x ?? null) === x && (l.layout_y ?? null) === y) return l;
+      return { ...l, layout_x: x, layout_y: y };
+    }));
+    onMoveLocation?.(id, x, y);
+  }
+
   // Drop onto a grid cell: snap the dragged tile to (x, y). If the cell is taken,
   // ignore the drop so we never stack two locations on one cell.
   function dropOnCell(x, y) {
     if (!draggingId) return;
     const occupant = tileAt(x, y);
     if (occupant && occupant.id !== draggingId) return;
-    setItems((prev) => prev.map((l) => (l.id === draggingId ? { ...l, layout_x: x, layout_y: y } : l)));
-    onMoveLocation?.(draggingId, x, y);
+    updateDraftPosition(draggingId, x, y);
     handleDragEnd();
   }
 
   // Drop back into the tray: clear the tile's coords so it returns to unplaced.
   function dropOnTray() {
     if (!draggingId) return;
-    setItems((prev) => prev.map((l) => (l.id === draggingId ? { ...l, layout_x: null, layout_y: null } : l)));
-    onMoveLocation?.(draggingId, null, null);
+    updateDraftPosition(draggingId, null, null);
     handleDragEnd();
+  }
+
+  function resetLayout() {
+    setItems(savedItems);
+    setSaveError("");
+    handleDragEnd();
+  }
+
+  async function saveLayout() {
+    if (!dirty || saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await traceApi.saveLocationLayout(changedPositions);
+      setSavedItems(items);
+      onLayoutSaved?.(items);
+    } catch (err) {
+      setSaveError(traceErrorMessage(err, "Couldn't save the layout. Your draft positions are still here."));
+    } finally {
+      setSaving(false);
+    }
   }
 
   const cells = [];
@@ -147,13 +202,46 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
           <h1 className="ol-title">Office layout</h1>
           <p className="ol-lede">Arrange your locations to match the floor plan. Drag a tile to snap it to a spot; click one to see its details.</p>
         </div>
-        <button type="button" className="primary-action compact ol-add" onClick={() => onAddLocation?.()}>
-          <Icon name="icon-plus" className="button-icon" />
-          Add location
-        </button>
+        <div className="ol-actions" aria-label="Office layout actions">
+          <span className={`ol-save-status ${dirty ? "dirty" : ""}`} role="status">
+            {saving ? "Saving layout..." : dirty ? `${changedPositions.length} unsaved change${changedPositions.length === 1 ? "" : "s"}` : "Layout saved"}
+          </span>
+          <button type="button" className="secondary-action compact" onClick={resetLayout} disabled={!dirty || saving}>
+            <Icon name="icon-refresh" className="button-icon" />
+            Reset
+          </button>
+          <button type="button" className="primary-action compact" onClick={saveLayout} disabled={!dirty || saving}>
+            <Icon name="icon-check" className="button-icon" />
+            {saving ? "Saving..." : "Save layout"}
+          </button>
+          <button type="button" className="secondary-action compact ol-add" onClick={() => onAddLocation?.()}>
+            <Icon name="icon-plus" className="button-icon" />
+            Add location
+          </button>
+        </div>
       </div>
 
-      {items.length === 0 ? (
+      {saveError ? (
+        <div className="ol-alert" role="alert">
+          <Icon name="icon-alert-triangle" />
+          <span>{saveError}</span>
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <div className="ol-alert" role="alert">
+          <Icon name="icon-alert-triangle" />
+          <span>{loadError}</span>
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="ol-state" aria-live="polite">
+          <Icon name="icon-map-pin" className="nav-icon" />
+          <strong>Loading office layout</strong>
+          <p>Fetching the saved office layout for this practice.</p>
+        </div>
+      ) : items.length === 0 ? (
         <div className="ol-state">
           <Icon name="icon-map-pin" className="nav-icon" />
           <strong>No locations yet</strong>

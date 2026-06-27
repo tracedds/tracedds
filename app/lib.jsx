@@ -833,6 +833,7 @@ export const traceApi = {
   createLocation: (body) => traceFetch("/api/locations", jsonBody("POST", body)),
   getLocation: (id) => traceFetch(`/api/locations/${encodeURIComponent(id)}`),
   updateLocation: (id, body) => traceFetch(`/api/locations/${encodeURIComponent(id)}`, jsonBody("PATCH", body)),
+  saveLocationLayout: (positions) => traceFetch("/api/locations/layout", jsonBody("PATCH", { positions })),
   deleteLocation: (id, force) =>
     traceFetch(`/api/locations/${encodeURIComponent(id)}${force ? "?force=1" : ""}`, { method: "DELETE" }),
   // Permanently delete every inventory item captured at a location ("Clear list").
