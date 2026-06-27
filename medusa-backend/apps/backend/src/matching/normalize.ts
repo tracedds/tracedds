@@ -325,6 +325,18 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     add(`${match[2]}_dim`, `${match[1]}x${match[3]}`)
   }
 
+  // Dental burs often specify both a head diameter and a working length in the
+  // same name. The generic "mm" axis collapses both values into one set, so
+  // "1.2 mm Diameter, 1.5 mm Length" appeared compatible with "1.4 mm
+  // Diameter, 1.5 mm Length" because the length overlapped. Split those labels
+  // into separate axes for bur/diamond listings so diameter variants conflict.
+  if (/\b(?:burs?|diamonds?)\b/.test(lowered)) {
+    const burMeasurementRe = /(\d+(?:\.\d+)?)\s*mm\s+(diameter|length)\b/g
+    while ((match = burMeasurementRe.exec(lowered))) {
+      add(`bur_${match[2]}`, match[1])
+    }
+  }
+
   // Composite/restorative shade: a color code (A1..D7, optional .5) with an
   // optional layer letter (B=Body, E=Enamel, T=Translucent). The layer letter
   // must be consumed here, otherwise "A1B"/"B5B" fail the trailing word
