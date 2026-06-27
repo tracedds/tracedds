@@ -1,0 +1,10 @@
+1. Low | Needs reorder | Tray Covers, Plastic
+2. Urgent | Low stock | Nitrile Exam Gloves, Medium
+3. High | Expiring soon | Prophy Angles, Soft
+4. High | Missing proof | Sterilization Pouch, 3.5" x 9"
+5. Medium | Low stock | Face Masks, Earloop
+6. Medium | Needs reorder | Composite Tips, Black
+7. Medium | Low stock | Surface Disinfectant Wipes
+8. Low | Expiring soon | Septocaine 4% w/ Epinephrine
+9. Low | Low stock | Patient Bibs, Blue
+10. Low | Low stock | Round Burs #2

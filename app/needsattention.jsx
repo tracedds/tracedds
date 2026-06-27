@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons";
 import { initials } from "./lib";
 import s from "./needsattention.module.css";
+import { sortNeedsAttentionIssues } from "./needsAttentionSort";
 
 // Needs Attention — the operational worklist. Every open item or issue that
 // needs a human to look at it: low/out-of-stock, expiring lots, and missing
@@ -181,7 +182,7 @@ export function NeedsAttentionView({ data = NEEDS_ATTENTION_MOCK, onToast }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return data.issues.filter((i) => {
+    const matches = data.issues.filter((i) => {
       if (severityFilter !== "all" && i.severity !== severityFilter) return false;
       if (locationFilter !== "all" && i.location !== locationFilter) return false;
       if (typeFilter !== "all" && i.type !== typeFilter) return false;
@@ -189,6 +190,7 @@ export function NeedsAttentionView({ data = NEEDS_ATTENTION_MOCK, onToast }) {
       if (q && !(`${i.item} ${i.sku} ${i.detail} ${i.detailSub} ${i.location}`.toLowerCase().includes(q))) return false;
       return true;
     });
+    return sortNeedsAttentionIssues(matches, SEVERITY);
   }, [data.issues, query, severityFilter, locationFilter, typeFilter, assigneeFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
