@@ -868,6 +868,23 @@ export function formatTraceDate(iso) {
     : d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
+// Expiry dates should read as the canonical package date, not a localized prose
+// date. Preserve the YYYY-MM-DD portion directly so UTC timestamps never shift a
+// lot's displayed expiry by local timezone.
+export function formatExpiryDate(value) {
+  if (!value) return "";
+  const raw = String(value);
+  const isoDate = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDate) return isoDate[1];
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 // Days until an expiration date (negative = already expired); null when absent.
 export function daysUntil(iso) {
   if (!iso) return null;
