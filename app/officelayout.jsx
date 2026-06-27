@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./icons";
+import { traceApi, traceErrorMessage } from "./lib";
 
 // Mock locations for the standalone demo. The real page passes its own
 // `locations` from the parent; this is only the default so the component
@@ -33,6 +34,72 @@ const TYPE_META = {
 
 function typeMeta(type) {
   return TYPE_META[type] || TYPE_META.other;
+}
+
+function formatLastScanned(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function MarkerDetail({ location, onOpenLocation, onStartScan }) {
+  if (!location) {
+    return (
+      <section className="ol-detail empty" aria-label="Selected location">
+        <span className="ol-detail-empty-icon"><Icon name="icon-map-pin" className="nav-icon" /></span>
+        <h2>Select a marker</h2>
+        <p>Choose a location on the grid or in the tray to open its actions.</p>
+      </section>
+    );
+  }
+
+  const meta = typeMeta(location.type);
+  const itemCount = location.item_count || 0;
+  const attentionCount = location.needs_attention_count || 0;
+  const lastScanned = formatLastScanned(location.last_scanned_at);
+
+  return (
+    <section className="ol-detail" aria-label={`${location.name} details`}>
+      <div className="ol-detail-head">
+        <span className={`ol-detail-icon tint-${meta.tint}`}>
+          <Icon name={meta.icon} className="nav-icon" />
+        </span>
+        <div>
+          <h2>{location.name}</h2>
+          <p>{meta.label}</p>
+        </div>
+      </div>
+
+      <dl className="ol-detail-stats">
+        <div>
+          <dt>Items</dt>
+          <dd>{itemCount}</dd>
+        </div>
+        <div>
+          <dt>Needs attention</dt>
+          <dd className={attentionCount ? "attention" : ""}>{attentionCount}</dd>
+        </div>
+        {lastScanned ? (
+          <div className="wide">
+            <dt>Last scanned</dt>
+            <dd>{lastScanned}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      <div className="ol-detail-actions">
+        <button type="button" className="primary-action compact" onClick={() => onOpenLocation?.(location.id)}>
+          Open location
+          <Icon name="icon-chevron-right" className="button-icon" />
+        </button>
+        <button type="button" className="secondary-action compact" onClick={() => onStartScan?.(location.id)}>
+          <Icon name="icon-scan" className="button-icon" />
+          Start scan
+        </button>
+      </div>
+    </section>
+  );
 }
 
 // A single placeable location tile. Draggable everywhere (grid + tray); clicking
@@ -71,7 +138,7 @@ function LocationTile({ location, selected, onSelect, onDragStart, onDragEnd }) 
 // tiles with null coords wait in the "unplaced" tray and can be dragged onto the
 // grid. Positions are managed in local state for the demo and reported up via
 // the optional callbacks (onMoveLocation / onSelectLocation / onAddLocation).
-export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, onSelectLocation, onAddLocation }) {
+export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, onSelectLocation, onAddLocation, onOpenLocation, onStartScan }) {
   const [items, setItems] = useState(locations);
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -79,6 +146,7 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
 
   const placed = useMemo(() => items.filter((l) => l.layout_x != null && l.layout_y != null), [items]);
   const unplaced = useMemo(() => items.filter((l) => l.layout_x == null || l.layout_y == null), [items]);
+  const selectedLocation = useMemo(() => items.find((l) => l.id === selectedId) || null, [items, selectedId]);
 
   // How many rows to render: enough for the lowest placed tile, plus a spare row
   // so there's always somewhere to drop below the last tile.
@@ -186,39 +254,123 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
           })}
         </div>
 
-        <aside
-          className={`ol-tray ${dropTarget === "tray" ? "drop-target" : ""}`}
-          onDragOver={(event) => {
-            if (!draggingId) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-            setDropTarget("tray");
-          }}
-          onDragLeave={() => setDropTarget((current) => (current === "tray" ? null : current))}
-          onDrop={(event) => { event.preventDefault(); dropOnTray(); }}
-        >
-          <header className="ol-tray-head">
-            <strong>Unplaced</strong>
-            <small>{unplaced.length} location{unplaced.length === 1 ? "" : "s"}</small>
-          </header>
-          {unplaced.length ? (
-            <div className="ol-tray-list">
-              {unplaced.map((location) => (
-                <LocationTile
-                  key={location.id}
-                  location={location}
-                  selected={selectedId === location.id}
-                  onSelect={selectLocation}
-                  onDragStart={handleDragStart}
-                  onDragEnd={handleDragEnd}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="ol-tray-empty">Every location is on the grid. Drag a tile here to take it off the floor plan.</p>
-          )}
-        </aside>
+        <div className="ol-rail">
+          <MarkerDetail location={selectedLocation} onOpenLocation={onOpenLocation} onStartScan={onStartScan} />
+
+          <aside
+            className={`ol-tray ${dropTarget === "tray" ? "drop-target" : ""}`}
+            onDragOver={(event) => {
+              if (!draggingId) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDropTarget("tray");
+            }}
+            onDragLeave={() => setDropTarget((current) => (current === "tray" ? null : current))}
+            onDrop={(event) => { event.preventDefault(); dropOnTray(); }}
+          >
+            <header className="ol-tray-head">
+              <strong>Unplaced</strong>
+              <small>{unplaced.length} location{unplaced.length === 1 ? "" : "s"}</small>
+            </header>
+            {unplaced.length ? (
+              <div className="ol-tray-list">
+                {unplaced.map((location) => (
+                  <LocationTile
+                    key={location.id}
+                    location={location}
+                    selected={selectedId === location.id}
+                    onSelect={selectLocation}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="ol-tray-empty">Every location is on the grid. Drag a tile here to take it off the floor plan.</p>
+            )}
+          </aside>
+        </div>
       </div>
     </div>
+  );
+}
+
+export function OfficeLayoutRoute({ onMoveLocation, onAddLocation, onOpenLocation, onStartScan, onToast }) {
+  const [locations, setLocations] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    traceApi.listLocations()
+      .then((data) => {
+        if (!alive) return;
+        setLocations(data.locations || []);
+        setError("");
+      })
+      .catch((err) => {
+        if (!alive) return;
+        const message = traceErrorMessage(err, "Could not load office locations.");
+        setLocations([]);
+        setError(message);
+        onToast?.(message);
+      });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (locations === null) {
+    return (
+      <div className="ol">
+        <div className="ol-head">
+          <div>
+            <h1 className="ol-title">Office layout</h1>
+            <p className="ol-lede">Loading practice locations…</p>
+          </div>
+        </div>
+        <div className="ol-state">Loading office layout…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="ol">
+        <div className="ol-head">
+          <div>
+            <h1 className="ol-title">Office layout</h1>
+            <p className="ol-lede">{error}</p>
+          </div>
+        </div>
+        <div className="ol-state">Try again after the locations API is available.</div>
+      </div>
+    );
+  }
+
+  if (locations.length === 0) {
+    return (
+      <div className="ol">
+        <div className="ol-head">
+          <div>
+            <h1 className="ol-title">Office layout</h1>
+            <p className="ol-lede">No locations exist yet. Add a location before arranging the office layout.</p>
+          </div>
+          <button type="button" className="primary-action compact ol-add" onClick={() => onAddLocation?.()}>
+            <Icon name="icon-plus" className="button-icon" />
+            Add location
+          </button>
+        </div>
+        <div className="ol-state">No locations to place.</div>
+      </div>
+    );
+  }
+
+  return (
+    <OfficeLayoutView
+      locations={locations}
+      onMoveLocation={onMoveLocation}
+      onAddLocation={onAddLocation}
+      onOpenLocation={onOpenLocation}
+      onStartScan={onStartScan}
+    />
   );
 }
