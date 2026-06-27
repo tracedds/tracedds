@@ -1640,7 +1640,9 @@
 
 /* Per-row kebab (last table column) → a small "Remove item" menu. The cell opts
    out of the table's overflow:hidden so the dropdown isn't clipped. */
-.actionsCell { overflow: visible; text-align: right; }
+/* Higher specificity than `.table td { overflow: hidden }` (used for ellipsis on
+   the other cells) so the row-action dropdown isn't clipped by its own cell. */
+.table td.actionsCell { overflow: visible; text-align: right; }
 .rowKebabWrap { position: relative; display: inline-flex; }
 .rowKebab {
   display: inline-flex;
