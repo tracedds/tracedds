@@ -1565,7 +1565,7 @@
 .table th:nth-child(8), .table td:nth-child(8) { width: 12%; }   /* Last counted */
 .table th:nth-child(9), .table td:nth-child(9) { width: 5%; }    /* Actions */
 
-.selectCell {
+.table .selectCell {
   text-align: center;
   overflow: visible;
 }
