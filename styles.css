@@ -10809,6 +10809,52 @@ th {
 .ol-title { margin: 0 0 4px; font-size: 24px; font-weight: 600; color: var(--ink); }
 .ol-lede { margin: 0; max-width: 56ch; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .ol-add { white-space: nowrap; }
+.ol-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ol-save-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ol-save-status.dirty {
+  border-color: color-mix(in srgb, var(--gold) 32%, var(--line));
+  background: color-mix(in srgb, var(--gold) 12%, var(--surface));
+  color: var(--gold);
+}
+.ol-alert,
+.ol-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ol-alert {
+  border-color: color-mix(in srgb, var(--red) 28%, var(--line));
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+  color: var(--ink);
+}
+.ol-alert .nav-icon {
+  color: var(--red);
+  flex: 0 0 auto;
+}
 
 .ol-board {
   display: grid;
