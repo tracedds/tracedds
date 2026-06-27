@@ -433,6 +433,25 @@ export default function Home() {
     return () => { alive = false; };
   }, [view]);
 
+  // Persist office-layout tile positions. Only PATCH locations whose coords
+  // actually changed; on success reflect the new positions locally and toast.
+  async function saveOfficeLayout(placements) {
+    const current = officeLayoutLocations || [];
+    const byId = new Map(current.map((l) => [l.id, l]));
+    const changed = placements.filter((p) => {
+      const prev = byId.get(p.id);
+      return prev && (prev.layout_x !== p.layout_x || prev.layout_y !== p.layout_y);
+    });
+    if (!changed.length) {
+      showToast("Layout already up to date");
+      return;
+    }
+    await Promise.all(changed.map((p) => traceApi.updateLocation(p.id, { layout_x: p.layout_x, layout_y: p.layout_y })));
+    const patched = new Map(placements.map((p) => [p.id, p]));
+    setOfficeLayoutLocations(current.map((l) => (patched.has(l.id) ? { ...l, layout_x: patched.get(l.id).layout_x, layout_y: patched.get(l.id).layout_y } : l)));
+    showToast(`Office layout saved · ${changed.length} location${changed.length === 1 ? "" : "s"} updated`);
+  }
+
   useEffect(() => {
     function syncViewFromLocation() {
       const nextRoute = viewFromPath(window.location.pathname + window.location.search);

@@ -35,6 +35,14 @@ function typeMeta(type) {
   return TYPE_META[type] || TYPE_META.other;
 }
 
+// A stable signature of every location's position, used to tell whether the
+// layout has unsaved changes since it was last loaded or saved.
+function coordSignature(list) {
+  const map = {};
+  list.forEach((l) => { map[l.id] = `${l.layout_x},${l.layout_y}`; });
+  return map;
+}
+
 // A single placeable location tile. Draggable everywhere (grid + tray); clicking
 // it reports a selection. The status dot is amber when the location needs
 // attention, green otherwise.
@@ -71,15 +79,38 @@ function LocationTile({ location, selected, onSelect, onDragStart, onDragEnd }) 
 // tiles with null coords wait in the "unplaced" tray and can be dragged onto the
 // grid. Positions are managed in local state for the demo and reported up via
 // the optional callbacks (onMoveLocation / onSelectLocation / onAddLocation).
-export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, onSelectLocation, onAddLocation }) {
+export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, onSelectLocation, onAddLocation, onSaveLayout }) {
   const [items, setItems] = useState(locations);
   const [selectedId, setSelectedId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // `${x},${y}` | "tray" | null
+  // Coordinates as of the last load/save, plus the current save status, so the
+  // header can show whether there are unsaved changes and persist them.
+  const [savedCoords, setSavedCoords] = useState(() => coordSignature(locations));
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
 
   useEffect(() => {
     setItems(locations);
+    setSavedCoords(coordSignature(locations));
+    setSaveState("idle");
   }, [locations]);
+
+  const dirty = useMemo(
+    () => items.some((l) => savedCoords[l.id] !== `${l.layout_x},${l.layout_y}`),
+    [items, savedCoords],
+  );
+
+  async function handleSave() {
+    if (!dirty || saveState === "saving" || !onSaveLayout) return;
+    setSaveState("saving");
+    try {
+      await onSaveLayout(items.map((l) => ({ id: l.id, layout_x: l.layout_x, layout_y: l.layout_y })));
+      setSavedCoords(coordSignature(items));
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
 
   const placed = useMemo(() => items.filter((l) => l.layout_x != null && l.layout_y != null), [items]);
   const unplaced = useMemo(() => items.filter((l) => l.layout_x == null || l.layout_y == null), [items]);
@@ -117,6 +148,7 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
     const occupant = tileAt(x, y);
     if (occupant && occupant.id !== draggingId) return;
     setItems((prev) => prev.map((l) => (l.id === draggingId ? { ...l, layout_x: x, layout_y: y } : l)));
+    setSaveState("idle");
     onMoveLocation?.(draggingId, x, y);
     handleDragEnd();
   }
@@ -125,6 +157,7 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
   function dropOnTray() {
     if (!draggingId) return;
     setItems((prev) => prev.map((l) => (l.id === draggingId ? { ...l, layout_x: null, layout_y: null } : l)));
+    setSaveState("idle");
     onMoveLocation?.(draggingId, null, null);
     handleDragEnd();
   }
@@ -143,11 +176,27 @@ export function OfficeLayoutView({ locations = MOCK_LOCATIONS, onMoveLocation, o
           <h1 className="ol-title">Office layout</h1>
           <p className="ol-lede">Arrange your locations to match the floor plan. Drag a tile to snap it to a spot; click one to see its details.</p>
         </div>
-        <button type="button" className="primary-action compact ol-add" onClick={() => onAddLocation?.()}>
-          <Icon name="icon-plus" className="button-icon" />
-          Add location
-        </button>
+        <div className="ol-actions">
+          <button type="button" className="secondary-action compact ol-add" onClick={() => onAddLocation?.()}>
+            <Icon name="icon-plus" className="button-icon" />
+            Add location
+          </button>
+          {onSaveLayout ? (
+            <button
+              type="button"
+              className="primary-action compact ol-save"
+              onClick={handleSave}
+              disabled={saveState === "saving" || (!dirty && saveState !== "error")}
+            >
+              <Icon name={saveState === "saved" && !dirty ? "icon-check" : "icon-file-text"} className="button-icon" />
+              {saveState === "saving" ? "Saving…" : saveState === "saved" && !dirty ? "Saved" : saveState === "error" ? "Retry save" : "Save layout"}
+            </button>
+          ) : null}
+        </div>
       </div>
+      {saveState === "error" ? (
+        <p className="ol-save-error" role="alert">Couldn’t save the layout. Check your connection and try again.</p>
+      ) : null}
 
       <div className="ol-board">
         <div
