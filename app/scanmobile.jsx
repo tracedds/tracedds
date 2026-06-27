@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandLogoMark, Icon, QrScanGlyph } from "./icons";
-import { isQrUrl, parseLocationQr } from "./lib";
+import { formatExpiryDate, isQrUrl, parseLocationQr } from "./lib";
 import { ProductSearchResults, useBarcodeScanner, useProductSearch } from "./ui";
 import s from "./scanmobile.module.css";
 
@@ -697,7 +697,7 @@ function ReorderScanSheet({ result, onPersist, onDismiss }) {
           <div className={s.reorderField}>
             <span className={s.reorderFieldLabel}><Icon name="icon-calendar" /> Expiration date</span>
             <div className={s.reorderFieldControl}>
-              <span className={s.reorderFieldText}>{exp ? formatLongDate(exp) : "Select date"}</span>
+              <span className={s.reorderFieldText}>{exp ? formatExpiryDate(exp) : "Select date"}</span>
               <input
                 type="date"
                 className={s.dateOverlay}
@@ -949,7 +949,7 @@ function CaptureScanSheet({ line, locationName, suggestion, onLinkProduct, onDis
           <div className={s.reorderField}>
             <span className={s.reorderFieldLabel}><Icon name="icon-calendar" /> Expiration date</span>
             <div className={s.reorderFieldControl}>
-              <span className={s.reorderFieldText}>{exp ? formatLongDate(exp) : "Select date"}</span>
+              <span className={s.reorderFieldText}>{exp ? formatExpiryDate(exp) : "Select date"}</span>
               <input
                 type="date"
                 className={s.dateOverlay}
