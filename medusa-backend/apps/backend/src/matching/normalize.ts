@@ -354,6 +354,28 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     add("shade", "w")
   }
 
+  // CAD/CEREC milling blocks are product variants by physical block size
+  // (e.g. Size 12 vs 14L) and translucency (HT/High vs LT/Low). Those values
+  // can be the only differing tokens across otherwise-identical branded rows,
+  // so model them as hard-conflict axes to prevent transitive variant bridges.
+  if (/\b(?:blocs?|milling\s+blocks?|cerec|cad\s*cam|planmill)\b/.test(lowered)) {
+    if (/\b(?:ht|high\s+translucency)\b/.test(lowered)) {
+      add("cad_block_translucency", "ht")
+    }
+    if (/\b(?:lt|low\s+translucency)\b/.test(lowered)) {
+      add("cad_block_translucency", "lt")
+    }
+
+    const sizeWordRe = /\bsize\s*(\d{1,2}l?)\b/g
+    while ((match = sizeWordRe.exec(lowered))) {
+      add("cad_block_size", match[1])
+    }
+    const sizeBeforeShadeRe = /\b(\d{1,2}l?)\s+(?:[a-d][1-7](?:\.5)?|bl)\b/g
+    while ((match = sizeBeforeShadeRe.exec(lowered))) {
+      add("cad_block_size", match[1])
+    }
+  }
+
   const colorRe = new RegExp(`\\b(${COLOR_WORDS.join("|")})\\b`, "g")
   while ((match = colorRe.exec(lowered))) {
     add("color", match[1] === "grey" ? "gray" : match[1])
