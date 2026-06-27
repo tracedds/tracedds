@@ -35,11 +35,11 @@ const COTTON_ROLL_STYLE_TOKENS = new Set(["econo", "economy", "braided", "wrappe
 const NEEDLE_LENGTH_TOKENS = new Set(["short", "long"])
 
 // Axes we will collapse into a selector, in the order we prefer to label by.
-// Keys match extractNumericAttrs() unit keys. needle_length sits ahead of the
-// measured units (ga, mm, ...) because needle SKUs share a gauge across lengths,
-// so length is the axis that actually varies.
+// Keys match extractNumericAttrs() unit keys. Product-line/length axes sit ahead
+// of generic size/measure axes because those SKUs can share a size or gauge
+// across the variants, so the specific axis is what actually varies.
 const AXIS_PRIORITY = [
-  "size", "shade", "cotton_roll_style", "needle_length", "taper", "#", "mm", "cm", "in", "ga", "ml", "cc", "oz", "gr", "kg", "lb", "l", "%",
+  "cotton_roll_style", "needle_length", "size", "shade", "taper", "#", "mm", "cm", "in", "ga", "ml", "cc", "oz", "gr", "kg", "lb", "l", "%",
 ] as const
 
 const SIZE_RANK: Record<string, number> = {
