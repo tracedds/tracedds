@@ -575,6 +575,79 @@ describe("identity matching (golden pairs from production data)", () => {
     expect(result.reviewPairs).toHaveLength(0)
   })
 
+  it("does not merge distinct PDT Amazing Gracey instrument models", () => {
+    // Prod regression: PDT's Gracey 11/12 variants have near-identical names
+    // (standard, rigid, extended-reach mini, micro-mini) and were joined by the
+    // brand+name path into one canonical. The R-model is the product variant.
+    const rows = [
+      product({
+        supplier_id: "msup_dentalcity_com",
+        manufacturer_sku: "R006",
+        brand: "Dental City",
+        name: "PDT Gracey 11-12 ER Mini Sunshine Yellow",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "R006",
+        brand: "Paradise Dental Technologies",
+        name: "Amazing Gracey Curette - Amazing Gracey Curette - # 11/12, Extended Reach Mini, Yellow Resin Handle",
+      }),
+      product({
+        supplier_id: "msup_dentalcity_com",
+        manufacturer_sku: "R026R",
+        brand: "Dental City",
+        name: "PDT Gracey 11-12 Rigid Sunshine Yellow",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "R026R",
+        brand: "Paradise Dental Technologies",
+        name: "Amazing Gracey Curette - Amazing Gracey Curette - # 11/12, Rigid, Yellow Resin Handle",
+      }),
+      product({
+        supplier_id: "msup_practicon_com",
+        manufacturer_sku: "R026R",
+        brand: "PDT Instruments",
+        name: "Gracey 11-12 Rigid PDT Cruise Instrument R026R",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "R026",
+        brand: "Paradise Dental Technologies",
+        name: "Amazing Gracey Curette - Amazing Gracey Curette - # 11/12, Standard, Yellow Resin Handle",
+      }),
+      product({
+        supplier_id: "msup_darbydental_com",
+        manufacturer_sku: "R026",
+        brand: "Paradise Dental Technologies",
+        name: "Amazing Gracey, 11-12",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "R042",
+        brand: "Paradise Dental Technologies",
+        name: "Amazing Gracey Curette - Amazing Gracey Curette - # 11/12, Extended Reach, Yellow Resin Handle",
+      }),
+    ]
+    const result = runMatching(rows.map(normalizeProduct))
+    const clusterModels = result.clusters.map((cluster) =>
+      new Set(
+        cluster.members
+          .map((member) => member.numericAttrs.get("pdt_instrument_model"))
+          .filter((values): values is Set<string> => !!values)
+          .flatMap((values) => [...values])
+      )
+    )
+
+    expect(result.clusters).toHaveLength(3)
+    expect(clusterModels.every((models) => models.size === 1)).toBe(true)
+    expect([...clusterModels[0], ...clusterModels[1], ...clusterModels[2]].sort()).toEqual([
+      "R006",
+      "R026",
+      "R026R",
+    ])
+  })
+
   it("keeps same-SKU products with matching color mergeable", () => {
     const decision = score(
       {
