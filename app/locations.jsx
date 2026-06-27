@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons";
-import { daysUntil, formatTraceDate, money, SWIPE_REVEAL, traceApi, traceErrorMessage } from "./lib";
+import { daysUntil, formatExpiryDate, formatTraceDate, money, SWIPE_REVEAL, traceApi, traceErrorMessage } from "./lib";
 import { OfficeLayoutView } from "./officelayout";
 import { ConfirmModal, DetailDrawer, ProductSearchResults, ProductThumb, useProductSearch } from "./ui";
 import s from "./locations.module.css";
@@ -819,14 +819,6 @@ function statusKey(it) {
   return "active";
 }
 
-// Lot expiry is meaningful at month granularity, so the table shows MM/YYYY.
-function formatMonthYear(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-}
-
 // Price range across known supplier offers for this item's matched product — the
 // same cross-supplier comparison the catalog shows, joined onto each lot by
 // canonical_product_id. Renders only when the backend supplies a price range (an
@@ -1491,7 +1483,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                       {thumb(it, "icon-check-circle")}
                       <div className={rs.revBody}>
                         <span className={rs.revName}>{it.name}</span>
-                        <span className={rs.revMeta}>Lot {it.lot_number} · Exp {formatTraceDate(it.expiration_date)}</span>
+                        <span className={rs.revMeta}>Lot {it.lot_number} · Exp {formatExpiryDate(it.expiration_date)}</span>
                       </div>
                       <span className={`${rs.resultPill} ${PILL[st.tone] || rs.pillGreen}`}>
                         {st.tone === "green" ? <Icon name="icon-check-circle" /> : null}{st.label}
@@ -1703,7 +1695,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
                           <td>
                             <span className={s.sdsCheck} title="SDS on file"><Icon name="icon-check-circle" /></span>
                           </td>
-                          <td className={it.expiration_date ? "" : s.tMuted}>{it.expiration_date ? formatMonthYear(it.expiration_date) : "—"}</td>
+                          <td className={it.expiration_date ? "" : s.tMuted}>{it.expiration_date ? formatExpiryDate(it.expiration_date) : "—"}</td>
                           <td className={s.tMuted}>{it.lot_number || "—"}</td>
                           <td className={price ? "" : s.tMuted}>{price || "—"}</td>
                           <td>

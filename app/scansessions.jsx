@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons";
 import {
-  formatTraceDate,
+  formatExpiryDate,
   isQrUrl,
   lookupByOcrIdentity,
   scanLinePayload,
@@ -502,7 +502,7 @@ function DesktopScanRow({ item }) {
           <div className={s.lineMeta}>
             <span>Qty {item.quantity_on_hand ?? 1}</span>
             {item.lot_number && <span>· Lot {item.lot_number}</span>}
-            {item.expiration_date && <span>· Exp {formatTraceDate(item.expiration_date)}</span>}
+            {item.expiration_date && <span>· Exp {formatExpiryDate(item.expiration_date)}</span>}
           </div>
         </div>
         <span className={`${s.linePill} ${matched ? s.txGreen : s.txRed}`}>
