@@ -1,0 +1,10 @@
+1. Urgent | Low stock | Nitrile Exam Gloves, Medium
+2. High | Expiring soon | Prophy Angles, Soft
+3. High | Missing proof | Sterilization Pouch, 3.5" x 9"
+4. High | Missing proof | Autoclave Spore Test
+5. Medium | Expiring soon | Fluoride Varnish, Bubblegum
+6. Medium | Low stock | Face Masks, Earloop
+7. Medium | Needs reorder | Composite Tips, Black
+8. Medium | Low stock | Surface Disinfectant Wipes
+9. Medium | Needs reorder | Saliva Ejectors, Clear
+10. Low | Expiring soon | Septocaine 4% w/ Epinephrine
