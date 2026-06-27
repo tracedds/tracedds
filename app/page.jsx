@@ -1728,7 +1728,7 @@ export default function Home() {
             {navItems.map(([target, icon, label, soon, count]) => (
               <button
                 key={target}
-                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target || (target === "locations" && (view === "locationAdd" || view === "locationDetail" || view === "qrLabels")) || (target === "evidence" && (view === "evidenceBinder" || view === "evidenceViewer")) ? "active" : ""} ${soon ? "nav-tab-soon" : ""}`}
+                className={`nav-tab ${target === "settings" ? "nav-tab-bottom" : ""} ${view === target || (target === "locations" && (view === "locationAdd" || view === "locationDetail" || view === "qrLabels" || view === "officeLayout")) || (target === "evidence" && (view === "evidenceBinder" || view === "evidenceViewer")) ? "active" : ""} ${soon ? "nav-tab-soon" : ""}`}
                 type="button"
                 onClick={() => { if (!soon) setView(target); }}
                 disabled={soon}
