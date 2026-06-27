@@ -24,11 +24,15 @@ const SIZE_TOKENS = new Set([
   "small", "medium", "large", "xs", "xl", "xxl", "xxxl", "2xl", "3xl", "extra",
 ])
 const SHADE_TOKEN_RE = /^[a-d][1-4](\.5)?$/
+// Cotton roll style words that distinguish product lines (econo/economy/braided/
+// wrapped) must be stripped from the family key so all three styles can share
+// one family, just like size tokens are stripped from glove families.
+const COTTON_ROLL_STYLE_TOKENS = new Set(["econo", "economy", "braided", "wrapped"])
 
 // Axes we will collapse into a selector, in the order we prefer to label by.
 // Keys match extractNumericAttrs() unit keys.
 const AXIS_PRIORITY = [
-  "size", "shade", "taper", "#", "mm", "cm", "in", "ga", "ml", "cc", "oz", "gr", "kg", "lb", "l", "%",
+  "size", "shade", "cotton_roll_style", "taper", "#", "mm", "cm", "in", "ga", "ml", "cc", "oz", "gr", "kg", "lb", "l", "%",
 ] as const
 
 const SIZE_RANK: Record<string, number> = {
@@ -41,7 +45,7 @@ const SIZE_LABEL: Record<string, string> = {
 
 function familyTokens(coreTokens: string[]): string[] {
   return coreTokens.filter(
-    (token) => !SIZE_TOKENS.has(token) && !SHADE_TOKEN_RE.test(token)
+    (token) => !SIZE_TOKENS.has(token) && !SHADE_TOKEN_RE.test(token) && !COTTON_ROLL_STYLE_TOKENS.has(token)
   )
 }
 
@@ -106,6 +110,11 @@ function formatVariant(axis: string, value: string): { label: string; rank: numb
   if (axis === "size") {
     return { label: SIZE_LABEL[value] ?? value, rank: SIZE_RANK[value] ?? 99 }
   }
+  if (axis === "cotton_roll_style") {
+    const STYLE_RANK: Record<string, number> = { braided: 0, econo: 1, wrapped: 2 }
+    const label = value.charAt(0).toUpperCase() + value.slice(1)
+    return { label, rank: STYLE_RANK[value] ?? 99 }
+  }
   if (axis === "shade") {
     const upper = value.toUpperCase()
     const rank = upper.charCodeAt(0) * 1000 + Math.round((parseFloat(upper.slice(1)) || 0) * 100)
@@ -139,6 +148,8 @@ function cleanFamilyName(name: string): string {
     .replace(/\b(?:x[\s-]?small|x[\s-]?large|2x[\s-]?large|3x[\s-]?large|extra\s+(?:small|large)|small|medium|large|xs|xl|xxl|xxxl)\b/gi, "")
     // shade tokens (A1..D4)
     .replace(/\b[a-dA-D][1-4](?:\.5)?\b/g, "")
+    // cotton roll style words
+    .replace(/\b(?:econo(?:my)?|braided|wrapped)\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .replace(/\s*[-–]\s*$/g, "")
     .replace(/\(\s*\)/g, "")

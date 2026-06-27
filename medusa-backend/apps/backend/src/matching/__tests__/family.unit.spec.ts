@@ -108,4 +108,26 @@ describe("variant families", () => {
     )
     expect(families.length).toBe(0)
   })
+
+  it("groups cotton roll styles (econo/braided/wrapped) into one family with capitalized labels", () => {
+    const rows = [
+      ...variantPair("Richmond Dental", "Econo Cotton Rolls Medium 2000/Pkg", "RICH-ECONO-M"),
+      ...variantPair("Richmond Dental", "Braided Cotton Rolls Medium 2000/Pkg", "RICH-BRAIDED-M"),
+      ...variantPair("Richmond Dental", "Wrapped Cotton Rolls Medium 2000/Pkg", "RICH-WRAPPED-M"),
+    ]
+    const { byRepName } = familiesByName(rows)
+    const families = [...byRepName.values()].filter((f): f is FamilyInfo => Boolean(f))
+
+    // All three style clusters land in one family.
+    const ids = new Set(families.map((f) => f.familyId))
+    expect(ids.size).toBe(1)
+    expect(families.length).toBe(3)
+
+    const labels = new Set(families.map((f) => f.variantLabel))
+    expect(labels).toEqual(new Set(["Econo", "Braided", "Wrapped"]))
+    expect(families.every((f) => f.variantAxis === "cotton_roll_style")).toBe(true)
+    // Family title drops the style word.
+    expect(families[0].familyName).not.toMatch(/econo|braided|wrapped/i)
+    expect(families[0].familyName.toLowerCase()).toContain("cotton rolls")
+  })
 })

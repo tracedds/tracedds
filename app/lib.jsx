@@ -142,6 +142,7 @@ export function variantAxisLabel(variants) {
   if (labels.some((l) => /\bga\b/i.test(l))) return "Gauge";
   if (labels.some((l) => /^[A-D][1-4]/.test(l))) return "Shade";
   if (labels.some((l) => /taper/i.test(l))) return "Taper";
+  if (labels.some((l) => /^(?:econo|braided|wrapped)$/i.test(l))) return "Style";
   return "Option";
 }
 
