@@ -483,6 +483,17 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     }
   }
 
+  // 3M Unitek crown refill listings use near-identical names across crown
+  // sizes/positions, and some supplier titles omit the compact "UR1" style
+  // size token. Keep the six-digit Unitek model as a hard-conflict axis so
+  // different crown refills cannot bridge through same-brand name similarity.
+  if (/\bunitek\b/.test(lowered) && /\bcrowns?\b/.test(lowered)) {
+    const unitekCrownModel = stripDiacritics(name).match(/\b9\d{5}\b/)
+    if (unitekCrownModel) {
+      add("unitek_crown_model", unitekCrownModel[0])
+    }
+  }
+
   // Endodontic paper points and gutta-percha points often share the same
   // brand, shape range (F1/F2/F3), and "points" vocabulary, but they are
   // different materials and must not bridge transitively through assorted
@@ -618,6 +629,10 @@ export function normalizeProduct(row: SupplierProductRow): NormalizedProduct {
     (/\b(?:pdt|paradise\s+dental|amazing\s+gracey)\b/i.test(`${row.brand} ${row.name}`))
   ) {
     numericAttrs.set("pdt_instrument_model", new Set([pdtInstrumentModel]))
+  }
+  const unitekCrownModel = `${row.manufacturer_sku} ${row.name}`.match(/\b9\d{5}\b/)?.[0]
+  if (unitekCrownModel && /\bunitek\b/i.test(row.name) && /\bcrowns?\b/i.test(row.name)) {
+    numericAttrs.set("unitek_crown_model", new Set([unitekCrownModel]))
   }
   // The prefix-stripped model is a hard-conflict axis: two products with
   // different models are different products. Only prefix-coded suppliers carry
