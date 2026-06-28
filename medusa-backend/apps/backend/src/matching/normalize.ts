@@ -85,6 +85,17 @@ export const COLOR_WORDS = [
   "yellow",
 ]
 
+const TOPICAL_FLUORIDE_FLAVORS = [
+  "berry",
+  "bubblegum",
+  "cherry",
+  "grape",
+  "melon",
+  "mint",
+  "raspberry",
+  "strawberry",
+]
+
 function stripDiacritics(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 }
@@ -374,6 +385,18 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     add("excite_f_variant", /\bdsc\b/.test(lowered) ? "dsc" : "regular")
   }
 
+  // Topical fluoride gels are sold as otherwise-identical flavor variants
+  // (Gelato APF Mint, Grape, Dye-Free Mint, etc.). Flavor is the product
+  // discriminator, not a descriptive color, so keep it as a hard-conflict axis.
+  if (/\b(?:fluoride|apf)\b/.test(lowered) && /\bgels?\b/.test(lowered)) {
+    const flavorRe = new RegExp(`\\b(${TOPICAL_FLUORIDE_FLAVORS.join("|")})\\b`, "g")
+    while ((match = flavorRe.exec(lowered))) {
+      const flavor = match[1]
+      const dyeFree = /\bdye[\s-]?free\b/.test(lowered) && flavor === "mint"
+      add("topical_fluoride_flavor", dyeFree ? "dye_free_mint" : flavor)
+    }
+  }
+
   // CAD/CEREC milling blocks are product variants by physical block size
   // (e.g. Size 12 vs 14L) and translucency (HT/High vs LT/Low). Those values
   // can be the only differing tokens across otherwise-identical branded rows,
@@ -498,6 +521,17 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     const handpieceModel = handpieceModels.at(-1)
     if (handpieceModel) {
       add("handpiece_model", `z${handpieceModel[1]}${handpieceModel[2]}`)
+    }
+  }
+
+  // 3M Unitek crown refill listings use near-identical names across crown
+  // sizes/positions, and some supplier titles omit the compact "UR1" style
+  // size token. Keep the six-digit Unitek model as a hard-conflict axis so
+  // different crown refills cannot bridge through same-brand name similarity.
+  if (/\bunitek\b/.test(lowered) && /\bcrowns?\b/.test(lowered)) {
+    const unitekCrownModel = stripDiacritics(name).match(/\b9\d{5}\b/)
+    if (unitekCrownModel) {
+      add("unitek_crown_model", unitekCrownModel[0])
     }
   }
 
@@ -636,6 +670,10 @@ export function normalizeProduct(row: SupplierProductRow): NormalizedProduct {
     (/\b(?:pdt|paradise\s+dental|amazing\s+gracey)\b/i.test(`${row.brand} ${row.name}`))
   ) {
     numericAttrs.set("pdt_instrument_model", new Set([pdtInstrumentModel]))
+  }
+  const unitekCrownModel = `${row.manufacturer_sku} ${row.name}`.match(/\b9\d{5}\b/)?.[0]
+  if (unitekCrownModel && /\bunitek\b/i.test(row.name) && /\bcrowns?\b/i.test(row.name)) {
+    numericAttrs.set("unitek_crown_model", new Set([unitekCrownModel]))
   }
   // The prefix-stripped model is a hard-conflict axis: two products with
   // different models are different products. Only prefix-coded suppliers carry

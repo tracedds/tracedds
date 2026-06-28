@@ -406,6 +406,13 @@ describe("identity matching (golden pairs from production data)", () => {
     ]).toEqual(["1"])
   })
 
+  it("captures topical fluoride gel flavors as hard-conflict attributes", () => {
+    expect([...(extractNumericAttrs("Gelato APF Gel, 16 oz, Mint").get("topical_fluoride_flavor") ?? [])]).toEqual(["mint"])
+    expect([...(extractNumericAttrs("Gelato APF Gel - Dye-Free Mint").get("topical_fluoride_flavor") ?? [])]).toEqual(["dye_free_mint"])
+    expect([...(extractNumericAttrs("Gelato 60 Second Fluoride Gel 1.23% APF Grape 16oz/Bt").get("topical_fluoride_flavor") ?? [])]).toEqual(["grape"])
+    expect(extractNumericAttrs("Gelato Prophy Paste Mint").get("topical_fluoride_flavor")).toBeUndefined()
+  })
+
   it("rejects same-SKU color variants instead of merging them", () => {
     const decision = score(
       {
@@ -870,6 +877,67 @@ describe("identity matching (golden pairs from production data)", () => {
     expect([...clusterTranslucencies[0], ...clusterTranslucencies[1]].sort()).toEqual(["ht", "mt"])
   })
 
+  it("does not merge Gelato APF fluoride gel flavor variants", () => {
+    // Prod regression: Gelato APF gel variants share brand, APF/fluoride gel
+    // vocabulary, pack size, and near-identical names. Mint, Grape, and
+    // Dye-Free Mint were transitively collapsed into one canonical.
+    const rows = [
+      product({
+        supplier_id: "msup_darbydental_com",
+        brand: "Keystone Industries",
+        manufacturer_sku: "24-00577",
+        name: "Gelato APF Gel, 16 oz, Mint",
+      }),
+      product({
+        supplier_id: "msup_pearsondental_com",
+        brand: "Keystone",
+        manufacturer_sku: "24-00577",
+        name: "Gelato Fluoride Gel Mint 16 oz",
+      }),
+      product({
+        supplier_id: "msup_darbydental_com",
+        brand: "Keystone Industries",
+        manufacturer_sku: "24-01877",
+        name: "Gelato APF Gel, 16 oz, Grape",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        brand: "Keystone Industries",
+        manufacturer_sku: "24-01877",
+        name: "Gelato APF Gel - Grape",
+      }),
+      product({
+        supplier_id: "msup_darbydental_com",
+        brand: "Keystone Industries",
+        manufacturer_sku: "24-04477",
+        name: "Gelato APF Gel, 16 oz, DyeFree, Mint",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        brand: "Keystone Industries",
+        manufacturer_sku: "24-04477",
+        name: "Gelato APF Gel - Dye-Free Mint",
+      }),
+    ]
+    const result = runMatching(rows.map(normalizeProduct))
+    const flavorSets = result.clusters.map((cluster) =>
+      new Set(
+        cluster.members
+          .map((member) => member.numericAttrs.get("topical_fluoride_flavor"))
+          .filter((values): values is Set<string> => !!values)
+          .flatMap((values) => [...values])
+      )
+    )
+
+    expect(result.clusters).toHaveLength(3)
+    expect(flavorSets.every((flavors) => flavors.size === 1)).toBe(true)
+    expect([...flavorSets[0], ...flavorSets[1], ...flavorSets[2]].sort()).toEqual([
+      "dye_free_mint",
+      "grape",
+      "mint",
+    ])
+  })
+
   it("does not merge distinct WallShoulders X-ray apron hanger models", () => {
     // Prod regression: Patterson's sparse WallShoulders names shared brand and
     // near-identical text, so same-supplier edges bridged WS3130B/WS3130W/etc.
@@ -1087,6 +1155,105 @@ describe("identity matching (golden pairs from production data)", () => {
       "z890l",
       "z890wl",
       "z990wl",
+    ])
+  })
+
+  it("does not merge 3M Unitek crown refill sizes through same-brand name edges", () => {
+    // Prod regression: the 900321 size-1 upper-right first permanent molar
+    // cluster also pulled in Henry Schein's size 3/5/6 rows. Their titles only
+    // differ by "Size N", so same-brand name edges welded distinct crown models
+    // into one canonical.
+    const rows = [
+      product({
+        supplier_id: "msup_carolinadental_com",
+        brand: "3M ESPE",
+        manufacturer_sku: "3M-900321",
+        name: "3M Unitek Crowns SS 1st Perm Mol UR1 900321 5/Bx - First Permanent Molar / Upper Right / 1",
+        pack_size: "5/Bx",
+      }),
+      product({
+        supplier_id: "msup_dcdental_com",
+        brand: "3M (now Solventum)",
+        manufacturer_sku: "516-900321",
+        name: "3M Unitek SS Permanent Molar Crowns, 900321, Upper Right First Permanent Molar, Size 1, 5 Crowns",
+      }),
+      product({
+        supplier_id: "msup_darbydental_com",
+        brand: "3M",
+        manufacturer_sku: "900321",
+        name: "Unitek Permanent Stainless Steel Molar Set, First Molar, 1UR, 5/Box, Gray, UpperRight",
+        pack_size: "5/Box",
+      }),
+      product({
+        supplier_id: "msup_dentalcity_com",
+        brand: "Dental City",
+        manufacturer_sku: "900321",
+        name: "3M Unitek 1UR1 Permanent Molar 900321",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        brand: "Solventum former 3M HealthCare",
+        manufacturer_sku: "900321",
+        name: "3M Unitek Crowns Size 1 1st Perm URM Replacement Crowns 5/Bx",
+        pack_size: "5/Bx",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        brand: "SOLVENTUM US LLC",
+        manufacturer_sku: "900321",
+        name: "Unitek Permanent Stainless Steel Crowns Refill - Size 1UR",
+        pack_size: "5/Pkg",
+      }),
+      product({
+        supplier_id: "msup_dentalcity_com",
+        brand: "Dental City",
+        manufacturer_sku: "900323",
+        name: "3M Unitek 1UR3 Permanent Molar 900323",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        brand: "Solventum former 3M HealthCare",
+        manufacturer_sku: "900323",
+        name: "3M Unitek Crowns Size 3 1st Perm URM Replacement Crowns 5/Bx",
+        pack_size: "5/Bx",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        brand: "Solventum former 3M HealthCare",
+        manufacturer_sku: "900325",
+        name: "3M Unitek Crowns Size 5 1st Perm URM Replacement Crowns 5/Bx",
+        pack_size: "5/Bx",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        brand: "Solventum former 3M HealthCare",
+        manufacturer_sku: "900326",
+        name: "3M Unitek Crowns Size 6 1st Perm URM Replacement Crowns 5/Bx",
+        pack_size: "5/Bx",
+      }),
+    ]
+    const result = runMatching(rows.map(normalizeProduct))
+    const clusterModels = result.clusters.map((cluster) =>
+      new Set(
+        cluster.members
+          .map((member) => member.numericAttrs.get("unitek_crown_model"))
+          .filter((values): values is Set<string> => !!values)
+          .flatMap((values) => [...values])
+      )
+    )
+    const sizeOneCluster = result.clusters.find((cluster) =>
+      cluster.members.some((member) => member.row.manufacturer_sku === "3M-900321")
+    )
+
+    expect([...(normalizeProduct(rows[0]).numericAttrs.get("unitek_crown_model") ?? [])]).toEqual(["900321"])
+    expect(clusterModels.every((models) => models.size === 1)).toBe(true)
+    expect(sizeOneCluster?.members.map((member) => member.row.manufacturer_sku).sort()).toEqual([
+      "3M-900321",
+      "516-900321",
+      "900321",
+      "900321",
+      "900321",
+      "900321",
     ])
   })
 
