@@ -1,5 +1,5 @@
 import { runMatching } from "../engine"
-import { assignFamilies } from "../family"
+import { assignFamilies, clusterAttributes } from "../family"
 import { normalizeProduct } from "../normalize"
 import type { Cluster, FamilyInfo, SupplierProductRow } from "../types"
 
@@ -257,5 +257,35 @@ describe("variant families", () => {
     // Family title drops the style word.
     expect(families[0].familyName).not.toMatch(/econo|braided|wrapped/i)
     expect(families[0].familyName.toLowerCase()).toContain("cotton rolls")
+  })
+})
+
+describe("clusterAttributes (Tier 2 structured attributes)", () => {
+  it("returns the agreed selector axis labeled from the registry", () => {
+    const attrs = clusterAttributes(
+      familyCluster(1, "Alasta Aloe Nitrile Glove Large 100/Box", "100/Box")
+    )
+    expect(attrs).toEqual([
+      { axis: "size", value: "L", label: "Large", axisLabel: "Size", isVariantAxis: true },
+    ])
+  })
+
+  it("flags the highest-priority axis as the variant and keeps the rest as specs", () => {
+    // Needle listing carries both a length (priority 2) and a gauge (priority 10):
+    // length is the variant axis, gauge becomes a non-variant spec row.
+    const attrs = clusterAttributes(
+      familyCluster(2, "Transcodent Injection Needles 25 Gauge Long", "100/Box")
+    )
+    const byAxis = Object.fromEntries(attrs.map((a) => [a.axis, a]))
+    expect(byAxis.needle_length).toEqual({
+      axis: "needle_length", value: "long", label: "Long", axisLabel: "Length", isVariantAxis: true,
+    })
+    expect(byAxis.ga).toEqual({
+      axis: "ga", value: "25", label: "25 ga", axisLabel: "Gauge", isVariantAxis: false,
+    })
+  })
+
+  it("returns nothing for a product with no modeled selector axis", () => {
+    expect(clusterAttributes(familyCluster(3, "Generic Bib Clip Cord", "1/Each"))).toEqual([])
   })
 })
