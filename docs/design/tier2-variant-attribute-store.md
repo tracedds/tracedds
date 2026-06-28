@@ -142,3 +142,47 @@ refinement makes selectors correct where a category has several modeled axes.
   attributes (needed only if we later want per-offer spec differences).
 - Keep `variant_*` columns or fully migrate ordering into the new table.
 - Whether faceted catalog filtering is in Tier 2 scope or a Tier 2.5 follow-up.
+
+---
+
+# Tier 3 — LLM-assisted axis discovery (shipped)
+
+**Status:** implemented as an **offline discovery tool**, not an inline matcher
+LLM call. The matcher stays deterministic and dependency-free; the model only
+*proposes* registry entries for human review (it never writes the matcher, the
+registry, or the DB). This is the deliberate replacement for the retired eng-loop
+clustering lane: instead of a human/loop discovering each new axis reactively, a
+pass over the catalog surfaces the gaps.
+
+**Why offline, not inline:** the matcher processes ~100k+ listings per run, and a
+modeled attribute is a hard conflict — a hallucinated value would split or merge a
+price-comparison cluster. An LLM call per listing would be expensive, slow, and
+high-risk. Discovery is run on demand and advisory, so it is cheap and safe.
+
+**How it works** (`npm run products:propose-axes`):
+1. `axis-discovery.ts` `findAxisCandidates()` (deterministic, unit-tested): groups
+   same-brand canonicals whose names are identical except for **one token the
+   registry does not recognize** — already-modeled axes/values and existing
+   families are excluded using the registry itself, so colors/shades/sizes aren't
+   re-proposed. The differing tokens are the candidate axis's values.
+2. `llm.ts` asks Claude (headless `claude -p`, **logged-in subscription, no API
+   key** — same as the eng-loop) to name the axis or reject the group, returning
+   strict JSON (defensively parsed).
+3. `propose-variant-axes.ts` validates against the registry and writes
+   `.medmkp/variant-proposals/proposals.{md,json}` — each proposal carries the
+   examples, values, confidence, and a ready-to-edit `VariantSpec` **sketch**.
+   `--stub` exercises the pipeline with no model call; `--input` runs offline from
+   a candidate fixture.
+
+**Accepting a proposal** = paste/adapt the sketch into `attribute-specs.ts` (one
+entry — that's the Tier-1 payoff) and re-run `products:match`. Tier 2 then persists
+and the PDP renders the new variants automatically.
+
+**Run it where `claude` is authenticated** (your machine or the NUC). The deterministic
+half (candidate finding, prompt assembly, JSON parsing, report) is fully unit-tested
+and runnable anywhere via `--stub`/`--input`.
+
+**Future extensions (not built):** numeric-only unmodeled axes (the finder keys on
+word tokens today, since numeric values are already captured as measures/bare
+numbers); feeding the matcher's `needs-review` pairs as a second candidate source;
+auto-opening a PR from an accepted proposal.

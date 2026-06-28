@@ -666,6 +666,10 @@ export function isFamilyStripToken(token: string): boolean {
   return FAMILY_STRIP_TOKENS.has(token) || FAMILY_STRIP_PATTERNS.some((re) => re.test(token))
 }
 
+/** Every modeled concept's id, e.g. for telling the Tier-3 proposer what the
+ * registry already covers so it doesn't re-propose a known axis. */
+export const MODELED_SPEC_IDS: string[] = VARIANT_SPECS.map((spec) => spec.id)
+
 /** Human name of an axis ("shade" → "Shade"), or null if it isn't a selector. */
 export function axisLabelFor(axis: string | null | undefined): string | null {
   if (!axis) {
