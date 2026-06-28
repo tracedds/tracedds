@@ -162,6 +162,29 @@ export function writeReports(result: MatchRunResult, outputDir: string): Record<
   )
 
   const clusterByKey = new Map(result.clusters.map((cluster) => [cluster.key, cluster]))
+  const familyEntries = [...result.families.entries()]
+  const familyIds = new Set(familyEntries.map(([, family]) => family.familyId))
+  const familyAxisCounts: Record<string, number> = {}
+  for (const [, family] of familyEntries) {
+    familyAxisCounts[family.variantAxis] = (familyAxisCounts[family.variantAxis] ?? 0) + 1
+  }
+
+  writeCsv(
+    path.join(outputDir, "families-sample.csv"),
+    ["family_id", "family_name", "variant_axis", "variant_label", "cluster", "representative_name"],
+    sample(familyEntries, 200).map(([clusterKey, family]) => {
+      const cluster = clusterByKey.get(clusterKey)!
+      return [
+        family.familyId,
+        family.familyName,
+        family.variantAxis,
+        family.variantLabel,
+        clusterKey,
+        cluster.representative.row.name,
+      ]
+    })
+  )
+
   writeCsv(
     path.join(outputDir, "substitutes-sample.csv"),
     [
@@ -223,6 +246,9 @@ export function writeReports(result: MatchRunResult, outputDir: string): Record<
       (total, cluster) => total + cluster.members.length,
       0
     ),
+    families_total: familyIds.size,
+    products_in_families: familyEntries.length,
+    family_axis_counts: familyAxisCounts,
     substitute_candidates: result.substitutes.length,
     accepted_pair_confidence_histogram: confidenceBuckets,
     cross_supplier_pair_counts: supplierPairCounts,

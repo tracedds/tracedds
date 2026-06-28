@@ -110,6 +110,78 @@ describe("variant families", () => {
     )
   })
 
+  it("groups shade-guide replacement tabs into one shade selector", () => {
+    const rows = [
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical A1-D4 Shade Guide, VITA Classical Shade Tab A2",
+        manufacturer_sku: "G154CN",
+        supplier_id: "msup_a_com",
+        sku: "A-G154CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical Shade Guide Replacement Tabs - Shade A2",
+        manufacturer_sku: "G154CN",
+        supplier_id: "msup_b_com",
+        sku: "B-G154CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical A1-D4 Shade Guide, VITA Classical Shade Tab A3",
+        manufacturer_sku: "G155CN",
+        supplier_id: "msup_a_com",
+        sku: "A-G155CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical Shade Guide Replacement Tabs - Shade A3",
+        manufacturer_sku: "G155CN",
+        supplier_id: "msup_b_com",
+        sku: "B-G155CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical A1-D4 Shade Guide, VITA Classical Shade Tab A3.5",
+        manufacturer_sku: "G156CN",
+        supplier_id: "msup_a_com",
+        sku: "A-G156CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical Shade Guide Replacement Tabs - Shade A3.5",
+        manufacturer_sku: "G156CN",
+        supplier_id: "msup_b_com",
+        sku: "B-G156CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical A1-D4 Shade Guide, VITA Classical Shade Tab B1",
+        manufacturer_sku: "G158CN",
+        supplier_id: "msup_a_com",
+        sku: "A-G158CN",
+      }),
+      product({
+        brand: "VITA North America",
+        name: "VITA Classical Shade Guide Replacement Tabs - Shade B1",
+        manufacturer_sku: "G158CN",
+        supplier_id: "msup_b_com",
+        sku: "B-G158CN",
+      }),
+    ]
+    const families = [...familiesByName(rows).byRepName.values()].filter(
+      (f): f is FamilyInfo => Boolean(f)
+    )
+
+    expect(new Set(families.map((f) => f.familyId)).size).toBe(1)
+    expect(new Set(families.map((f) => f.variantLabel))).toEqual(
+      new Set(["A2", "A3", "A3.5", "B1"])
+    )
+    expect(families.every((f) => f.variantAxis === "shade")).toBe(true)
+    expect(families[0].familyName).not.toMatch(/\bshade\s+[a-d][1-7]/i)
+    expect(families[0].familyName.toLowerCase()).toContain("replacement tabs")
+  })
+
   it("groups short/long injection needles into one family with Short/Long options", () => {
     const rows = [
       ...variantPair(

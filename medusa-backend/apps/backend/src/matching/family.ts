@@ -23,7 +23,7 @@ import type { Cluster, FamilyInfo, NormalizedProduct } from "./types"
 const SIZE_TOKENS = new Set([
   "small", "medium", "large", "xs", "xl", "xxl", "xxxl", "2xl", "3xl", "extra",
 ])
-const SHADE_TOKEN_RE = /^[a-d][1-4](\.5)?$/
+const SHADE_TOKEN_RE = /^[a-d][1-7](\.5)?$/
 // Cotton roll style words that distinguish product lines (econo/economy/braided/
 // wrapped) must be stripped from the family key so all three styles can share
 // one family, just like size tokens are stripped from glove families.
@@ -121,10 +121,20 @@ function clusterVariant(cluster: Cluster): ClusterVariant | null {
     if (!counts.size) {
       continue
     }
-    // A cluster that somehow carries two disjoint values on this axis is not a
-    // clean single variant; skip the axis rather than label it ambiguously.
+    // A cluster that carries two disjoint values on this axis is usually not a
+    // clean single variant. One common exception is supplier copy that names a
+    // shade range plus the actual item shade ("A1-D4 ... Tab A2"). When exactly
+    // one value appears on every member, use that unanimous value and ignore the
+    // one-off range noise.
     if (counts.size > 1) {
-      continue
+      const unanimous = [...counts.entries()]
+        .filter(([, count]) => count === cluster.members.length)
+        .map(([value]) => value)
+      if (unanimous.length !== 1) {
+        continue
+      }
+      const value = unanimous[0]
+      return { axis, value, ...formatVariant(axis, value) }
     }
     const value = [...counts.keys()][0]
     return { axis, value, ...formatVariant(axis, value) }
@@ -176,14 +186,18 @@ function formatVariant(axis: string, value: string): { label: string; rank: numb
  */
 function cleanFamilyName(name: string): string {
   let cleaned = name
+    // shade ranges in supplier helper copy ("A1-D4 Shade Guide") are context,
+    // not the specific purchasable variant.
+    .replace(/\b[a-dA-D][1-7](?:\.5)?\s*[-–/]\s*[a-dA-D][1-7](?:\.5)?\b/g, "")
     // trailing " - Large" / " - X-Small" appended size label
     .replace(/\s*[-–]\s*(x[\s-]?small|x[\s-]?large|2x[\s-]?large|3x[\s-]?large|extra\s+(?:small|large)|small|medium|large|xs|xl|xxl|xxxl)\s*$/i, "")
     // measured values with unit
     .replace(/\b\d+(?:\.\d+)?\s*(?:mm|cm|ml|cc|oz|gauge|ga|gr|kg|lb|in)\b/gi, "")
     // worded apparel sizes anywhere
     .replace(/\b(?:x[\s-]?small|x[\s-]?large|2x[\s-]?large|3x[\s-]?large|extra\s+(?:small|large)|small|medium|large|xs|xl|xxl|xxxl)\b/gi, "")
-    // shade tokens (A1..D4)
-    .replace(/\b[a-dA-D][1-4](?:\.5)?\b/g, "")
+    // shade tokens (A1..D7)
+    .replace(/\b[a-dA-D][1-7](?:\.5)?\b/g, "")
+    .replace(/\s*[-–]\s*shade\s*$/i, "")
     // cotton roll style words
     .replace(/\b(?:econo(?:my)?|braided|wrapped)\b/gi, "")
     // needle length words
@@ -193,6 +207,34 @@ function cleanFamilyName(name: string): string {
     .replace(/\(\s*\)/g, "")
     .trim()
   return cleaned || name
+}
+
+function familyNamePenalty(name: string): number {
+  let score = 0
+  if (name.includes(",")) {
+    score += 10
+  }
+  if (/\b(?:ea|each)\b/i.test(name)) {
+    score += 2
+  }
+  if (/\b(?:replacement|refill|tab|tabs)\b/i.test(name)) {
+    score -= 2
+  }
+  return score
+}
+
+function clusterFamilyName(cluster: Cluster): string {
+  const candidates = cluster.members
+    .map((member) => cleanFamilyName(member.row.name))
+    .filter(Boolean)
+  candidates.sort((a, b) => {
+    const score = familyNamePenalty(a) - familyNamePenalty(b)
+    if (score !== 0) {
+      return score
+    }
+    return b.length - a.length
+  })
+  return candidates[0] || cleanFamilyName(cluster.representative.row.name)
 }
 
 function duplicateAwareLabel(member: Member, duplicateLabels: Set<string>): string {
@@ -259,7 +301,7 @@ export function assignFamilies(clusters: Cluster[]): Map<number, FamilyInfo> {
     // Name from the lowest-rank member (e.g. the "Small"/smallest variant) for a
     // stable, deterministic title regardless of cluster iteration order.
     const naming = [...members].sort((a, b) => a.variant.rank - b.variant.rank)[0]
-    const familyName = cleanFamilyName(naming.cluster.representative.row.name)
+    const familyName = clusterFamilyName(naming.cluster)
     const familyHandle = `${slugify(familyName)}-${familyId.slice(-6)}`
 
     for (const member of members) {
