@@ -1123,9 +1123,18 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
   const bestUnit = best ? best.price_cents / 100 : null;
   const prices = offers.map((offer) => offer.price_cents);
   const range = prices.length ? { lowest: Math.min(...prices), highest: Math.max(...prices) } : null;
-  // Amazon/Alibaba alternatives, kept out of the supplier price comparison above
-  // (wholesale/MOQ pricing isn't directly comparable). Shown in their own section.
+  // Marketplace alternatives, kept out of the supplier price comparison above.
+  // Net32 is an aggregator; Amazon/Alibaba may have marketplace/MOQ dynamics. Shown
+  // in their own section so buyers can still use the link-out path.
   const marketplaceListings = product.marketplace_listings || [];
+  const marketplaceNames = [...new Set(marketplaceListings.map((listing) => listing.supplier_name).filter(Boolean))];
+  const marketplaceLabel = marketplaceNames.length === 1
+    ? marketplaceNames[0]
+    : marketplaceNames.length === 2
+      ? marketplaceNames.join(" and ")
+      : marketplaceNames.length > 2
+        ? `${marketplaceNames.slice(0, -1).join(", ")}, and ${marketplaceNames.at(-1)}`
+        : "marketplaces";
 
   // When a variant selector is shown, its axis (e.g. Size for gloves) is already
   // chosen above — don't repeat that attribute as a description chip.
@@ -1368,8 +1377,8 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
           {marketplaceListings.length > 0 && (
             <section className="crl-card pdp-marketplace">
               <div className="pdp-mkt-head">
-                <h2>Also available on Amazon <span className="pdp-mkt-flag"><Icon name="icon-info" className="pdp-mkt-flag-icon" />Not vetted</span></h2>
-                <p className="pdp-mkt-note">Third-party Amazon listings, matched by name from our catalog. Sellers and products aren&rsquo;t vetted by TraceDDS and sit outside the supplier price comparison above — verify the item and seller before ordering.</p>
+                <h2>Also available on {marketplaceLabel} <span className="pdp-mkt-flag"><Icon name="icon-info" className="pdp-mkt-flag-icon" />Marketplace</span></h2>
+                <p className="pdp-mkt-note">Marketplace listings are matched by name from our catalog and sit outside the direct supplier price comparison above. Verify the item, seller, and pack size before ordering.</p>
               </div>
               <div className="pdp-mkt-grid">
                 {marketplaceListings.map((listing, index) => {

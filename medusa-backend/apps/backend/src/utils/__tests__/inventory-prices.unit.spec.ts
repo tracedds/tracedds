@@ -44,20 +44,23 @@ describe("attachInventoryPrices", () => {
     expect(out[0].price_range_cents).toEqual({ lowest: 1100, highest: 1100 })
   })
 
-  it("excludes marketplace (Amazon/Alibaba) offers from the range", async () => {
+  it("excludes marketplace offers from the range", async () => {
     const items = [{ id: "inv_1", canonical_product_id: "can_1" }]
     const medmkp = fakeMedmkp(
       [
         { canonical_product_id: "can_1", supplier_product_id: "sp_1", match_status: "exact" },
         { canonical_product_id: "can_1", supplier_product_id: "sp_mp", match_status: "exact" },
+        { canonical_product_id: "can_1", supplier_product_id: "sp_net32", match_status: "exact" },
       ],
       [
         { id: "sp_1", supplier_id: "msup_a" },
         { id: "sp_mp", supplier_id: "msup_amazon" },
+        { id: "sp_net32", supplier_id: "msup_net32" },
       ],
       [
         { supplier_product_id: "sp_1", price_cents: 1000, captured_at: "2026-01-01" },
         { supplier_product_id: "sp_mp", price_cents: 50, captured_at: "2026-01-01" },
+        { supplier_product_id: "sp_net32", price_cents: 75, captured_at: "2026-01-01" },
       ]
     )
     const out = await attachInventoryPrices(medmkp, items)

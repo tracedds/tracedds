@@ -607,7 +607,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
   for (const match of matches) {
     const supplierProduct = supplierProductById.get(match.supplier_product_id)
 
-    // Amazon/Alibaba listings go to a separate "Also available on" section, never
+    // Marketplace listings go to a separate "Also available on" section, never
     // into the price comparison. Keep matches + substitutes (≥30% title overlap);
     // drop unmatched and sub-substitute (needs_review) noise.
     if (supplierProduct && MARKETPLACE_SUPPLIER_IDS.has(supplierProduct.supplier_id)) {
@@ -688,7 +688,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const range = offerPriceRange(offers)
     const imageUrl = bestOffer?.image_url || offers.find((offer) => offer.image_url)?.image_url || ""
 
-    // Marketplace alternatives (Amazon/Alibaba), surfaced separately. Listings may
+    // Marketplace alternatives, surfaced separately. Listings may
     // be price-less (e.g. Alibaba "contact supplier"), so a missing price is kept
     // rather than dropped — the link-out is still useful.
     const marketplaceListings = (marketplaceByCanonical.get(product.id) ?? [])
