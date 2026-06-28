@@ -1,11 +1,9 @@
 import { Client } from "pg"
 import { refreshMatchIndex } from "../matching/match-index"
+import { resolveDatabaseUrl } from "../utils/database-url"
 
 async function main() {
-  const databaseUrl = process.env.DATABASE_URL
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not set")
-  }
+  const databaseUrl = resolveDatabaseUrl()
 
   const client = new Client({
     connectionString: databaseUrl,

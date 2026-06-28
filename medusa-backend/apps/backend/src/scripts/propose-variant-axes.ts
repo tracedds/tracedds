@@ -12,6 +12,7 @@ import {
   type ModelRunner,
 } from "../matching/llm"
 import { normalizeProduct } from "../matching/normalize"
+import { resolveDatabaseUrl } from "../utils/database-url"
 
 // ---------------------------------------------------------------------------
 // products:propose-axes — Tier 3 variant-axis discovery
@@ -40,22 +41,6 @@ function arg(name: string): string | undefined {
 }
 function flag(name: string): boolean {
   return process.argv.includes(name)
-}
-
-function resolveDatabaseUrl(): string {
-  if (process.env.DATABASE_URL) {
-    return process.env.DATABASE_URL
-  }
-  const envPath = path.resolve(__dirname, "../../.env")
-  if (fs.existsSync(envPath)) {
-    for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
-      const match = line.match(/^DATABASE_URL=(.+)$/)
-      if (match) {
-        return match[1].trim()
-      }
-    }
-  }
-  throw new Error("DATABASE_URL is not set and could not be read from .env")
 }
 
 async function loadCandidates(minClusters: number): Promise<AxisCandidate[]> {
