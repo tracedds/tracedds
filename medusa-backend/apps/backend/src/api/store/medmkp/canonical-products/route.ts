@@ -407,6 +407,23 @@ async function listSupplierProducts(
   }
 }
 
+async function familySiblingIds(familyIds: string[]): Promise<string[]> {
+  if (!familyIds.length) {
+    return []
+  }
+  const pool = getPostgresPool()
+  const { rows } = await pool.query<{ id: string }>(
+    `
+    SELECT id
+    FROM medmkp_canonical_product
+    WHERE deleted_at IS NULL AND family_id = ANY($1::text[])
+    ORDER BY variant_rank NULLS LAST, name
+    `,
+    [familyIds]
+  )
+  return rows.map((row) => row.id)
+}
+
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
   const url = new URL(req.url, "http://localhost")
   const q = url.searchParams.get("q")?.trim()
@@ -549,7 +566,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       ),
     ]
     if (familyIds.length) {
-      const siblings = await medmkp.listCanonicalProducts({ family_id: familyIds } as any)
+      const siblingIds = await familySiblingIds(familyIds)
+      const siblings = siblingIds.length
+        ? await medmkp.listCanonicalProducts({ id: siblingIds } as any)
+        : []
       const byId = new Map(filteredCanonicalProducts.map((p) => [p.id, p]))
       for (const sibling of siblings) {
         byId.set(sibling.id, sibling)
