@@ -459,6 +459,22 @@ export function extractNumericAttrs(name: string): Map<string, Set<string>> {
     }
   }
 
+  // NSK Ti-Max high-speed handpieces differ by backend/model code (Z890L,
+  // Z890KL, Z890WL, Z990WL, etc.). Supplier family pages can mention a generic
+  // leading model plus the actual variant later in the name, so keep the last
+  // model token as the variant discriminator.
+  if (
+    /\bhandpieces?\b/.test(lowered) &&
+    /\b(?:nsk|ti[\s-]?max)\b/.test(lowered) &&
+    !/\breplacement\s+parts?\b/.test(lowered)
+  ) {
+    const handpieceModels = [...lowered.matchAll(/\bz\s*[- ]?(\d{3,4})\s*([a-z]{1,3})\b/g)]
+    const handpieceModel = handpieceModels.at(-1)
+    if (handpieceModel) {
+      add("handpiece_model", `z${handpieceModel[1]}${handpieceModel[2]}`)
+    }
+  }
+
   // Endodontic paper points and gutta-percha points often share the same
   // brand, shape range (F1/F2/F3), and "points" vocabulary, but they are
   // different materials and must not bridge transitively through assorted

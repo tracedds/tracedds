@@ -838,6 +838,93 @@ describe("identity matching (golden pairs from production data)", () => {
     ])
   })
 
+  it("does not let NSK Ti-Max handpiece variants weld into one canonical", () => {
+    // Prod regression: Darby/Patterson/Henry Schein/Dental City Ti-Max rows
+    // shared brand and near-identical handpiece names, so same-supplier family
+    // edges bridged Z890L, Z890KL, Z890WL, Z990WL, and Z800KL variants together.
+    const rows = [
+      product({
+        supplier_id: "msup_darbydental_com",
+        manufacturer_sku: "PA23720001",
+        brand: "NSK America",
+        name: "Ti-Max Z890L Air-Driven Handpiece, Ti-Max Z890L",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "PA23720001",
+        brand: "Nsk America Corp",
+        name: "Ti-Max Z890L High Speed Handpiece Cellular Glass Optic Ea",
+      }),
+      product({
+        supplier_id: "msup_darbydental_com",
+        manufacturer_sku: "PA23740001",
+        brand: "NSK America",
+        name: "Ti-Max Z890L Air-Driven Handpiece, Ti-Max Z890KL",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "PA23740001",
+        brand: "Nsk America Corp",
+        name: "Ti-Max Z890KL High Speed Handpiece Cellular Glass Optic Ea",
+      }),
+      product({
+        supplier_id: "msup_darbydental_com",
+        manufacturer_sku: "PA23860001",
+        brand: "NSK America",
+        name: "Ti-Max Z890L Air-Driven Handpiece, Ti-Max Z890WL",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "PA23860001",
+        brand: "Nsk America Corp",
+        name: "Ti-Max Z890WL High Speed Handpiece Cellular Glass Optic Ea",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "PA23870001",
+        brand: "Nsk America Corp",
+        name: "Ti-Max Z990WL High Speed Handpiece Cellular Glass Optic Ea",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "PA23870001",
+        brand: "NSK America Corp",
+        name: "Ti Max Z990 Premium Series High Speed Air Handpieces - Model # Z990WL, W&H Backend",
+      }),
+      product({
+        supplier_id: "msup_henryschein_com",
+        manufacturer_sku: "P1112",
+        brand: "Nsk America Corp",
+        name: "Ti-Max High Speed Handpiece Cellular Glass Optic Ea",
+      }),
+      product({
+        supplier_id: "msup_pattersondental_com",
+        manufacturer_sku: "P1112",
+        brand: "NSK America Corp",
+        name: "Ti Max Z Series High Speed Air Handpieces - Z800KL, Miniature Head",
+      }),
+    ]
+    const result = runMatching(rows.map(normalizeProduct))
+    const clusterModels = result.clusters.map((cluster) =>
+      new Set(
+        cluster.members
+          .map((member) => member.numericAttrs.get("handpiece_model"))
+          .filter((values): values is Set<string> => !!values)
+          .flatMap((values) => [...values])
+      )
+    )
+
+    expect(result.clusters.map((c) => c.members.length).sort()).toEqual([2, 2, 2, 2, 2])
+    expect(clusterModels.every((models) => models.size === 1)).toBe(true)
+    expect([...clusterModels[0], ...clusterModels[1], ...clusterModels[2], ...clusterModels[3], ...clusterModels[4]].sort()).toEqual([
+      "z800kl",
+      "z890kl",
+      "z890l",
+      "z890wl",
+      "z990wl",
+    ])
+  })
+
   it("keeps same-SKU products with matching color mergeable", () => {
     const decision = score(
       {
