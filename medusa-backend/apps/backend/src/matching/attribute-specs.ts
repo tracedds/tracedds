@@ -44,6 +44,12 @@ export type FamilyAxisConfig = {
    * across the variants, so the specific axis is what actually varies.
    */
   priority: number
+  /**
+   * Human name for the axis itself, shown as the selector group heading and the
+   * spec-row label (e.g. "Shade", "Size", "Gauge"). Persisted by the matcher so
+   * the catalog labels variants from the registry, not a value-shape heuristic.
+   */
+  axisLabel: string
   /** Human label for a value, e.g. "Large", "25 mm", "A2". */
   label: (value: string) => string
   /**
@@ -128,9 +134,10 @@ const scaled = (value: string) => Math.round((parseFloat(value) || 0) * 100)
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
 /** Display config for a measured-unit axis (mm/ml/ga/...). */
-function measureAxis(priority: number, unit: string): FamilyAxisConfig {
+function measureAxis(priority: number, unit: string, axisLabel: string): FamilyAxisConfig {
   return {
     priority,
+    axisLabel,
     label: (value) => (unit === "%" ? `${value}%` : `${value} ${unit}`),
     rank: scaled,
   }
@@ -171,18 +178,18 @@ export const VARIANT_SPECS: VariantSpec[] = [
       return out
     },
     family: {
-      mm: measureAxis(7, "mm"),
-      cm: measureAxis(8, "cm"),
-      in: measureAxis(9, "in"),
-      ga: measureAxis(10, "ga"),
-      ml: measureAxis(11, "ml"),
-      cc: measureAxis(12, "cc"),
-      oz: measureAxis(13, "oz"),
-      gr: measureAxis(14, "gr"),
-      kg: measureAxis(15, "kg"),
-      lb: measureAxis(16, "lb"),
-      l: measureAxis(17, "l"),
-      "%": measureAxis(18, "%"),
+      mm: measureAxis(7, "mm", "Length"),
+      cm: measureAxis(8, "cm", "Length"),
+      in: measureAxis(9, "in", "Length"),
+      ga: measureAxis(10, "ga", "Gauge"),
+      ml: measureAxis(11, "ml", "Volume"),
+      cc: measureAxis(12, "cc", "Volume"),
+      oz: measureAxis(13, "oz", "Weight"),
+      gr: measureAxis(14, "gr", "Weight"),
+      kg: measureAxis(15, "kg", "Weight"),
+      lb: measureAxis(16, "lb", "Weight"),
+      l: measureAxis(17, "l", "Volume"),
+      "%": measureAxis(18, "%", "Concentration"),
     },
   },
 
@@ -234,6 +241,7 @@ export const VARIANT_SPECS: VariantSpec[] = [
     family: {
       shade: {
         priority: 4,
+        axisLabel: "Shade",
         label: (value) => value.toUpperCase(),
         rank: (value) => {
           const upper = value.toUpperCase()
@@ -345,6 +353,7 @@ export const VARIANT_SPECS: VariantSpec[] = [
     family: {
       cotton_roll_style: {
         priority: 1,
+        axisLabel: "Style",
         label: capitalize,
         rank: (value) => COTTON_ROLL_STYLE_RANK[value] ?? 99,
         stripTokens: ["econo", "economy", "braided", "wrapped"],
@@ -381,7 +390,7 @@ export const VARIANT_SPECS: VariantSpec[] = [
       return out
     },
     family: {
-      taper: { priority: 5, label: (value) => `${value} Taper`, rank: scaled },
+      taper: { priority: 5, axisLabel: "Taper", label: (value) => `${value} Taper`, rank: scaled },
     },
   },
 
@@ -398,7 +407,7 @@ export const VARIANT_SPECS: VariantSpec[] = [
       return out
     },
     family: {
-      "#": { priority: 6, label: (value) => `#${value}`, rank: scaled },
+      "#": { priority: 6, axisLabel: "Number", label: (value) => `#${value}`, rank: scaled },
     },
   },
 
@@ -447,6 +456,7 @@ export const VARIANT_SPECS: VariantSpec[] = [
     family: {
       needle_length: {
         priority: 2,
+        axisLabel: "Length",
         label: capitalize,
         rank: (value) => NEEDLE_LENGTH_RANK[value] ?? 99,
         stripTokens: ["short", "long"],
@@ -579,6 +589,7 @@ export const VARIANT_SPECS: VariantSpec[] = [
     family: {
       size: {
         priority: 3,
+        axisLabel: "Size",
         label: (value) => SIZE_LABEL[value] ?? value,
         rank: (value) => SIZE_RANK[value] ?? 99,
         stripTokens: ["small", "medium", "large", "xs", "xl", "xxl", "xxxl", "2xl", "3xl", "extra"],
@@ -653,6 +664,14 @@ const FAMILY_STRIP_PATTERNS: RegExp[] = [...SELECTOR_AXES.values()]
  * family (so two glove sizes / two shades share one family key). */
 export function isFamilyStripToken(token: string): boolean {
   return FAMILY_STRIP_TOKENS.has(token) || FAMILY_STRIP_PATTERNS.some((re) => re.test(token))
+}
+
+/** Human name of an axis ("shade" → "Shade"), or null if it isn't a selector. */
+export function axisLabelFor(axis: string | null | undefined): string | null {
+  if (!axis) {
+    return null
+  }
+  return SELECTOR_AXES.get(axis)?.axisLabel ?? null
 }
 
 /** Selector label + sort rank for a value on the given axis. */
