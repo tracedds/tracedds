@@ -1,5 +1,5 @@
 import { createHash } from "crypto"
-import { AXIS_PRIORITY, formatVariant, isFamilyStripToken } from "./attribute-specs"
+import { AXIS_PRIORITY, axisLabelFor, formatVariant, isFamilyStripToken } from "./attribute-specs"
 import type { Cluster, FamilyInfo, NormalizedProduct } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -70,45 +70,84 @@ function mostCommon(values: string[]): string {
 }
 
 /**
- * The varying-attribute value for a whole cluster. All members of a cluster
- * share the same modeled attributes (a conflict would have split them), but
- * some members may not state the value, so scan members and take the most
- * common stated value on the highest-priority axis any member carries.
+ * The cluster's single agreed value on one axis, or null. All members of a
+ * cluster share the same modeled attributes (a conflict would have split them),
+ * but some members may not state the value, so take the most common stated value
+ * — and reject a cluster that carries two disjoint values unless exactly one is
+ * unanimous (supplier copy that names a shade range plus the actual shade, e.g.
+ * "A1-D4 ... Tab A2", leaves a one-off range value to ignore).
+ */
+function agreedAxisValue(cluster: Cluster, axis: string): string | null {
+  const counts = new Map<string, number>()
+  for (const member of cluster.members) {
+    const values = member.numericAttrs.get(axis)
+    if (!values) {
+      continue
+    }
+    for (const value of values) {
+      counts.set(value, (counts.get(value) ?? 0) + 1)
+    }
+  }
+  if (!counts.size) {
+    return null
+  }
+  if (counts.size > 1) {
+    const unanimous = [...counts.entries()]
+      .filter(([, count]) => count === cluster.members.length)
+      .map(([value]) => value)
+    return unanimous.length === 1 ? unanimous[0] : null
+  }
+  return [...counts.keys()][0]
+}
+
+/**
+ * The varying-attribute value for a whole cluster: the agreed value on the
+ * highest-priority selector axis the cluster carries.
  */
 function clusterVariant(cluster: Cluster): ClusterVariant | null {
   for (const axis of AXIS_PRIORITY) {
-    const counts = new Map<string, number>()
-    for (const member of cluster.members) {
-      const values = member.numericAttrs.get(axis)
-      if (!values) {
-        continue
-      }
-      for (const value of values) {
-        counts.set(value, (counts.get(value) ?? 0) + 1)
-      }
-    }
-    if (!counts.size) {
-      continue
-    }
-    // A cluster that carries two disjoint values on this axis is usually not a
-    // clean single variant. One common exception is supplier copy that names a
-    // shade range plus the actual item shade ("A1-D4 ... Tab A2"). When exactly
-    // one value appears on every member, use that unanimous value and ignore the
-    // one-off range noise.
-    if (counts.size > 1) {
-      const unanimous = [...counts.entries()]
-        .filter(([, count]) => count === cluster.members.length)
-        .map(([value]) => value)
-      if (unanimous.length !== 1) {
-        continue
-      }
-      const value = unanimous[0]
+    const value = agreedAxisValue(cluster, axis)
+    if (value !== null) {
       return { axis, value, ...formatVariant(axis, value) }
     }
-    const value = [...counts.keys()][0]
-    return { axis, value, ...formatVariant(axis, value) }
   }
   return null
+}
+
+/** One modeled attribute persisted for a canonical product (Tier 2). */
+export type ClusterAttribute = {
+  axis: string
+  value: string
+  /** Display value, e.g. "Large", "25 mm", "A2". */
+  label: string
+  /** Human axis name, e.g. "Size", "Shade", "Gauge". */
+  axisLabel: string
+  /** True for the axis that varies across this product's family (the selector). */
+  isVariantAxis: boolean
+}
+
+/**
+ * Every agreed selector-axis value for a cluster, for the structured attribute
+ * store. The highest-priority agreed axis is flagged `isVariantAxis` — it is the
+ * same axis `clusterVariant()` turns into the family selector, so the catalog's
+ * spec table and its variant selector stay consistent.
+ */
+export function clusterAttributes(cluster: Cluster): ClusterAttribute[] {
+  const out: ClusterAttribute[] = []
+  for (const axis of AXIS_PRIORITY) {
+    const value = agreedAxisValue(cluster, axis)
+    if (value === null) {
+      continue
+    }
+    out.push({
+      axis,
+      value,
+      label: formatVariant(axis, value).label,
+      axisLabel: axisLabelFor(axis) ?? axis,
+      isVariantAxis: out.length === 0,
+    })
+  }
+  return out
 }
 
 /**
