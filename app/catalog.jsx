@@ -80,7 +80,6 @@ export function SearchSuggestions({ query = "", suggestions = [], onNavigate }) 
         onClick={go(trimmed)}
         role="option"
       >
-        <Icon name="icon-search" className="search-suggest-icon" />
         <span>Search for <strong>{trimmed}</strong></span>
       </a>
       {suggestions.map((term) => {
@@ -95,7 +94,6 @@ export function SearchSuggestions({ query = "", suggestions = [], onNavigate }) 
             onClick={go(term)}
             role="option"
           >
-            <Icon name="icon-search" className="search-suggest-icon" />
             <span className="search-suggest-text">
               {head}<strong>{tail}</strong>
             </span>
