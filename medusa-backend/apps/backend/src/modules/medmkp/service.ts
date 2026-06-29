@@ -5,6 +5,8 @@ import CanonicalProduct from "./models/canonical-product"
 import DentalPractice from "./models/dental-practice"
 import EvidenceDocument from "./models/evidence-document"
 import EvidenceDocumentVersion from "./models/evidence-document-version"
+import EvidenceExtraction from "./models/evidence-extraction"
+import EvidenceMatchCandidate from "./models/evidence-match-candidate"
 import InvoiceLineItem from "./models/invoice-line-item"
 import Invoice from "./models/invoice"
 import PracticeSubscription from "./models/practice-subscription"
@@ -26,6 +28,8 @@ class MedMKPModuleService extends MedusaService({
   DentalPractice,
   EvidenceDocument,
   EvidenceDocumentVersion,
+  EvidenceExtraction,
+  EvidenceMatchCandidate,
   PracticeSubscription,
   Invoice,
   InvoiceLineItem,
