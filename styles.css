@@ -8639,6 +8639,23 @@ th {
   line-height: 1.35;
 }
 .desktop-only-hint svg { width: 16px; height: 16px; color: var(--blue); flex-shrink: 0; }
+.desktop-only-hint-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--blue);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.desktop-only-hint-back svg { color: var(--blue); }
 
 /* Savings surface */
 .sv { display: grid; gap: 22px; max-width: 880px; }

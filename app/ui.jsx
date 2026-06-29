@@ -732,11 +732,17 @@ export function BuyingPreferencesCard({ prefs, supplierOptions, onSave, onToast,
 // reports, savings, evidence editing, history) is a desktop experience. When one
 // of those surfaces is opened on a phone it still works, but this banner sets the
 // expectation rather than pretending the phone is the place to do it.
-export function DesktopOnlyHint({ label = "full management" }) {
+export function DesktopOnlyHint({ label = "full management", onBack }) {
   return (
     <div className="desktop-only-hint" role="note">
       <Icon name="icon-info" className="button-icon" />
       <span>Best viewed on desktop for {label}.</span>
+      {onBack && (
+        <button type="button" className="desktop-only-hint-back" onClick={onBack}>
+          <Icon name="icon-chevron-left" className="button-icon" />
+          Back to scanning
+        </button>
+      )}
     </div>
   );
 }

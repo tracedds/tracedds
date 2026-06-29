@@ -1796,7 +1796,7 @@ export default function Home() {
         </aside>
 
         <main className="app-main">
-          {isMobile && MANAGEMENT_VIEWS.has(view) && <DesktopOnlyHint />}
+          {isMobile && MANAGEMENT_VIEWS.has(view) && <DesktopOnlyHint onBack={() => navigate("/app")} />}
           {view === "home" && (
             mobileAddItemRoute ? (
               <MobileReorderScan
@@ -1817,11 +1817,11 @@ export default function Home() {
               // the center Scan FAB returns here.
               scanStartEl
             ) : (
-              <NeedsAttentionView onToast={showToast} />
+              <NeedsAttentionView onToast={showToast} onNavigate={navigate} />
             )
           )}
 
-          {view === "dashboard" && <NeedsAttentionView onToast={showToast} />}
+          {view === "dashboard" && <NeedsAttentionView onToast={showToast} onNavigate={navigate} />}
 
           {view === "reorderList" && reorderListEl}
 
@@ -1894,7 +1894,7 @@ export default function Home() {
           )}
 
           {view === "evidenceViewer" && (
-            <EvidenceMobileViewer context={evidenceContext} onBack={() => navigate("/app/evidence")} />
+            <EvidenceMobileViewer context={evidenceContext} onBack={() => navigate(isMobile ? "/app" : "/app/evidence")} />
           )}
 
           {view === "reports" && (
