@@ -13,6 +13,12 @@ const EvidenceDocument = model.define("medmkp_evidence_document", {
   file_extension: model.text().nullable(),
   file_size_bytes: model.number().nullable(),
   storage_key: model.text().nullable(),
+  // The accepted version this document currently resolves to. Points into
+  // medmkp_evidence_document_version; null until a version is accepted. The
+  // accepted version can also be DERIVED (status = 'accepted') — see
+  // deriveCurrentVersion in src/utils/evidence-versioning.ts — this column is
+  // the explicit, indexed pointer kept in sync on accept.
+  current_version_id: model.text().nullable(),
   source: model.text().nullable(),
   inventory_item_id: model.text().nullable(),
   canonical_product_id: model.text().nullable(),
