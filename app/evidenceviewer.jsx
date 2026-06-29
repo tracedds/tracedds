@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { BrandLogoMark, Icon } from "./icons";
 import { DOC_TYPES, EVIDENCE_MOCK } from "./evidence";
 import s from "./evidenceviewer.module.css";
@@ -45,6 +47,13 @@ export function EvidenceMobileViewer({ data = EVIDENCE_MOCK, onBack }) {
   const docs = data.documents
     .filter((doc) => doc.location === LOCATION_NAME || ["doc_1", "doc_2", "doc_4", "doc_6"].includes(doc.id))
     .slice(0, 4);
+
+  const filesRef = useRef(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const scrollToFiles = useCallback(() => {
+    filesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   return (
     <section className={s.screen} aria-label={`${LOCATION_NAME} evidence viewer`}>
@@ -99,7 +108,7 @@ export function EvidenceMobileViewer({ data = EVIDENCE_MOCK, onBack }) {
           </div>
         </EvidenceSection>
 
-        <EvidenceSection title="Open files">
+        <EvidenceSection title="Open files" ref={filesRef}>
           <div className={s.listCard}>
             {docs.map((doc) => {
               const meta = DOC_TYPES[doc.type];
@@ -126,13 +135,145 @@ export function EvidenceMobileViewer({ data = EVIDENCE_MOCK, onBack }) {
           </ol>
         </EvidenceSection>
       </main>
+
+      <footer className={s.footbar}>
+        <button type="button" className={s.footOutline} onClick={scrollToFiles}>
+          <Icon name="icon-folder" />Open files
+        </button>
+        <button type="button" className={s.footPrimary} onClick={() => setSheetOpen(true)}>
+          <Icon name="icon-archive-down" />Export evidence
+        </button>
+      </footer>
+
+      {sheetOpen && (
+        <ShareSheet locationName={LOCATION_NAME} onClose={() => setSheetOpen(false)} />
+      )}
     </section>
   );
 }
 
-function EvidenceSection({ title, children }) {
+const ShareSheet = ({ locationName, onClose }) => {
+  // Browser-capability detection runs after mount so the server render and the
+  // first client render agree (both assume "not yet detected"), then we light up
+  // whatever this device actually supports. Everything here is read-only — no
+  // action mutates an evidence record.
+  const [canShare, setCanShare] = useState(false);
+  const [canCopy, setCanCopy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef(null);
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined") {
+      setCanShare(typeof navigator.share === "function");
+      setCanCopy(Boolean(navigator.clipboard?.writeText));
+    }
+    return () => clearTimeout(copyTimer.current);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+  const shareTitle = `${locationName} Evidence`;
+  const shareText = `Read-only compliance evidence for ${locationName} (TraceDDS).`;
+
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setCopied(false);
+    }
+  }, [shareUrl]);
+
+  const share = useCallback(async () => {
+    try {
+      await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+      onClose();
+    } catch {
+      // User dismissed the native share sheet, or the call was rejected — keep
+      // our sheet open so they can pick another action.
+    }
+  }, [shareTitle, shareText, shareUrl, onClose]);
+
+  const print = useCallback(() => {
+    if (typeof window !== "undefined") window.print();
+  }, []);
+
   return (
-    <section className={s.section}>
+    <div className={s.sheetRoot} role="dialog" aria-modal="true" aria-label="Share and export evidence">
+      <div className={s.sheetBackdrop} onClick={onClose} aria-hidden="true" />
+      <div className={s.sheet}>
+        <span className={s.sheetGrip} aria-hidden="true" />
+        <div className={s.sheetHead}>
+          <strong>Share &amp; export</strong>
+          <button type="button" className={s.sheetClose} onClick={onClose} aria-label="Close">
+            <Icon name="icon-x" />
+          </button>
+        </div>
+
+        <div className={s.sheetActions}>
+          <ShareAction
+            icon={copied ? "icon-check" : "icon-link"}
+            title={copied ? "Link copied" : "Copy link"}
+            sub={canCopy ? "Read-only link to this evidence" : "Copying isn’t available in this browser"}
+            done={copied}
+            disabled={!canCopy}
+            disabledNote="Unavailable"
+            onClick={copyLink}
+          />
+          <ShareAction
+            icon="icon-cloud-upload"
+            title="Share…"
+            sub={canShare ? "Send via your device’s share menu" : "Your device’s share menu isn’t available here"}
+            disabled={!canShare}
+            disabledNote="Not supported"
+            onClick={share}
+          />
+          <ShareAction
+            icon="icon-file-text"
+            title="Print or save as PDF"
+            sub="Opens the print dialog"
+            onClick={print}
+          />
+        </div>
+
+        <p className={s.sheetNote}>Read-only — these actions never change the evidence record.</p>
+      </div>
+    </div>
+  );
+};
+
+function ShareAction({ icon, title, sub, onClick, disabled = false, disabledNote, done = false }) {
+  return (
+    <button
+      type="button"
+      className={`${s.sheetAction} ${done ? s.sheetActionDone : ""}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <span className={s.sheetActionIcon}><Icon name={icon} /></span>
+      <span className={s.sheetActionText}>
+        <span className={s.sheetActionTitle}>{title}</span>
+        <span className={s.sheetActionSub}>{sub}</span>
+      </span>
+      {disabled ? (
+        <span className={s.sheetActionState}>{disabledNote}</span>
+      ) : (
+        <span className={s.sheetActionChevron} aria-hidden="true"><Icon name="icon-chevron-right" /></span>
+      )}
+    </button>
+  );
+}
+
+function EvidenceSection({ title, children, ref }) {
+  return (
+    <section className={s.section} ref={ref}>
       <h2>{title}</h2>
       {children}
     </section>

@@ -418,6 +418,237 @@
   }
 }
 
+/* ── Sticky action footer ── */
+.footbar {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+
+.footOutline,
+.footPrimary {
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.footOutline svg,
+.footPrimary svg {
+  width: 18px;
+  height: 18px;
+}
+
+.footOutline {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.footPrimary {
+  background: var(--blue);
+  color: #fff;
+}
+
+.footPrimary svg {
+  color: #fff;
+}
+
+/* ── Share / export bottom sheet ── */
+.sheetRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.sheetBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 21, 51, 0.5);
+}
+
+.sheet {
+  position: relative;
+  width: min(430px, 100%);
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 18px calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 -8px 28px rgba(11, 21, 51, 0.16);
+  animation: sheetIn 0.24s ease;
+}
+
+@keyframes sheetIn {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheetGrip {
+  width: 40px;
+  height: 5px;
+  margin: 6px auto 0;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.sheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheetHead strong {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sheetClose {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sheetClose svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sheetActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheetAction {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheetAction:disabled {
+  cursor: default;
+  background: var(--surface-2);
+}
+
+.sheetActionIcon {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--blue-2);
+  color: var(--blue);
+}
+
+.sheetActionIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sheetAction:disabled .sheetActionIcon {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.sheetActionDone .sheetActionIcon {
+  background: var(--blue);
+  color: #fff;
+}
+
+.sheetActionText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sheetActionTitle {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.sheetAction:disabled .sheetActionTitle {
+  color: var(--muted);
+}
+
+.sheetActionSub {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.sheetActionState {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sheetActionChevron {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.sheetActionChevron svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sheetNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media (max-width: 430px) {
+  .footbar {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
 @media (min-width: 768px) {
   .screen {
     align-items: center;
@@ -425,7 +656,8 @@
   }
 
   .topbar,
-  .body {
+  .body,
+  .footbar {
     width: min(430px, 100%);
   }
 
