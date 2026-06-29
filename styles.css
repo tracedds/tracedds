@@ -1073,13 +1073,6 @@ main:has(.upload-view) {
   font-weight: 600;
 }
 
-.search-suggest-icon {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 15px;
-  color: var(--muted);
-}
-
 .search-suggest-text {
   min-width: 0;
   overflow: hidden;
