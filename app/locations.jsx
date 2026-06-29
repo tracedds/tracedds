@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Icon } from "./icons";
 import { daysUntil, formatExpiryDate, formatTraceDate, money, SWIPE_REVEAL, traceApi, traceErrorMessage } from "./lib";
 import { OfficeLayoutView } from "./officelayout";
@@ -12,6 +13,15 @@ import rs from "./scanmobile.module.css";
 // coverage), the Add Location form (creates a real location), and the per-
 // location Detail (real inventory + scan entry). Scan coverage is rolled from
 // the location's scan sessions; inventory comes from the Phase-1 backend.
+
+// The URL this location's QR encodes — scanning it on a phone opens the scanner
+// already scoped to this location. Mirrors qrlabels.jsx's scanUrlFor so the
+// header QR and the printed label resolve to the same place. Absolute origin so
+// a phone camera pointed at the screen works; relative during SSR (no window).
+function scanUrlFor(loc) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/app/scan-session?location=${encodeURIComponent(loc.id)}`;
+}
 
 // Link a catalog product to an unidentified scan. Search the catalog, pick the
 // right product, and PATCH the evidence record's identity — the same shape the
@@ -1568,9 +1578,15 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
             </div>
 
             <div className={s.locActions}>
-              <button type="button" className={s.scanBtn} onClick={() => onStartScan?.()}>
-                <Icon name="icon-scan" />Scan this location
-              </button>
+              <div className={s.qrCard}>
+                <div className={s.qrCode}>
+                  <QRCodeSVG value={scanUrlFor(location)} size={104} level="M" fgColor="#0f172a" bgColor="#ffffff" />
+                </div>
+                <div className={s.qrCaption}>
+                  <div className={s.qrCaptionTitle}>Scan this location</div>
+                  <div className={s.qrCaptionSub}>Point your phone&rsquo;s camera here to open the scanner.</div>
+                </div>
+              </div>
               <button type="button" className={s.addBtn} onClick={() => onNavigate?.("/app/locations/qr-labels")}>
                 <Icon name="icon-grid" />Print QR label
               </button>
