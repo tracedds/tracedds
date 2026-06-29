@@ -165,14 +165,22 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // marker and the value therefore allows those box glyphs, not just spaces and
   // colons. Some labels spell the descriptor as "LOT Batch Code <value>", and
   // OCR can drop "Batch" and leave "LOT Code <value>", so skip that wording
-  // before taking the value. Value allows common batch separators (A-219,
-  // 13593092, M607840).
+  // before taking the value. The descriptor is also a *chain*: pharma boxes pack
+  // the field names into one header row ("Lot No./ Mfg. Date/ Exp Date:") with the
+  // values on the line below, so the token right after "LOT NO" is the next label
+  // word ("MFG"), not the lot — skip the whole run of field-label words (MFG / DATE
+  // / EXP …) and their "/"-style separators to reach the first value. Value allows
+  // common batch separators (A-219, 13593092, M607840).
   const lotMatch = flat.match(
-    /\bL[O0D][T1I]\b[\s.:#)\]\[|]*(?:(?:N[O0]\.?|NUMBER|BATCH(?:\s+CODE)?|CODE)[\s.:#)\]\[|]*)?([A-Z0-9][A-Z0-9\-/]{2,19})/,
+    /\bL[O0D][T1I]\b[\s.:#)\]\[|/]*(?:(?:N[O0]\.?|NUMBER|BATCH(?:\s+CODE)?|CODE|MF[GD]|MANUF(?:ACTURE)?D?|DATE|EXP(?:IRY|IRES|IRATION)?|USE\s+BY|BEST\s+BEFORE)[\s.:#)\]\[|/]*)*([A-Z0-9][A-Z0-9\-/]{2,19})/,
   );
   if (
     lotMatch &&
-    !/^(?:N[O0]|NUMBER|NUM|BATCH|CODE)$/.test(lotMatch[1]) &&
+    !/^(?:N[O0]|NUMBER|NUM|BATCH|CODE|MF[GD]|DATE|EXP\w*)$/.test(lotMatch[1]) &&
+    // When the chain above skips a "… Exp Date:" header, the first value can be the
+    // expiry itself (a value-less lot row); a lot that parses as a date is that, so
+    // reject it and fall through rather than mis-tag a date as the batch number.
+    normalizeExpiry(lotMatch[1]) == null &&
     !(barcode && sameCode(lotMatch[1], barcode)) // not the scanned code mis-tagged as LOT
   ) {
     lot = lotMatch[1];
