@@ -1469,6 +1469,16 @@
   border-radius: 8px;
 }
 .qrCode svg { display: block; width: 80px; height: 80px; }
+/* The .detail svg reset (fill:none / stroke:currentColor) is for stroke icons;
+   it blanks the QR's fills and outlines every module. Restore solid fills here:
+   modules dark, any explicit-white background element back to white. */
+.qrCode svg,
+.qrCode svg path,
+.qrCode svg rect { stroke: none; }
+.qrCode svg path,
+.qrCode svg rect { fill: #0f172a; }
+.qrCode svg path[fill="#ffffff"],
+.qrCode svg rect[fill="#ffffff"] { fill: #ffffff; }
 .qrCaptionTitle { font-size: 13px; font-weight: 600; color: var(--ink); }
 .qrCaptionSub { font-size: 11.5px; line-height: 1.4; color: #6b7888; margin-top: 2px; }
 

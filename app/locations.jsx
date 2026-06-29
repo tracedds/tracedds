@@ -1580,7 +1580,7 @@ export function LocationDetailView({ locationId, onBack, onStartScan, onToast, o
             <div className={s.locActions}>
               <div className={s.qrCard}>
                 <div className={s.qrCode}>
-                  <QRCodeSVG value={scanUrlFor(location)} size={104} level="M" />
+                  <QRCodeSVG value={scanUrlFor(location)} size={104} level="M" fgColor="#0f172a" bgColor="#ffffff" />
                 </div>
                 <div className={s.qrCaption}>
                   <div className={s.qrCaptionTitle}>Scan this location</div>
