@@ -97,15 +97,18 @@ export function viewFromPath(pathname = "/") {
   if (path === "/app/scan-session" || path === "/app/scan-sessions")
     return { view: "scanner", isLoggedIn: true, scanLocationId: query.get("location") || "", scanMode: query.get("mode") || "" };
   if (path.startsWith("/app/scan-sessions/")) return { view: "scanner", isLoggedIn: true };
+  // Read-only on-site presentation mode. Query params filter the viewer to one
+  // context: a location, a tracked item (optionally a lot), or a single document.
+  // No params = the whole-practice view. Unknown ids fall through to an honest
+  // not-found state in the viewer, so any param value is safe to route.
   if (path === "/app/evidence/viewer")
     return {
       view: "evidenceViewer",
       isLoggedIn: true,
-      // Context-filtered presentation mode: no params = whole practice; a
-      // location / item-or-lot / document id narrows the same read-only shell.
       evidenceContext: {
         location: query.get("location") || "",
-        item: query.get("item") || query.get("lot") || "",
+        item: query.get("item") || "",
+        lot: query.get("lot") || "",
         doc: query.get("doc") || "",
       },
     };
