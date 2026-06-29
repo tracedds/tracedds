@@ -51,5 +51,11 @@ export default defineMiddlewares({
       matcher: "/medmkp/scans*",
       middlewares: [authenticate("customer", ["bearer", "session"])],
     },
+    // Evidence Library document metadata routes — practice-scoped (base path plus
+    // /:id), gated across all methods like the locations subtree.
+    {
+      matcher: "/medmkp/evidence*",
+      middlewares: [authenticate("customer", ["bearer", "session"])],
+    },
   ],
 })
