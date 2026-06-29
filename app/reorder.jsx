@@ -318,6 +318,11 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
   // Collapse cosmetic duplicate variants and drop redundant pack suffixes so
   // each differentiator (gauge/shade/size) shows once. See variantOptionList.
   const variantOptions = variants ? variantOptionList(variants) : [];
+  // Short size tokens (XS/S/M/L/XL…) are meant to be compact — lay them out in a
+  // single row instead of wrapping, which defeats the purpose of abbreviating.
+  const variantsAreCompact =
+    variantOptions.length > 1 &&
+    variantOptions.every((option) => compactSizeLabel(option.label).length <= 4);
   const activeVariantLabel =
     variantOptions.find((option) => option.indices.includes(activeIdx))?.label ||
     activeVariant?.variant_label ||
@@ -517,7 +522,7 @@ export function MatchPanel({ row, mode, wide, onToggleWide, onClose, onToast, on
             {variantOptions.length > 1 && (
               <div className="pdp-variants crl-drawer-variants" role="group" aria-label={`Choose ${variantGroupLabel}`}>
                 <span className="pdp-variants-label">{variantGroupLabel}: <strong>{activeVariantLabel}</strong></span>
-                <div className="pdp-variant-options">
+                <div className={`pdp-variant-options ${variantsAreCompact ? "pdp-variant-options--inline" : ""}`}>
                   {variantOptions.map((option) => {
                     const active = option.indices.includes(activeIdx);
                     return (
