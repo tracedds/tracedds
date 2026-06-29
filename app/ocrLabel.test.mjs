@@ -35,6 +35,17 @@ test("keyword path: plain LOT, NO. variant, and alphanumeric value", () => {
   assert.equal(parseLotExpiry("LOT: A219").lot, "A219");
 });
 
+test("keyword path: combined 'Lot No./ Mfg. Date/ Exp Date' header (Beacons atenolol)", () => {
+  // Pharma boxes pack the field names into one header row with the values below,
+  // so the token after "LOT NO" is the next label word, not the lot. Skip the
+  // field-label chain to the first value, and don't mistake the expiry for the lot.
+  const r = parseLotExpiry("Lot No./ Mfg. Date/ Exp Date:\n05057 05/2017 01/2021");
+  assert.equal(r.lot, "05057");
+  assert.equal(r.expiry, "2021-01-31");
+  // A value-less "… Exp Date:" header must not let the expiry become the lot.
+  assert.equal(parseLotExpiry("LOT/EXP DATE 2025-01").lot, undefined);
+});
+
 test("does not read a barcode's printed digits as a lot (generated UPC HRI)", () => {
   // The human-readable line under a 1D barcode (here 785306841174, a valid UPC-A)
   // OCRs as a bare digit run with no LOT marker. It's the scanned code, not a lot:
