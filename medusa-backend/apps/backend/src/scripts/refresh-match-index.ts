@@ -1,5 +1,6 @@
 import { Client } from "pg"
 import { refreshMatchIndex } from "../matching/match-index"
+import { resolveDatabaseUrl } from "../utils/database-url"
 import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
 
 /**
@@ -16,10 +17,7 @@ import { assertDestructiveDbOperationAllowed } from "../utils/db-safety"
 async function main() {
   assertDestructiveDbOperationAllowed("refresh-match-index")
 
-  const databaseUrl = process.env.DATABASE_URL
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not set")
-  }
+  const databaseUrl = resolveDatabaseUrl()
 
   const client = new Client({
     connectionString: databaseUrl,
