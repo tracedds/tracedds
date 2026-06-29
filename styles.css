@@ -816,10 +816,12 @@ main:has(.upload-view) {
 .topbar {
   position: sticky;
   top: 0;
-  /* Sits above the page's sticky table header band (.crl-row-head, z-index:3) so
-     topbar dropdowns (search results, alerts/user menus) — nested in the topbar's
-     own backdrop-filter stacking context — paint over page content instead of
-     having the column-header band bleed through. */
+  /* Above the content's sticky table header band (.crl-row-head, z-index: 3): the
+     topbar and that header both bubble to the root stacking context, so a tie at
+     z-index 3 would let the header paint over the topbar's open dropdowns. Lifting
+     the topbar to 4 keeps its dropdowns (search results, alerts/user menus) —
+     nested in the topbar's own backdrop-filter stacking context — painting over
+     the column-header band instead of having it bleed through. */
   z-index: 4;
   display: flex;
   justify-content: flex-end;
