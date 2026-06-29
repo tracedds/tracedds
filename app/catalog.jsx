@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "./icons";
-import { CATALOG_RECENT_KEY, availabilityInfo, brandLogoSrc, cap, catMoney, formatPackLabel, initials, money, normalizePackText, parseAttributes, supplierInitials, supplierLogoSrc, titleCase, variantAxisLabel } from "./lib";
+import { CATALOG_RECENT_KEY, availabilityInfo, brandLogoSrc, cap, catMoney, compactSizeLabel, formatPackLabel, initials, money, normalizePackText, parseAttributes, supplierInitials, supplierLogoSrc, titleCase, variantAxisLabel, variantOptionList } from "./lib";
 import { CatalogSupplierAvatar, QtyStepper, UomSelect } from "./ui";
 import { CATALOG_CATEGORIES, CATALOG_TINTS, bucketCategories, categoryBySlug, departmentForCategory } from "./catalogData";
 
@@ -345,6 +345,7 @@ export function CatalogSearchView({ query, onNavigate }) {
   const [input, setInput] = useState(query || "");
   const [products, setProducts] = useState([]);
   const [status, setStatus] = useState(query ? "loading" : "idle");
+  const [layout, setLayout] = useState("grid");
 
   // Keep the refine box in sync when the query changes via the topbar / history.
   useEffect(() => { setInput(query || ""); }, [query]);
@@ -403,11 +404,69 @@ export function CatalogSearchView({ query, onNavigate }) {
         <button type="submit" className="primary-action compact">Search</button>
       </form>
 
+      {products.length > 0 && (
+        <div className="cat-section-head cat-products-head">
+          <h2>{`${products.length} result${products.length === 1 ? "" : "s"}`}</h2>
+          <div className="cat-viewtoggle" role="group" aria-label="View as">
+            <span>View as:</span>
+            <button type="button" className={layout === "grid" ? "active" : ""} onClick={() => setLayout("grid")} aria-label="Grid view">
+              <Icon name="icon-grid" className="button-icon" />
+            </button>
+            <button type="button" className={layout === "list" ? "active" : ""} onClick={() => setLayout("list")} aria-label="List view">
+              <Icon name="icon-list" className="button-icon" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {status === "loading" ? (
         <div className="cat-ptable-wrap">
           {Array.from({ length: 6 }).map((_, i) => <div className="cat-pt-skeleton" key={i} />)}
         </div>
-      ) : products.length ? (
+      ) : !products.length ? (
+        <div className="empty-state">
+          <strong>{query ? `No products for “${query}”` : "Start typing to search"}</strong>
+          <span>Try gloves, burs, bibs, impression material, or anesthetics.</span>
+        </div>
+      ) : layout === "grid" ? (
+        <div className="cat-pgrid-wrap">
+          <div className="cat-pgrid">
+            {products.map((product) => {
+              const best = product.best_offer;
+              const open = product.handle ? () => onNavigate(`/app/product/${product.handle}`) : undefined;
+              return (
+                <article className="cat-pcard" key={product.id}>
+                  <button type="button" className="cat-pcard-media" onClick={open} aria-label={open ? `View ${product.name}` : undefined} disabled={!open}>
+                    {product.image_url ? (
+                      <img src={product.image_url} alt="" loading="lazy" />
+                    ) : (
+                      <Icon name="icon-image" className="nav-icon" />
+                    )}
+                  </button>
+                  <div className="cat-pcard-body">
+                    {open ? (
+                      <button type="button" className="cat-pcard-name" onClick={open}>{product.name}</button>
+                    ) : (
+                      <span className="cat-pcard-name">{product.name}</span>
+                    )}
+                    <span className="cat-pcard-path">{product.category || "Uncategorized"}</span>
+                    <div className="cat-pcard-foot">
+                      <CatBestPrice best={best} showBadge={false} />
+                      <span className="cat-pcard-suppliers">{product.offer_count} suppliers</span>
+                    </div>
+                    {open && (
+                      <button type="button" className="cat-pt-view" onClick={open}>
+                        View product
+                        <Icon name="icon-link" className="button-icon" />
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
         <div className="cat-ptable-wrap">
           <table className="cat-ptable">
             <thead>
@@ -472,11 +531,6 @@ export function CatalogSearchView({ query, onNavigate }) {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="empty-state">
-          <strong>{query ? `No products for “${query}”` : "Start typing to search"}</strong>
-          <span>Try gloves, burs, bibs, impression material, or anesthetics.</span>
-        </div>
       )}
     </div>
   );
@@ -494,6 +548,7 @@ export function CatalogSupplierView({ supplierId, onNavigate }) {
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState("loading");
   const [loadingMore, setLoadingMore] = useState(false);
+  const [layout, setLayout] = useState("grid");
 
   // Resolve the supplier's display name for the header.
   useEffect(() => {
@@ -558,11 +613,78 @@ export function CatalogSupplierView({ supplierId, onNavigate }) {
           : `Loading ${name}'s catalog…`}
       </p>
 
+      {products.length > 0 && (
+        <div className="cat-section-head cat-products-head">
+          <h2>{`${total.toLocaleString()} product${total === 1 ? "" : "s"}`}</h2>
+          <div className="cat-viewtoggle" role="group" aria-label="View as">
+            <span>View as:</span>
+            <button type="button" className={layout === "grid" ? "active" : ""} onClick={() => setLayout("grid")} aria-label="Grid view">
+              <Icon name="icon-grid" className="button-icon" />
+            </button>
+            <button type="button" className={layout === "list" ? "active" : ""} onClick={() => setLayout("list")} aria-label="List view">
+              <Icon name="icon-list" className="button-icon" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {status === "loading" ? (
         <div className="cat-ptable-wrap">
           {Array.from({ length: 6 }).map((_, i) => <div className="cat-pt-skeleton" key={i} />)}
         </div>
-      ) : products.length ? (
+      ) : !products.length ? (
+        <div className="empty-state">
+          <strong>No priced products for {name}</strong>
+          <span>We don&rsquo;t have current prices from this supplier yet.</span>
+          <button type="button" className="secondary-action compact" onClick={() => onNavigate("/app/catalog")}>Back to catalog</button>
+        </div>
+      ) : layout === "grid" ? (
+        <>
+          <div className="cat-pgrid-wrap">
+            <div className="cat-pgrid">
+              {products.map((product) => {
+                const best = product.best_offer;
+                const open = product.handle ? () => onNavigate(`/app/product/${product.handle}`) : undefined;
+                return (
+                  <article className="cat-pcard" key={product.id}>
+                    <button type="button" className="cat-pcard-media" onClick={open} aria-label={open ? `View ${product.name}` : undefined} disabled={!open}>
+                      {product.image_url ? (
+                        <img src={product.image_url} alt="" loading="lazy" />
+                      ) : (
+                        <Icon name="icon-image" className="nav-icon" />
+                      )}
+                    </button>
+                    <div className="cat-pcard-body">
+                      {open ? (
+                        <button type="button" className="cat-pcard-name" onClick={open}>{product.name}</button>
+                      ) : (
+                        <span className="cat-pcard-name">{product.name}</span>
+                      )}
+                      <span className="cat-pcard-path">{product.category || "Uncategorized"}</span>
+                      <div className="cat-pcard-foot">
+                        <CatBestPrice best={best} showBadge={false} />
+                        <span className="cat-pcard-suppliers">{best?.sku || "—"}</span>
+                      </div>
+                      {open && (
+                        <button type="button" className="cat-pt-view" onClick={open}>
+                          View product
+                          <Icon name="icon-link" className="button-icon" />
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+          {products.length < total && (
+            <button type="button" className="cat-pt-all" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : `Load more (${(total - products.length).toLocaleString()} more)`}
+              <Icon name="icon-chevron-right" className="button-icon" />
+            </button>
+          )}
+        </>
+      ) : (
         <>
           <div className="cat-ptable-wrap">
             <table className="cat-ptable">
@@ -624,12 +746,6 @@ export function CatalogSupplierView({ supplierId, onNavigate }) {
             </button>
           )}
         </>
-      ) : (
-        <div className="empty-state">
-          <strong>No priced products for {name}</strong>
-          <span>We don&rsquo;t have current prices from this supplier yet.</span>
-          <button type="button" className="secondary-action compact" onClick={() => onNavigate("/app/catalog")}>Back to catalog</button>
-        </div>
       )}
     </div>
   );
@@ -649,7 +765,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
   const [topSuppliers, setTopSuppliers] = useState([]);
   const [status, setStatus] = useState("loading");
   const [sub, setSub] = useState("");
-  const [productLayout, setProductLayout] = useState("list");
+  const [productLayout, setProductLayout] = useState("grid");
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [recent, setRecent] = useState([]);
   const productsRef = useRef(null);
@@ -1083,13 +1199,16 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
         setUom(cap(list[idx].unit_of_measure) || "Box");
         setStatus("ready");
 
-        // Comparable products: search by the product's family/type keyword so we
-        // surface same-type variants (the curated category is often too narrow).
+        // Comparable products: surface same-type substitutes from a different
+        // family. Scope strictly to the product's own category — a substitute is
+        // a same-category product, never a cross-category item. (The old query
+        // fed the family name's first word into a substring search, so a "Halo"
+        // glove matched "Halo"gen bulbs.) The client then drops the current
+        // product and its own family below.
         const base = list[idx];
-        const foundAttrs = parseAttributes(base.attributes_text);
-        const term = (familyInfo?.family_name || foundAttrs.family || base.name || "").split(/\s+/)[0];
-        if (term) {
-          fetch(`/api/canonical-products?q=${encodeURIComponent(term)}&limit=8`)
+        const ownFamilyId = familyInfo?.family_id || base.family_id || null;
+        if (base.category) {
+          fetch(`/api/canonical-products?category=${encodeURIComponent(base.category)}&limit=8`)
             .then((response) => response.json())
             .then(({ canonical_products: related }) => {
               if (!live) return;
@@ -1098,7 +1217,7 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
                   .filter(
                     (entry) =>
                       entry.handle !== base.handle &&
-                      (!familyInfo || entry.family_id !== familyInfo.family_id)
+                      (!ownFamilyId || entry.family_id !== ownFamilyId)
                   )
                   .slice(0, 3)
               );
@@ -1149,6 +1268,12 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
   const variantGroupLabel = family
     ? family.variant_axis_label || variantAxisLabel(variants)
     : null;
+  // Collapse cosmetic duplicate variants (same gauge/shade, only pack-string
+  // noise apart) and drop the redundant pack suffix into one pill each.
+  const variantOptions = variantOptionList(variants);
+  const activeVariantLabel =
+    variantOptions.find((option) => option.indices.includes(activeIdx))?.label ||
+    product.variant_label;
   // The API returns one offer per supplier variant; collapse to the lowest-priced
   // offer per supplier so the comparison reads as a supplier comparison (one row
   // each) and the "N suppliers" counts stay consistent with the hero badge.
@@ -1338,21 +1463,24 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
                   <span>{brand}</span>
                 </span>
               )}
-              {variants.length > 1 && (
+              {variantOptions.length > 1 && (
                 <div className="pdp-variants" role="group" aria-label={`Choose ${variantGroupLabel}`}>
-                  <span className="pdp-variants-label">{variantGroupLabel}: <strong>{product.variant_label}</strong></span>
+                  <span className="pdp-variants-label">{variantGroupLabel}: <strong>{activeVariantLabel}</strong></span>
                   <div className="pdp-variant-options">
-                    {variants.map((variant, index) => (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        className={`pdp-variant ${index === activeIdx ? "active" : ""}`}
-                        aria-pressed={index === activeIdx}
-                        onClick={() => selectVariant(index)}
-                      >
-                        {variant.variant_label || `Option ${index + 1}`}
-                      </button>
-                    ))}
+                    {variantOptions.map((option) => {
+                      const active = option.indices.includes(activeIdx);
+                      return (
+                        <button
+                          key={option.label}
+                          type="button"
+                          className={`pdp-variant ${active ? "active" : ""}`}
+                          aria-pressed={active}
+                          onClick={() => selectVariant(option.indices[0])}
+                        >
+                          {compactSizeLabel(option.label)}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

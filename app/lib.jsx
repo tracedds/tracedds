@@ -57,6 +57,7 @@ export const routeByView = {
   qrLabels: "/app/locations/qr-labels",
   scanner: "/app/scan-session",
   evidence: "/app/evidence",
+  evidenceReview: "/app/evidence/review",
   evidenceViewer: "/app/evidence/viewer",
   evidenceRedline: "/app/evidence/redline",
   evidenceBinder: "/app/evidence/binder",
@@ -115,6 +116,10 @@ export function viewFromPath(pathname = "/") {
     };
   if (path === "/app/evidence/redline") return { view: "evidenceRedline", isLoggedIn: true };
   if (path === "/app/evidence/binder") return { view: "evidenceBinder", isLoggedIn: true };
+  // Evidence Match Review — confirm an ambiguous upload before it's linked.
+  // `?sample=empty` previews the no-candidate state (manual-link / review-later).
+  if (path === "/app/evidence/review")
+    return { view: "evidenceReview", isLoggedIn: true, evidenceSample: query.get("sample") || "" };
   if (path === "/app/evidence") return { view: "evidence", isLoggedIn: true };
   if (path === "/app/reports") return { view: "reports", isLoggedIn: true };
   // /app/plan is the former name — kept so old links/bookmarks still resolve.
@@ -168,6 +173,27 @@ export function variantAxisLabel(variants) {
   if (labels.some((l) => /taper/i.test(l))) return "Taper";
   if (labels.some((l) => /^(?:econo|braided|wrapped)$/i.test(l))) return "Style";
   return "Option";
+}
+
+
+// Compact a clothing/glove size label into its short form (X-Small → XS) so
+// the pills read as a tight XS·S·M·L·XL row instead of full words. Anything
+// that isn't a recognized size (shades, gauges, lengths) passes through
+// unchanged, so this is safe to apply to any variant pill.
+const SIZE_ABBR = {
+  "xx-small": "XXS", "2x-small": "XXS",
+  "x-small": "XS", "xsmall": "XS", "extra small": "XS", "extra-small": "XS",
+  small: "S",
+  medium: "M", med: "M",
+  large: "L",
+  "x-large": "XL", "xlarge": "XL", "extra large": "XL", "extra-large": "XL",
+  "xx-large": "XXL", "2x-large": "XXL",
+  "xxx-large": "XXXL", "3x-large": "XXXL",
+};
+
+export function compactSizeLabel(label) {
+  const key = String(label || "").trim().toLowerCase();
+  return SIZE_ABBR[key] || label;
 }
 
 
@@ -391,6 +417,38 @@ export function canonPackUnit(word) {
 export function normalizePackText(raw) {
   if (!raw) return raw;
   return String(raw).replace(/(\d+)\s*\/\s*([A-Za-z.]+)/g, (_, n, unit) => `${n}/${canonPackUnit(unit)}`);
+}
+
+// Collapse cosmetic duplicates in a product's variant selector. The matcher
+// emits one canonical per supplier SKU, so the same differentiator (gauge,
+// shade, size…) often recurs with only pack-string noise ("808 ga - 5/Pk" vs
+// "808 ga - 5/Pkg"). When the pack size doesn't actually distinguish the
+// variants, drop that redundant suffix so each pill shows just its
+// differentiator ("808 ga"), then dedupe on the cleaned label. Returns
+// [{ label, indices }] in input order; `indices` are the positions in
+// `variants` that collapsed into each option (first = best-ranked).
+const PACK_TOKEN_RE = /(\d+)\s*\/\s*([A-Za-z.]+)/;
+const PACK_SUFFIX_RE = /\s*[-–—]\s*\d+\s*\/\s*[A-Za-z.]+\s*$/;
+
+export function variantOptionList(variants) {
+  const packToken = (label) => {
+    const match = String(label || "").match(PACK_TOKEN_RE);
+    return match ? normalizePackText(match[0]).toLowerCase() : "";
+  };
+  // Pack is pure noise when at most one distinct pack appears across all
+  // variants — i.e. the axis is gauge/shade/etc., not pack itself.
+  const stripPack =
+    new Set(variants.map((v) => packToken(v.variant_label)).filter(Boolean)).size <= 1;
+  const seen = new Map();
+  variants.forEach((variant, index) => {
+    const raw = variant.variant_label || `Option ${index + 1}`;
+    const label = (stripPack ? raw.replace(PACK_SUFFIX_RE, "").trim() : raw) || raw;
+    const key = normalizePackText(label).toLowerCase();
+    const existing = seen.get(key);
+    if (existing) existing.indices.push(index);
+    else seen.set(key, { label, indices: [index] });
+  });
+  return [...seen.values()];
 }
 // Unit-of-measure display: collapse the many ways a single unit gets written
 // ("each"/"Each"/"ea."/"EA" → "ea") so the Qty column reads consistently.
@@ -638,6 +696,7 @@ export const SUPPLIER_LOGOS = [
   { match: "darby", src: "/suppliers/darbydental.png" },
   { match: "dc dental", src: "/suppliers/dcdental.png" },
   { match: "dental city", src: "/suppliers/dentalcity.png" },
+  { match: "net32", src: "/suppliers/net32.png" },
   { match: "patterson", src: "/suppliers/pattersondental.png" },
   { match: "pearson", src: "/suppliers/pearsondental.png" },
   { match: "schein", src: "/suppliers/henryschein.png" },
