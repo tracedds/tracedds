@@ -8624,6 +8624,22 @@ th {
   padding: 26px 30px 40px;
 }
 
+/* Shown only on phones, above a desktop-management surface reached on mobile. */
+.desktop-only-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--blue-2);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.desktop-only-hint svg { width: 16px; height: 16px; color: var(--blue); flex-shrink: 0; }
+
 /* Savings surface */
 .sv { display: grid; gap: 22px; max-width: 880px; }
 .sv-head h1 { margin: 0 0 6px; font-size: 26px; font-weight: 600; color: var(--ink); }

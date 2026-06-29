@@ -728,6 +728,20 @@ export function BuyingPreferencesCard({ prefs, supplierOptions, onSave, onToast,
 }
 
 
+// Mobile is a scanner appliance for on-site work; full management (catalog,
+// reports, savings, evidence editing, history) is a desktop experience. When one
+// of those surfaces is opened on a phone it still works, but this banner sets the
+// expectation rather than pretending the phone is the place to do it.
+export function DesktopOnlyHint({ label = "full management" }) {
+  return (
+    <div className="desktop-only-hint" role="note">
+      <Icon name="icon-info" className="button-icon" />
+      <span>Best viewed on desktop for {label}.</span>
+    </div>
+  );
+}
+
+
 export function ConfirmModal({ title, body, confirmLabel = "Confirm", secondaryLabel, destructive = false, onConfirm, onSecondary, onClose }) {
   return (
     <div className="crl-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
