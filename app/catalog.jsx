@@ -105,9 +105,12 @@ export function SearchSuggestions({ query = "", suggestions = [], onNavigate }) 
 }
 
 
-export function CatBestPrice({ best, showBadge }) {
+export function CatBestPrice({ best, showBadge, hidePack = false }) {
   const perUnit = best && best.unit_comparable && best.unit_price_cents != null ? best.unit_price_cents : null;
   const packLabel = best ? formatPackLabel(best.pack_quantity, best.pack_basis, best.base_unit, best.pack_size) : "";
+  // hidePack is set when the surrounding table carries its own Pack column, so
+  // the pack isn't shown twice; the sublabel then reads as just the pack price.
+  const sub = hidePack || !packLabel ? "" : ` · ${packLabel}`;
   return (
     <div className="cat-pt-price">
       {perUnit != null ? (
@@ -116,7 +119,7 @@ export function CatBestPrice({ best, showBadge }) {
         <strong>{best ? catMoney(best.price_cents) : "—"}</strong>
       )}
       {perUnit != null && (
-        <span className="cat-pt-pack">{catMoney(best.price_cents)}{packLabel ? ` · ${packLabel}` : ""}</span>
+        <span className="cat-pt-pack">{catMoney(best.price_cents)}{sub}</span>
       )}
       {showBadge && <span className="cat-pt-badge">Best price</span>}
     </div>
@@ -411,6 +414,7 @@ export function CatalogSearchView({ query, onNavigate }) {
               <tr>
                 <th>Product</th>
                 <th>Category / SKU</th>
+                <th>Pack</th>
                 <th>Best price</th>
                 <th className="cat-pt-num">Suppliers matched</th>
                 <th className="cat-pt-act">Action</th>
@@ -442,8 +446,16 @@ export function CatalogSearchView({ query, onNavigate }) {
                       <span>{product.category || "Uncategorized"}</span>
                       <em>{best?.sku || "—"}</em>
                     </td>
+                    <td className="cat-pt-packcol">
+                      {(() => {
+                        const packLabel = best
+                          ? formatPackLabel(best.pack_quantity, best.pack_basis, best.base_unit, best.pack_size)
+                          : "";
+                        return packLabel ? <span>{packLabel}</span> : <em>—</em>;
+                      })()}
+                    </td>
                     <td>
-                      <CatBestPrice best={best} showBadge={false} />
+                      <CatBestPrice best={best} showBadge={false} hidePack />
                     </td>
                     <td className="cat-pt-num">{product.offer_count}</td>
                     <td className="cat-pt-act">
