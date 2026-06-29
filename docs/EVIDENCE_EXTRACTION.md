@@ -149,20 +149,26 @@ Do **not** overload `evidence_document.status`
 that enum (`missing/captured/partial/verified/rejected/archived`) is the
 **human-review / coverage** lifecycle. The **extraction** lifecycle is a different
 axis and gets its own table, exactly as cart-build is a separate table from the
-order it builds:
+order it builds.
+
+**Shipped in [#337]** as
+[`medmkp_evidence_extraction`](../medusa-backend/apps/backend/src/modules/medmkp/models/evidence-extraction.ts)
+(the persistence-only slice — no provider, no drainer). The status enum and the
+claim/attempt/finish columns below are present; #342 only adds the in-process
+drainer that fills them in:
 
 ```ts
-// medmkp_evidence_extraction_job — one extraction attempt-stream per document.
-const EvidenceExtractionJob = model.define("medmkp_evidence_extraction_job", {
-  id: model.id({ prefix: "evjob" }).primaryKey(),
-  practice_id: model.text(),
+// medmkp_evidence_extraction — one extraction record per document.
+const EvidenceExtraction = model.define("medmkp_evidence_extraction", {
+  id: model.id({ prefix: "evext" }).primaryKey(),
   evidence_document_id: model.text(),       // FK → medmkp_evidence_document
-  storage_key: model.text(),                // the blob to read (object storage)
+  practice_id: model.text(),
+  storage_key: model.text().nullable(),     // the blob to read (object storage)
   status: model
     .enum(["queued", "processing", "extracted", "failed", "manual"])
     .default("queued"),
   attempts: model.number().default(0),      // bounded retry
-  extracted: model.json().nullable(),       // the field schema below
+  extracted_fields: model.json().nullable(), // the field schema below
   error: model.text().nullable(),
   claimed_at: model.dateTime().nullable(),  // stale-reaping, as in cart-build
   finished_at: model.dateTime().nullable(),
@@ -284,15 +290,20 @@ bytes of the document being extracted are sent to the model.
 
 ## 5. Proposed follow-ups (do **not** file until approved)
 
-1. **[#342] (already open)** — now unblocked: add `medmkp_evidence_extraction_job`
-   model + migration, the `src/jobs/extract-evidence.ts` scheduled drainer
-   (claim/reap/retry per §2), and enqueue-on-upload. Tests cover
+0. **[#337] (done)** — persistence landed: `medmkp_evidence_extraction` and
+   `medmkp_evidence_match_candidate` models + migration, plus the pure
+   `matching/evidence-candidate-records.ts` bridge from the ranker to candidate
+   rows. No provider/worker (that's #342). Build + unit tests cover the mapping.
+1. **[#342] (already open)** — now unblocked: add the `src/jobs/extract-evidence.ts`
+   scheduled drainer that claims/reaps/retries the `medmkp_evidence_extraction`
+   rows from #337 (per §2) and enqueue-on-upload. Tests cover
    queued/processing/extracted/failed/retry/manual.
 2. **Extraction module** — Claude vision call behind the `ModelRunner` seam from
    `matching/llm.ts`, with structured outputs + the §3 schema. Tests use a fixture
    runner (no live model).
 3. **Candidate generation** — wire extracted fields into `normalize.ts`/`score.ts`
-   to produce ranked, explainable candidates for #309.
+   to produce ranked, explainable candidates for #309, persisted via
+   `toMatchCandidateRecords` (#337).
 4. **Config/infra** — provision `ANTHROPIC_API_KEY` + object-storage bucket;
    depends on **[#308]** (real upload creating stored documents).
 5. **[#309] Match Review UI** — consume extracted fields (with source snippets) +
