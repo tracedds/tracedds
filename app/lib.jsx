@@ -85,6 +85,10 @@ export function viewFromPath(pathname = "/") {
   if (path === "/reset-password") return { view: "resetPassword", isLoggedIn: false };
   if (path === "/sample") return { view: "sample", isLoggedIn: false };
   if (path === "/scan") return { view: "publicScan", isLoggedIn: false };
+  // Public product match view, reached by tapping a scanned item in the no-login
+  // scanner — the full PDP (all supplier offerings) with list/order gated behind
+  // signup. Distinct from the authenticated /app/product/<handle>.
+  if (path.startsWith("/product/")) return { view: "publicProduct", isLoggedIn: false, productHandle: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/styleguide") return { view: "styleguide", isLoggedIn: false };
 
   // Authenticated app
