@@ -9945,8 +9945,9 @@ th {
 .cat-main { min-width: 0; }
 
 /* Stat row */
-.cat-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px; }
+.cat-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 28px; }
 .cat-stat { display: flex; align-items: center; gap: 13px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+.cat-stat > div { min-width: 0; }
 .cat-stat-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto; }
 .cat-stat-icon .nav-icon { width: 22px; height: 22px; }
 .cat-stat small { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
