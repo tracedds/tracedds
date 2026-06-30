@@ -15,7 +15,7 @@ import { EvidenceView, EvidenceBinderView, EvidenceMatchReview, RedlineView } fr
 import { EvidenceMobileViewer } from "./evidenceviewer";
 import { ReportsView } from "./reports";
 import { NeedsAttentionView, NEEDS_ATTENTION_BADGE } from "./needsattention";
-import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
+import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage, PublicProductView, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
 import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHistoryView, SupplierHandoffView } from "./procurement";
 import { CurrentReorderList, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
@@ -1624,6 +1624,10 @@ export default function Home() {
                 itemsChecked={freeScansUsed}
                 onScan={handlePublicScan}
                 onClearScanResult={() => setScanResult(null)}
+                onApplyDetails={applyScanDetails}
+                onSearchAdd={addSearchedScanProduct}
+                onCaptureLabel={() => showToast("Label capture is coming soon")}
+                onViewProduct={(handle) => navigate(`/product/${handle}`)}
                 onSignup={() => navigate("/signup")}
                 onLogin={() => navigate("/login")}
                 onHome={() => navigate("/")}
@@ -1641,6 +1645,15 @@ export default function Home() {
                 authed={authed === true}
               />
             )
+          )
+          : view === "publicProduct" ? (
+            <PublicProductView
+              handle={productHandle}
+              onBack={() => navigate("/scan")}
+              onSignup={() => navigate("/signup")}
+              onViewProduct={(handle) => navigate(`/product/${handle}`)}
+              onToast={showToast}
+            />
           )
           : <LoggedOutLanding onNavigate={navigate} authed={authed === true} />}
         <IconSprite />
