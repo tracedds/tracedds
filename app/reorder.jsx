@@ -1669,13 +1669,17 @@ export function CurrentReorderList({
                   </p>
                 )}
               </>
-            ) : (
+            ) : showSample ? (
               <div className="crl-plan">
                 <div><span>Estimated total</span><strong>$5,842.16</strong></div>
                 <div><span>Suppliers</span><strong>5</strong></div>
                 <div><span>Coverage</span><strong>92%</strong></div>
                 <div><span>Potential savings</span><strong className="green">$842.15</strong></div>
               </div>
+            ) : (
+              <p className="crl-plan-note">
+                Scan a barcode or upload an invoice to start your list — your supplier plan and savings show up here.
+              </p>
             )}
           </section>
         </aside>
