@@ -643,7 +643,29 @@ export const matchReviewSample = [
 ];
 
 
-export const matchReviewSampleStats = { total: 124, matched: 82, review: 28, notFound: 14, high: 64, med: 40, low: 20, matchedPct: 66, reviewPct: 23, notFoundPct: 11 };
+// Derived from matchReviewSample so the public /sample preview's tab counts,
+// list subtotal, and rail totals all describe the same items. Hardcoding these
+// drifted from the rows (124 items / $5,842 vs the 7 rows that actually render).
+export const matchReviewSampleStats = mrComputeStats(matchReviewSample);
+
+export const matchReviewSampleSummary = (() => {
+  const { itemsSubtotal, suppliers } = computePlanTotals(matchReviewSample);
+  const potentialSavings = matchReviewSample.reduce((sum, row) => {
+    if (row.lineTotal == null || !row.qty) return sum;
+    const priced = (row.others || []).filter((o) => o.perEa != null);
+    if (!priced.length) return sum;
+    const cheapest = Math.min(...priced.map((o) => o.perEa * row.qty));
+    return sum + Math.max(0, row.lineTotal - cheapest);
+  }, 0);
+  return {
+    estimatedTotal: itemsSubtotal,
+    suppliers,
+    coverage: matchReviewSampleStats.total
+      ? Math.round((matchReviewSampleStats.matched / matchReviewSampleStats.total) * 100)
+      : 0,
+    potentialSavings,
+  };
+})();
 
 
 export const MR_STATUS = {
