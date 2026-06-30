@@ -46,7 +46,7 @@ function gs1Expiry(raw) {
 // Parse one date-ish token into an ISO `YYYY-MM-DD`, or null. The 4-digit year
 // anchors the format, which avoids the MM/DD vs DD/MM ambiguity for the common
 // label layouts: a year on the left is Y-M(-D); a year on the right is M(-D)-Y.
-export function normalizeExpiry(raw) {
+export function normalizeExpiry(raw, { shortYear = false } = {}) {
   if (!raw) return null;
   // A lone "1" in a date OCRs as punctuation that shares its single vertical
   // stroke — a real Patterson label's "2016-01" came back "2016 - 0:" (and on a
@@ -69,6 +69,22 @@ export function normalizeExpiry(raw) {
   // MM-YYYY / MM/YYYY  (month precision → end of month)
   m = t.match(/\b(\d{1,2})\s*[-/.]\s*(20\d{2})\b/);
   if (m) return isoFrom(+m[2], +m[1], 0);
+
+  // MM/YY (2-digit year) — the compact form pharma/dental labels often stamp
+  // ("EXP 09/21", "Expiry Date 09/21"). Gated behind `shortYear`, set only by the
+  // keyword-anchored callers: a 2-digit year is far more ambiguous than a 4-digit
+  // one (a bare "10/24" could be a catalog or size, not a date), so we trust it
+  // only right after an EXP / USE BY / EXPIRY marker — the bare-date fallback never
+  // passes it. Strict 2-digit/2-digit so a single-digit ratio ("1/2") can't reach
+  // it; the month is range-checked by isoFrom so a non-month pair ("50/50", "28/34")
+  // falls through. Runs after every 4-digit-year form so "06/2027" stays MM-YYYY.
+  if (shortYear) {
+    m = t.match(/\b(\d{2})\s*[-/.]\s*(\d{2})\b/);
+    if (m) {
+      const iso = isoFrom(2000 + +m[2], +m[1], 0);
+      if (iso) return iso;
+    }
+  }
 
   // DD MON YYYY / MON DD YYYY  (3-letter month name *with* a day — the format
   // suture and anesthetic cartons print, "15 JAN 2027" / "15-JAN-2027" / "JAN 15
@@ -221,8 +237,13 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // Prefer a keyword-tagged date (EXP / USE BY / BEST BEFORE), which is
   // unambiguous — trusted even if it's in the past, since an expired item on the
   // shelf is exactly what we want to surface.
-  const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*([0-9A-Z][0-9A-Z\-/. ]{4,11})/);
-  if (expKw) expiry = normalizeExpiry(expKw[1]);
+  // The optional "DATE" after the marker covers the common "Expiry Date 09/21" /
+  // "EXP. DATE: 09/21" wording, whose colon/word would otherwise sit between the
+  // keyword and the value and block the capture. shortYear lets this trusted,
+  // keyword-vouched path read a 2-digit-year MM/YY ("09/21") that the bare fallback
+  // deliberately won't.
+  const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*(?:DATE\b[\s:.]*)?([0-9A-Z][0-9A-Z\-/. ]{4,11})/);
+  if (expKw) expiry = normalizeExpiry(expKw[1], { shortYear: true });
   if (!expiry) {
     const aiExp = flat.match(/\(17\)\s*(\d{6})\b/);
     if (aiExp) expiry = gs1Expiry(aiExp[1]);
