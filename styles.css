@@ -6005,13 +6005,31 @@ th {
 }
 
 @media (max-width: 1020px) {
+  /* Below the desktop breakpoint the nav can't sit between the brand and the
+     auth buttons, so it drops to its own full-width row instead of vanishing —
+     otherwise Pricing/About are unreachable on phones and tablets. */
   .landing-nav {
     grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "brand actions"
+      "nav   nav";
+    column-gap: 16px;
+    row-gap: 12px;
     padding: 24px 24px 16px;
   }
 
+  .landing-brand {
+    grid-area: brand;
+  }
+
+  .landing-nav-actions {
+    grid-area: actions;
+  }
+
   .landing-nav nav {
-    display: none;
+    grid-area: nav;
+    justify-content: flex-start;
+    gap: 24px;
   }
 
   .landing-main {
