@@ -19,9 +19,12 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
    tmux in `usage-codex.sh`); if >25% → run on **Codex**. Else skip. Fails **closed**.
 3. Branches off the latest `origin/main` in an isolated git worktree.
 4. **Picks work**: a labeled issue (`eng-loop`/`qa`) if any, else the next
-   **playbook category** in rotation (see `AUTONOMOUS_CATEGORIES`) — `qa-design`, `clustering`,
-   and `ocr`, with `pricing` opt-in. Categories whose prerequisites aren't met
-   (e.g. no DB URL, harvester down) are skipped that tick.
+   **playbook category** in rotation (see `AUTONOMOUS_CATEGORIES`) — `qa-design`, `ocr`,
+   `vendor-discovery`, and `vendor-ingestion` (the last two need a read-only DB URL),
+   with `pricing` opt-in. Categories whose prerequisites aren't met (e.g. no DB URL,
+   harvester down) are skipped that tick. The two `vendor-*` categories chain:
+   `vendor-discovery` files `vendor-candidate` issues (Net32 sellers we don't ingest);
+   `vendor-ingestion` drains them into adapter PRs.
 5. Hands a **headless Claude run** the common rules (`loop-prompt.md`) plus the
    chosen **playbook** (`playbooks/*.md`): find one cohesive defect/slice, capture
    **before**, fix it, capture **after**, and open a PR — or, for a data-quality
@@ -57,6 +60,8 @@ A cron job runs `run-loop.sh` every few hours. Each tick:
 | `playbooks/qa-design.md` | UI QA / design / bug-fixing — screenshot evidence |
 | `playbooks/clustering.md` | Over/under-clustering fix — dry-run metrics-diff evidence |
 | `playbooks/ocr.md` | Lot/expiry label reading — parser-accuracy-diff evidence |
+| `playbooks/vendor-discovery.md` | Find a Net32 seller we don't ingest yet → file a `vendor-candidate` issue (needs DB) |
+| `playbooks/vendor-ingestion.md` | Turn a `vendor-candidate` into a first-slice ingestion-adapter PR + dry-run evidence (needs DB) |
 | `playbooks/pricing.md` | Price/vendor coverage vs Net32 (opt-in) — files issues |
 | `ocr/check-parser.mjs` | Headless lot/expiry parser-accuracy harness (the OCR "dry-run") |
 | `ocr/cases.json` | Ground-truth corpus: raw OCR text → expected lot/expiry (grows over time) |

@@ -187,6 +187,10 @@ if [ -z "$pr_active" ]; then
           [ -z "${LOOP_DATABASE_URL:-}" ] && { log "skip pricing: LOOP_DATABASE_URL unset"; continue; }
           curl -sS -o /dev/null -m 5 "$NET32_HARVESTER_URL" 2>/dev/null \
             || { log "skip pricing: harvester $NET32_HARVESTER_URL unreachable"; continue; } ;;
+        vendor-discovery|vendor-ingestion)
+          # Both read the Net32 winning-seller census from prod (read-only) to pick/diff
+          # the target vendor — no DB, nothing to discover/ingest.
+          [ -z "${LOOP_DATABASE_URL:-}" ] && { log "skip $cand: LOOP_DATABASE_URL unset"; continue; } ;;
       esac
       open_n="$(gh pr list --repo "$LOOP_REPO" --state open --label "eng-loop:$cand" --json number -q 'length' 2>/dev/null || echo 0)"
       if [ "${open_n:-0}" -ge "${MAX_OPEN_PER_CATEGORY:-2}" ]; then
@@ -197,7 +201,7 @@ if [ -z "$pr_active" ]; then
     [ -n "$category" ] || { log "no category's prerequisites met this tick — skipping."; exit 0; }
     echo "$category" > "$LOOP_HOME/.rotation"
   fi
-  case "$category" in clustering|pricing) needs_db=1 ;; esac
+  case "$category" in clustering|pricing|vendor-discovery|vendor-ingestion) needs_db=1 ;; esac
   [ "$category" = "issue" ] && [ -n "${LOOP_DATABASE_URL:-}" ] && needs_db=1
 fi
 log "category: $category${pr_active:+ (PR #$pr_active)}"
