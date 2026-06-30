@@ -126,6 +126,29 @@ export function normalizeExpiry(raw, { shortYear = false } = {}) {
     if (mon) return isoFrom(yr, mon, 0);
   }
 
+  // DD MON YY / MON YY (2-digit year, month *name*) — the compact carton stamp a
+  // small box prints as "EXP 15 DEC 26" (day precision) or "EXP DEC 26" (Dec 2026,
+  // month precision). Same `shortYear` trust gate as the numeric MM/YY above: a
+  // 2-digit year is too ambiguous to read off a bare "DEC 26", so only the keyword-
+  // anchored callers reach it. This MUST run after every 4-digit-year MON path
+  // above — otherwise the `(\d{2})` here would swallow the day of a "JAN 15 2026"
+  // (reading "15" as year 2015) before the day-precision path could claim it. The
+  // `\b(\d{2})\b` anchor takes exactly two digits, so a 4-digit year never reaches
+  // it; MONTHS gates a non-month run; DD-MON-YY runs first so a printed day keeps
+  // day precision rather than collapsing to month-end.
+  if (shortYear) {
+    m = t.match(/\b(\d{1,2})\s*[-/. ]\s*([A-Z]{3,9})\s*[-/. ]\s*(\d{2})\b/);
+    if (m && MONTHS[m[2].slice(0, 3)]) {
+      const iso = isoFrom(2000 + +m[3], MONTHS[m[2].slice(0, 3)], +m[1]);
+      if (iso) return iso;
+    }
+    m = t.match(/\b([A-Z]{3,9})\s*[-/. ]\s*(\d{2})\b/);
+    if (m && MONTHS[m[1].slice(0, 3)]) {
+      const iso = isoFrom(2000 + +m[2], MONTHS[m[1].slice(0, 3)], 0);
+      if (iso) return iso;
+    }
+  }
+
   // Compact all-digit date, no separators. A dot-matrix / inkjet printer runs
   // the groups together and OCR then drops the thin separator entirely, so a
   // real "Exp.Dt. 2027/11" comes back as "202711" and a "20260131" as one run.
