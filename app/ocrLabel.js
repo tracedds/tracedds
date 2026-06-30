@@ -66,6 +66,16 @@ export function normalizeExpiry(raw) {
   m = t.match(/\b(\d{1,2})\s*[-/.]\s*(20\d{2})\b/);
   if (m) return isoFrom(+m[2], +m[1], 0);
 
+  // DD MON YYYY / MON DD YYYY  (3-letter month name *with a day* → day precision).
+  // Common on sutures, anaesthetic carpules and imported/EU pharma ("15 JAN 2026",
+  // "31-DEC-2027", "JAN 15 2026"). Must run before the month-precision MON YYYY
+  // block below, or "15 JAN 2026" would match "JAN 2026" there and lose the day —
+  // resolving to end-of-month is a *wrong* expiry, exactly what we must not emit.
+  m = t.match(/\b(\d{1,2})\s*[-/. ]\s*([A-Z]{3})\s*[-/. ]\s*(20\d{2})\b/);
+  if (m) { const mon = MONTHS[m[2]]; if (mon) return isoFrom(+m[3], mon, +m[1]); }
+  m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(\d{1,2})(?:\s*,)?\s*[-/. ]\s*(20\d{2})\b/);
+  if (m) { const mon = MONTHS[m[1]]; if (mon) return isoFrom(+m[3], mon, +m[2]); }
+
   // MON YYYY / YYYY MON  (3-letter month name, month precision)
   m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(20\d{2})\b/) || t.match(/\b(20\d{2})\s*[-/. ]\s*([A-Z]{3})\b/);
   if (m) {
