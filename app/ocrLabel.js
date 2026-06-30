@@ -93,20 +93,23 @@ export function normalizeExpiry(raw, { shortYear = false } = {}) {
     }
   }
 
-  // DD MON YYYY / MON DD YYYY  (3-letter month name *with* a day — the format
-  // suture and anesthetic cartons print, "15 JAN 2027" / "15-JAN-2027" / "JAN 15
-  // 2027"). Day precision, so this must run before the month-only MON paths below:
-  // those drop the printed day and resolve to month-end, pushing a mid-month
-  // expiry up to ~four weeks late (a "15 JAN" item would read as good through the
-  // 31st). The separators allow the usual OCR spacings; the month name is checked
-  // against MONTHS so a non-month triple just falls through. The MON-first form
-  // also allows a comma before the year — the standard US long-date punctuation a
-  // label prints as "EXP JAN 15, 2027" (the keyword capture below keeps the comma
-  // so the year reaches here); isoFrom still range-checks the result.
-  m = t.match(/\b(\d{1,2})\s*[-/. ]\s*([A-Z]{3})\s*[-/. ]\s*(20\d{2})\b/);
-  if (m && MONTHS[m[2]]) return isoFrom(+m[3], MONTHS[m[2]], +m[1]);
-  m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(\d{1,2})\s*[-/., ]\s*(20\d{2})\b/);
-  if (m && MONTHS[m[1]]) return isoFrom(+m[3], MONTHS[m[1]], +m[2]);
+  // DD MON YYYY / MON DD YYYY  (a month name *with* a day — the format suture and
+  // anesthetic cartons print, "15 JAN 2027" / "15-JAN-2027" / "JAN 15 2027"). Day
+  // precision, so this must run before the month-only MON paths below: those drop
+  // the printed day and resolve to month-end, pushing a mid-month expiry up to
+  // ~four weeks late (a "15 JAN" item would read as good through the 31st). The
+  // month name is matched as 3–9 letters and keyed off its first three, so the
+  // 4-letter "SEPT" and a fully-spelled "15 DECEMBER 2026" / "JANUARY 15, 2027"
+  // land here too rather than on the month-only path, which would lose the printed
+  // day; MONTHS still gates a non-month run. The separators allow the usual OCR
+  // spacings; the MON-first form also allows a comma before the year — the standard
+  // US long-date punctuation a label prints as "EXP JAN 15, 2027" / "EXP JANUARY
+  // 15, 2027" (the keyword capture below keeps the comma so the year reaches here);
+  // isoFrom still range-checks the result.
+  m = t.match(/\b(\d{1,2})\s*[-/. ]\s*([A-Z]{3,9})\s*[-/. ]\s*(20\d{2})\b/);
+  if (m && MONTHS[m[2].slice(0, 3)]) return isoFrom(+m[3], MONTHS[m[2].slice(0, 3)], +m[1]);
+  m = t.match(/\b([A-Z]{3,9})\s*[-/. ]\s*(\d{1,2})\s*[-/., ]\s*(20\d{2})\b/);
+  if (m && MONTHS[m[1].slice(0, 3)]) return isoFrom(+m[3], MONTHS[m[1].slice(0, 3)], +m[2]);
 
   // MON YYYY / YYYY MON  (month name, month precision). The name may be the
   // 3-letter abbreviation ("JAN 2027") or fully spelled out ("DECEMBER 2026") —
@@ -295,12 +298,15 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // Prefer a keyword-tagged date (EXP / USE BY / BEST BEFORE), which is
   // unambiguous — trusted even if it's in the past, since an expired item on the
   // shelf is exactly what we want to surface.
-  // The value window is wide enough for a fully-spelled month and a 4-digit year
-  // ("SEPTEMBER 2027" is 14 chars); normalizeExpiry still finds the date inside,
-  // so a longer capture just gives it harmless trailing context. The class also
-  // allows a comma so a US long date ("JAN 15, 2027") is captured through the year
-  // rather than truncated at the comma — without it the day-precision MON path
-  // below never sees the year and the expiry is lost. The optional "DATE" after the
+  // The value window is wide enough for a fully-spelled month *with* a day and a
+  // 4-digit year ("SEPTEMBER 15, 2027" / "15 SEPTEMBER 2027" are 18/17 chars);
+  // normalizeExpiry still finds the date inside, so a longer capture just gives it
+  // harmless trailing context, and it scans left-to-right so the keyword-adjacent
+  // date wins. Too narrow a window silently truncates the year off a long date and
+  // loses the expiry. The class also allows a comma so a US long date ("JAN 15,
+  // 2027" / "JANUARY 15, 2027") is captured through the year rather than truncated
+  // at the comma — without it the day-precision MON path below never sees the year
+  // and the expiry is lost. The optional "DATE" after the
   // marker covers the common "Expiry Date 09/21" / "EXP. DATE: 09/21" wording, whose
   // word/colon would otherwise sit between the keyword and the value and block the
   // capture — but it's only skipped when an actual date follows (the lookahead), so a
@@ -309,7 +315,7 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // rather than grabbing the lot/Mfg date that sits right after the header. shortYear
   // lets this trusted, keyword-vouched path read a 2-digit-year MM/YY ("09/21") that
   // the bare fallback deliberately won't.
-  const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*(?:DATE\b[\s:.]*(?=\d{1,2}\s*[-/.]))?([0-9A-Z][0-9A-Z\-/., ]{4,13})/);
+  const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*(?:DATE\b[\s:.]*(?=\d{1,2}\s*[-/.]))?([0-9A-Z][0-9A-Z\-/., ]{4,18})/);
   if (expKw) expiry = normalizeExpiry(expKw[1], { shortYear: true });
   if (!expiry) {
     const aiExp = flat.match(/\(17\)\s*(\d{6})\b/);

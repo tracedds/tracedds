@@ -33,5 +33,8 @@
   { "name": "compact-yyyymmdd-exp", "text": "LOT A22  EXP 20260131", "expectLot": "A22", "expectExpiry": "2026-01-31" },
   { "name": "exp-mm-yy-2digit-year", "text": "Cefalexin Capsules 250mg\nCode KR/DRUGS/ KTK /28 / 342 /2004\nBatch No CBTB0196\nMfg. Date 10/18\nExpiry Date 09/21", "expectLot": "CBTB0196", "expectExpiry": "2021-09-30" },
   { "name": "de-charge-bezeichnung-blister", "text": "Oxycodon-HC! Winthrop®\n10 mg Retardtabletten\nOxycodonhydrochlorid\nWinthrop Arzneimittel\n\nMitvertrieb: Zentiva Pharma\nCh.-B.: 6230058\nVerw. bis 02/2020\n", "expectLot": "6230058", "expectExpiry": "2020-02-29" },
-  { "name": "de-charge-alphanumeric", "text": "Oxycodon-HCl AL 10 mg Retardtabletten  Ch.-B.: K2F306  Verw. bis 03/2021", "expectLot": "K2F306", "expectExpiry": "2021-03-31" }
+  { "name": "de-charge-alphanumeric", "text": "Oxycodon-HCl AL 10 mg Retardtabletten  Ch.-B.: K2F306  Verw. bis 03/2021", "expectLot": "K2F306", "expectExpiry": "2021-03-31" },
+  { "name": "dd-full-month-exp", "text": "Lidocaine HCl 2% Injection\nREF 10-0021\nLOT 8K4471\nEXP 15 JANUARY 2027\nRx only", "expectLot": "8K4471", "expectExpiry": "2027-01-15" },
+  { "name": "us-full-month-comma-exp", "text": "Hibiclens Antiseptic Skin Cleanser\nREF 57591\nLOT 7A2208\nEXP JANUARY 15, 2027\nFor external use only", "expectLot": "7A2208", "expectExpiry": "2027-01-15" },
+  { "name": "dd-sept-4letter-exp", "text": "Septocaine Articaine HCl 4%\nREF 01-A1100\nLOT 5567\nEXP 15 SEPT 2027", "expectLot": "5567", "expectExpiry": "2027-09-15" }
 ]
