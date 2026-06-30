@@ -76,10 +76,13 @@ export function normalizeExpiry(raw) {
   // those drop the printed day and resolve to month-end, pushing a mid-month
   // expiry up to ~four weeks late (a "15 JAN" item would read as good through the
   // 31st). The separators allow the usual OCR spacings; the month name is checked
-  // against MONTHS so a non-month triple just falls through.
+  // against MONTHS so a non-month triple just falls through. The MON-first form
+  // also allows a comma before the year — the standard US long-date punctuation a
+  // label prints as "EXP JAN 15, 2027" (the keyword capture below keeps the comma
+  // so the year reaches here); isoFrom still range-checks the result.
   m = t.match(/\b(\d{1,2})\s*[-/. ]\s*([A-Z]{3})\s*[-/. ]\s*(20\d{2})\b/);
   if (m && MONTHS[m[2]]) return isoFrom(+m[3], MONTHS[m[2]], +m[1]);
-  m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(\d{1,2})\s*[-/. ]\s*(20\d{2})\b/);
+  m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(\d{1,2})\s*[-/., ]\s*(20\d{2})\b/);
   if (m && MONTHS[m[1]]) return isoFrom(+m[3], MONTHS[m[1]], +m[2]);
 
   // MON YYYY / YYYY MON  (month name, month precision). The name may be the
@@ -230,8 +233,11 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // shelf is exactly what we want to surface.
   // The value window is wide enough for a fully-spelled month and a 4-digit year
   // ("SEPTEMBER 2027" is 14 chars); normalizeExpiry still finds the date inside,
-  // so a longer capture just gives it harmless trailing context.
-  const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*([0-9A-Z][0-9A-Z\-/. ]{4,13})/);
+  // so a longer capture just gives it harmless trailing context. The class also
+  // allows a comma so a US long date ("JAN 15, 2027") is captured through the year
+  // rather than truncated at the comma — without it the day-precision MON path
+  // below never sees the year and the expiry is lost.
+  const expKw = flat.match(/\b(?:EXP(?:IR(?:Y|ES|ATION))?|USE BY|BEST BEFORE|BB)\b[\s:.]*([0-9A-Z][0-9A-Z\-/., ]{4,13})/);
   if (expKw) expiry = normalizeExpiry(expKw[1]);
   if (!expiry) {
     const aiExp = flat.match(/\(17\)\s*(\d{6})\b/);
