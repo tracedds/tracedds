@@ -48,7 +48,11 @@ function gs1Expiry(raw) {
 // label layouts: a year on the left is Y-M(-D); a year on the right is M(-D)-Y.
 export function normalizeExpiry(raw) {
   if (!raw) return null;
-  const t = String(raw).trim().toUpperCase().replace(/[;!]/g, "1").replace(/\s+/g, " ");
+  // A lone "1" in a date OCRs as punctuation that shares its single vertical
+  // stroke — a real Patterson label's "2016-01" came back "2016 - 0:" (and on a
+  // different capture "2016 - 0;"). Coerce those ; ! : strokes back to 1 before
+  // matching; isoFrom still range-checks, so a stray coercion just yields null.
+  const t = String(raw).trim().toUpperCase().replace(/[;!:]/g, "1").replace(/\s+/g, " ");
 
   // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
   let m = t.match(/\b(20\d{2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})\b/);
@@ -65,6 +69,18 @@ export function normalizeExpiry(raw) {
   // MM-YYYY / MM/YYYY  (month precision → end of month)
   m = t.match(/\b(\d{1,2})\s*[-/.]\s*(20\d{2})\b/);
   if (m) return isoFrom(+m[2], +m[1], 0);
+
+  // DD MON YYYY / MON DD YYYY  (3-letter month name *with* a day — the format
+  // suture and anesthetic cartons print, "15 JAN 2027" / "15-JAN-2027" / "JAN 15
+  // 2027"). Day precision, so this must run before the month-only MON paths below:
+  // those drop the printed day and resolve to month-end, pushing a mid-month
+  // expiry up to ~four weeks late (a "15 JAN" item would read as good through the
+  // 31st). The separators allow the usual OCR spacings; the month name is checked
+  // against MONTHS so a non-month triple just falls through.
+  m = t.match(/\b(\d{1,2})\s*[-/. ]\s*([A-Z]{3})\s*[-/. ]\s*(20\d{2})\b/);
+  if (m && MONTHS[m[2]]) return isoFrom(+m[3], MONTHS[m[2]], +m[1]);
+  m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(\d{1,2})\s*[-/. ]\s*(20\d{2})\b/);
+  if (m && MONTHS[m[1]]) return isoFrom(+m[3], MONTHS[m[1]], +m[2]);
 
   // MON YYYY / YYYY MON  (3-letter month name, month precision)
   m = t.match(/\b([A-Z]{3})\s*[-/. ]\s*(20\d{2})\b/) || t.match(/\b(20\d{2})\s*[-/. ]\s*([A-Z]{3})\b/);
@@ -235,10 +251,11 @@ export function parseLotExpiry(text, { barcode } = {}) {
     // two adjacent numbers — without that, a lot printed just before the date
     // ("0710709 07.2011") swallows the date's leading month and the expiry is
     // lost. Spaces are still tolerated *around* the separator (Patterson prints
-    // "2016 - 01"), and the trailing groups allow OCR look-alike letters in the
-    // year ("07.20N1" for 07.2011), which normalizeExpiry coerces before
-    // validating. The two MON-anchored alternatives keep the 3-letter-month case.
-    for (const m of flat.matchAll(/(?:^|[^A-Z0-9])(\d{1,4}(?:\s*[-/.]\s*[\dA-Z;!]{1,4}){1,2})(?=$|[^A-Z0-9])|\b([A-Z]{3}[-/. ]20\d{2})\b|\b(20\d{2}[-/. ][A-Z]{3})\b/g)) {
+    // "2016 - 01"), and the trailing groups allow OCR look-alike glyphs in the
+    // year or month — letters ("07.20N1" for 07.2011) and the ; ! : strokes a
+    // lone "1" reads as ("2016 - 0:" for 2016-01) — which normalizeExpiry coerces
+    // before validating. The two MON-anchored alternatives keep the 3-letter case.
+    for (const m of flat.matchAll(/(?:^|[^A-Z0-9])(\d{1,4}(?:\s*[-/.]\s*[\dA-Z;!:]{1,4}){1,2})(?=$|[^A-Z0-9])|\b([A-Z]{3}[-/. ]20\d{2})\b|\b(20\d{2}[-/. ][A-Z]{3})\b/g)) {
       const val = m[1] || m[2] || m[3];
       const iso = normalizeExpiry(val);
       if (!iso) continue;
