@@ -69,8 +69,8 @@ STATE_DIR_TEMPLATE = STATE_ROOT + "/{{ dag.dag_id }}/{{ ts_nodash }}"
 # serially regardless — the hour offsets are for clear retry windows.
 #   Mon: patterson        Tue: dc_dental       Wed: darby
 #   Thu: henry_schein     Fri: dental_city, pearson
-#   Sat: shasta, sky, safco
-#   Sun: amerdental, carolina, unimedusa, young_specialties, zirc
+#   Sat: shasta, sky, safco, ddi_supply
+#   Sun: amerdental, carolina, unimedusa, young_specialties, zirc, jmu_dental
 SUPPLIERS = [
     {
         "name": "dc_dental",
@@ -107,6 +107,39 @@ SUPPLIERS = [
         "schedule": "0 6 * * 0",
         "args": [
             "--max-sitemaps-per-supplier=10",
+            "--sitemap-concurrency=4",
+            # Shopify storefront throttles per IP; per-page extraction is only
+            # the fallback behind products.json, keep it gentle.
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        # Direct Shopify store (Dental Distributors, Inc.); routed through the
+        # generic Shopify adapter, same as amerdental/carolina. ~9,858 products
+        # pulled from /products.json, so allow more product sitemaps than the
+        # small stores.
+        "name": "ddi_supply",
+        "supplier_id": "msup_thedentaldistributors_com",
+        "schedule": "0 10 * * 6",
+        "args": [
+            "--max-sitemaps-per-supplier=10",
+            "--sitemap-concurrency=4",
+            # Shopify storefront throttles per IP; per-page extraction is only
+            # the fallback behind products.json, keep it gentle.
+            "--product-concurrency=6",
+            "--timeout-ms=30000",
+        ],
+    },
+    {
+        # Direct Shopify store (Southern California distributor); routed through
+        # the generic Shopify adapter, same as amerdental/carolina. ~645
+        # products, so the default small-store fetch profile is plenty.
+        "name": "jmu_dental",
+        "supplier_id": "msup_jmudental_com",
+        "schedule": "0 14 * * 0",
+        "args": [
+            "--max-sitemaps-per-supplier=3",
             "--sitemap-concurrency=4",
             # Shopify storefront throttles per IP; per-page extraction is only
             # the fallback behind products.json, keep it gentle.
