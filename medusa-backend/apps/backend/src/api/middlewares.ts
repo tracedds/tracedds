@@ -83,5 +83,15 @@ export default defineMiddlewares({
       method: ["POST"],
       middlewares: [authenticate("customer", ["bearer", "session"])],
     },
+    // Stripe webhook: intentionally NOT authed (Stripe signs the payload; there is
+    // no session). Signature verification needs the exact bytes Stripe sent, so
+    // keep the raw body around — the JSON parser still fills req.body, but
+    // preserveRawBody also stashes the untouched buffer on req.rawBody for
+    // stripe.webhooks.constructEvent. Do NOT add an authenticate() matcher here.
+    {
+      matcher: "/medmkp/billing/webhook",
+      method: ["POST"],
+      bodyParser: { preserveRawBody: true },
+    },
   ],
 })
