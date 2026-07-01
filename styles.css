@@ -9270,7 +9270,7 @@ th {
 .paywall-overlay { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; padding: 24px; background: rgba(11, 21, 51, 0.32); backdrop-filter: blur(3px); }
 .paywall-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: min(400px, 94vw); padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
 .paywall-lock { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-bottom: 4px; border-radius: 10px; background: var(--blue-2); color: var(--blue); }
-.paywall-lock svg { width: 20px; height: 20px; }
+.paywall-lock svg { display: block; width: 20px; height: 20px; }
 .paywall-title { margin: 0; font-size: 19px; font-weight: 600; color: var(--ink); }
 .paywall-benefit { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .paywall-price { margin: 4px 0 12px; color: var(--ink); font-size: 14px; }
