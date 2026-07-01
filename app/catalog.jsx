@@ -32,11 +32,7 @@ export function SearchResults({ results, query = "", loading, onNavigate }) {
         return (
           <a className="search-result" key={result.id} href={href} onClick={go(href)}>
             <span className="search-result-thumb" aria-hidden="true">
-              {result.image_url ? (
-                <img src={result.image_url} alt="" loading="lazy" />
-              ) : (
-                <Icon name="icon-image" className="nav-icon" />
-              )}
+              <ProductThumb src={result.image_url} name={result.name} />
             </span>
             <span className="search-result-main">
               <strong>{result.name}</strong>
@@ -128,76 +124,57 @@ export function CatBestPrice({ best, showBadge, hidePack = false }) {
 
 
 // Some suppliers (e.g. net32) ingest a "not-found"/"no-image" placeholder as the
-// image URL. Treat those as no image so a category tile never fronts a broken-
-// looking graphic as its representative photo.
+// image URL. Treat those as no image so a tile never fronts a broken-looking
+// graphic.
 function isRealProductImage(url) {
   return Boolean(url) && !/not-?found|no-?image/i.test(url);
 }
 
-// Fetch a representative product photo for a category (optionally narrowed to a
-// subcategory `pattern`). The listing is ranked cheapest-first and the cheapest
-// SKUs often have no photo, so scan the first page for the first offer that
-// carries a real one. Returns "" when nothing usable is found (callers fall back
-// to the category icon). Real product imagery reads far better than the abstract
-// icon tiles it replaces.
-async function fetchRepresentativeImage(source, pattern, signal) {
-  if (!source) return "";
-  const params = new URLSearchParams({ category: source, limit: "12" });
-  if (pattern) params.set("pattern", pattern);
-  try {
-    const res = await fetch(`/api/canonical-products?${params}`, { signal }).then((r) => r.json());
-    return (res.canonical_products || []).find((p) => isRealProductImage(p.image_url))?.image_url || "";
-  } catch {
-    return "";
-  }
-}
-
-// Category/subcategory thumbnail: a representative product photo when we have
-// one, else the curated icon tile as a graceful fallback.
-export function CatTile({ image, icon, tint, size }) {
+// Category/subcategory thumbnail: a representative product photo. When the photo
+// is missing or fails to load, fall back to a monogram of the label — never an
+// icon; the catalog fronts categories and products with real imagery.
+export function CatTile({ image, label, tint, size }) {
+  const [failed, setFailed] = useState(false);
   const sizeClass = size ? ` ${size}` : "";
-  if (image) {
+  if (image && !failed) {
     return (
       <span className={`cat-tile has-image${sizeClass}`}>
-        <img src={image} alt="" loading="lazy" />
+        <img src={image} alt="" loading="lazy" onError={() => setFailed(true)} />
       </span>
     );
   }
   return (
-    <span className={`cat-tile tint-${tint}${sizeClass}`}><Icon name={icon} className="nav-icon" /></span>
+    <span className={`cat-tile mono tint-${tint}${sizeClass}`} aria-hidden="true">{initials(label)}</span>
   );
 }
 
+// Product thumbnail: the product photo, or a monogram of its name when the photo
+// is missing, a known placeholder, or fails to load. No icon fallback.
+export function ProductThumb({ src, name }) {
+  const [failed, setFailed] = useState(false);
+  if (isRealProductImage(src) && !failed) {
+    return <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />;
+  }
+  return <span className="thumb-mono" aria-hidden="true">{initials(name)}</span>;
+}
 
-export function CatalogCard({ category, image, onNavigate }) {
-  const open = () => onNavigate(`/app/catalog/${category.slug}`);
+
+export function CatalogCard({ category, onNavigate }) {
   return (
-    <article className="cat-card">
-      <button type="button" className="cat-card-open" onClick={open}>
-        <CatTile image={image} icon={category.icon} tint={category.tint} />
+    <button
+      type="button"
+      className="cat-card cat-catcard"
+      onClick={() => onNavigate(`/app/catalog/${category.slug}`)}
+    >
+      <span className="cat-card-open">
+        <CatTile image={category.image} label={category.name} tint={category.tint} />
         <span className="cat-card-headtext">
           <strong>{category.name}</strong>
           <small>{category.description}</small>
         </span>
-      </button>
-      <p className="cat-card-count">{category.product_count.toLocaleString()} products</p>
-      <div className="cat-card-chips">
-        {category.subcategories.map((sub) => (
-          <button
-            key={sub.name}
-            type="button"
-            className="cat-chip"
-            onClick={() => onNavigate(`/app/catalog/${category.slug}?sub=${encodeURIComponent(sub.name)}`)}
-          >
-            {sub.name}
-          </button>
-        ))}
-      </div>
-      <button type="button" className="cat-browse" onClick={open}>
-        Browse category
-        <Icon name="icon-chevron-right" className="button-icon" />
-      </button>
-    </article>
+      </span>
+      <span className="cat-card-count">{category.product_count.toLocaleString()} products</span>
+    </button>
   );
 }
 
@@ -213,7 +190,6 @@ export function CatalogView({ onNavigate }) {
   const [layout, setLayout] = useState("grid");
   const [recent, setRecent] = useState([]);
   const [showAllSuppliers, setShowAllSuppliers] = useState(false);
-  const [catImages, setCatImages] = useState({});
 
   useEffect(() => {
     let active = true;
@@ -241,21 +217,6 @@ export function CatalogView({ onNavigate }) {
       setRecent([]);
     }
   }, []);
-
-  // Pull a representative product photo per category to front each card. The
-  // listing endpoint is a cached, read-model-backed index read, and the browser
-  // caps this fan-out to a few in flight, so cards fill in progressively without
-  // blocking the grid.
-  useEffect(() => {
-    if (!categories.length) return undefined;
-    const controller = new AbortController();
-    categories.forEach((category) => {
-      fetchRepresentativeImage(category.sources[0], null, controller.signal).then((url) => {
-        if (url) setCatImages((prev) => (prev[category.slug] ? prev : { ...prev, [category.slug]: url }));
-      });
-    });
-    return () => controller.abort();
-  }, [categories]);
 
   const popular = categories.slice(0, 6);
 
@@ -294,7 +255,7 @@ export function CatalogView({ onNavigate }) {
           ) : categories.length ? (
             <div className={`cat-grid ${layout}`}>
               {categories.map((category) => (
-                <CatalogCard key={category.slug} category={category} image={catImages[category.slug]} onNavigate={onNavigate} />
+                <CatalogCard key={category.slug} category={category} onNavigate={onNavigate} />
               ))}
             </div>
           ) : (
@@ -345,7 +306,7 @@ export function CatalogView({ onNavigate }) {
                 {recent.map((category) => (
                   <li key={category.slug}>
                     <button type="button" onClick={() => onNavigate(`/app/catalog/${category.slug}`)}>
-                      <span className={`cat-tile sm tint-${category.tint}`}><Icon name={category.icon} className="nav-icon" /></span>
+                      <CatTile image={category.image} label={category.name} tint={category.tint} size="sm" />
                       {category.name}
                       <Icon name="icon-chevron-right" className="button-icon" />
                     </button>
@@ -455,11 +416,7 @@ export function CatalogSearchView({ query, onNavigate }) {
                     <button type="button" className="cat-pcard-link" onClick={open} aria-label={`View ${product.name}`} />
                   )}
                   <div className="cat-pcard-media">
-                    {product.image_url ? (
-                      <img src={product.image_url} alt="" loading="lazy" />
-                    ) : (
-                      <Icon name="icon-image" className="nav-icon" />
-                    )}
+                    <ProductThumb src={product.image_url} name={product.name} />
                   </div>
                   <div className="cat-pcard-body">
                     <span className="cat-pcard-name">{product.name}</span>
@@ -496,11 +453,7 @@ export function CatalogSearchView({ query, onNavigate }) {
                     <td>
                       <div className="cat-pt-product">
                         <span className="cat-pt-thumb">
-                          {product.image_url ? (
-                            <img src={product.image_url} alt="" loading="lazy" />
-                          ) : (
-                            <Icon name="icon-image" className="nav-icon" />
-                          )}
+                          <ProductThumb src={product.image_url} name={product.name} />
                         </span>
                         {open ? (
                           <button type="button" className="cat-pt-name" onClick={open}>{product.name}</button>
@@ -656,11 +609,7 @@ export function CatalogSupplierView({ supplierId, onNavigate }) {
                 return (
                   <article className="cat-pcard" key={product.id}>
                     <button type="button" className="cat-pcard-media" onClick={open} aria-label={open ? `View ${product.name}` : undefined} disabled={!open}>
-                      {product.image_url ? (
-                        <img src={product.image_url} alt="" loading="lazy" />
-                      ) : (
-                        <Icon name="icon-image" className="nav-icon" />
-                      )}
+                      <ProductThumb src={product.image_url} name={product.name} />
                     </button>
                     <div className="cat-pcard-body">
                       {open ? (
@@ -706,11 +655,7 @@ export function CatalogSupplierView({ supplierId, onNavigate }) {
                       <td>
                         <div className="cat-pt-product">
                           <span className="cat-pt-thumb">
-                            {product.image_url ? (
-                              <img src={product.image_url} alt="" loading="lazy" />
-                            ) : (
-                              <Icon name="icon-image" className="nav-icon" />
-                            )}
+                            <ProductThumb src={product.image_url} name={product.name} />
                           </span>
                           {open ? (
                             <button type="button" className="cat-pt-name" onClick={open}>{product.name}</button>
@@ -777,7 +722,6 @@ export function CatalogCategoryView({ slug, onNavigate }) {
   // Pick a representative photo for a subcategory from the department gallery by
   // matching its curated name pattern; fall back to the department's first photo.
   const subImage = (option) => {
-    if (!gallery.length) return "";
     try {
       const re = new RegExp(option.match, "i");
       const hit = gallery.find((p) => re.test(p.name));
@@ -785,7 +729,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
     } catch {
       // malformed pattern — fall back below
     }
-    return gallery[0]?.image_url || "";
+    return category?.image || "";
   };
 
   // Remember this category for the landing page's "Recently viewed" rail, and
@@ -933,7 +877,6 @@ export function CatalogCategoryView({ slug, onNavigate }) {
     if (typeof cents !== "number") return acc;
     return !acc || cents < acc.price ? { id: p.id, price: cents } : acc;
   }, null);
-  const headImage = gallery[0]?.image_url || "";
   const productsTitle = sub ? `Products in ${sub}` : `Popular products in ${category.name}`;
   const fmt = (value) => (typeof value === "number" ? value.toLocaleString() : "—");
   const viewAllBtn = !showAllProducts && products.length > 8 ? (
@@ -961,7 +904,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
         )}
       </nav>
       <div className="cat-cat-head">
-        <CatTile image={headImage} icon={category.icon} tint={category.tint} size="lg" />
+        <CatTile image={category.image} label={category.name} tint={category.tint} size="lg" />
         <div>
           <h1 className="cat-title">{category.name}</h1>
           <p className="cat-lede">{category.description}</p>
@@ -982,7 +925,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
                 key={option.name}
                 onClick={() => browseSub(option.name)}
               >
-                <CatTile image={subImage(option)} icon={category.icon} tint={category.tint} />
+                <CatTile image={subImage(option)} label={option.name} tint={category.tint} />
                 <span className="cat-card-headtext">
                   <strong>{option.name}</strong>
                   <small>{option.blurb}</small>
@@ -1026,11 +969,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
                   return (
                     <article className="cat-pcard" key={product.id}>
                       <button type="button" className="cat-pcard-media" onClick={open} aria-label={`View ${product.name}`}>
-                        {product.image_url ? (
-                          <img src={product.image_url} alt="" loading="lazy" />
-                        ) : (
-                          <Icon name="icon-image" className="nav-icon" />
-                        )}
+                        <ProductThumb src={product.image_url} name={product.name} />
                       </button>
                       <div className="cat-pcard-body">
                         <button type="button" className="cat-pcard-name" onClick={open}>{product.name}</button>
@@ -1069,11 +1008,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
                         <td>
                           <div className="cat-pt-product">
                             <span className="cat-pt-thumb">
-                              {product.image_url ? (
-                                <img src={product.image_url} alt="" loading="lazy" />
-                              ) : (
-                                <Icon name="icon-image" className="nav-icon" />
-                              )}
+                              <ProductThumb src={product.image_url} name={product.name} />
                             </span>
                             <button type="button" className="cat-pt-name" onClick={open}>{product.name}</button>
                             {product.variant_count > 1 && (
@@ -1169,7 +1104,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
                 {recent.map((item) => (
                   <li key={item.slug}>
                     <button type="button" onClick={() => onNavigate(`/app/catalog/${item.slug}`)}>
-                      <span className={`cat-tile sm tint-${item.tint}`}><Icon name={item.icon} className="nav-icon" /></span>
+                      <CatTile image={item.image} label={item.name} tint={item.tint} size="sm" />
                       {item.name}
                       <Icon name="icon-chevron-right" className="button-icon" />
                     </button>
@@ -1748,7 +1683,7 @@ export function ProductDetail({ handle, onNavigate, onToast, onAddToList, listNa
               return (
                 <div className="pdp-sub" key={sub.id}>
                   <span className="pdp-sub-thumb">
-                    {subImage ? <img src={subImage} alt={sub.name} loading="lazy" /> : <Icon name="icon-package" className="nav-icon" />}
+                    <ProductThumb src={subImage} name={sub.name} />
                   </span>
                   <div className="pdp-sub-body">
                     <strong>{sub.name}</strong>

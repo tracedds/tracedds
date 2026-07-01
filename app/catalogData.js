@@ -1,7 +1,8 @@
 // Curated top-level catalog taxonomy. The ingested catalog stores flat,
 // supplier-named categories (DC Dental "subcat2" values). This module groups
-// them into clean, buyer-facing departments with descriptions, icons, and
-// subcategory chips — the McMaster-style tree the catalog renders. Counts come
+// them into clean, buyer-facing departments with descriptions, a representative
+// product image, and subcategories — the McMaster-style tree the catalog
+// renders. Counts come
 // from live data (see bucketCategories); everything else is curated here so the
 // grid reads consistently regardless of how suppliers name things.
 //
@@ -15,8 +16,8 @@ export const CATALOG_TINTS = [
 export const CATALOG_CATEGORIES = [
   {
     slug: "gloves",
+    image: "https://www.dcdental.com/images/318530652454.01.png",
     name: "Gloves",
-    icon: "icon-shield-check",
     tint: "blue",
     description: "Exam and surgical gloves organized by material and use.",
     sources: ["Gloves"],
@@ -30,8 +31,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "infection-control",
+    image: "https://www.pearsondental.com/catalog/img_ext/Z190115_Group.jpg",
     name: "Infection Control",
-    icon: "icon-shield-check",
     tint: "violet",
     description: "Surface disinfection, masks, barriers, and chairside protection.",
     sources: ["Infection Control", "Infection Control & PPE", "Barrier Protection"],
@@ -45,8 +46,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "sterilization",
+    image: "https://www.dcdental.com/images/808645136388.01.png",
     name: "Sterilization",
-    icon: "icon-check-circle",
     tint: "rose",
     description: "Pouches, wraps, indicators, and autoclave workflow supplies.",
     sources: ["Sterilization", "Sterilization & Infection Prevention"],
@@ -60,8 +61,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "burs-diamonds",
+    image: "https://www.pearsondental.com/catalog/img/P86-0020.jpg",
     name: "Burs & Diamonds",
-    icon: "icon-settings",
     tint: "amber",
     description: "Diamond, carbide, surgical, and lab burs.",
     sources: ["Burs & Diamonds", "Burs", "Diamonds", "Burs & Rotary"],
@@ -75,8 +76,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "finishing-polishing",
+    image: "https://www.dcdental.com/images/477131688078.01.png",
     name: "Finishing & Polishing",
-    icon: "icon-settings",
     tint: "indigo",
     description: "Polishers, discs, strips, points, cups, and abrasives.",
     sources: ["Finishing & Polishing", "Polishing", "Abrasives"],
@@ -90,8 +91,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "restorative",
+    image: "https://www.pearsondental.com/catalog/img_ext/P720754_Bottle.jpg",
     name: "Composites & Restoratives",
-    icon: "icon-tag",
     tint: "teal",
     description: "Composites, glass ionomers, liners, bases, and filling materials.",
     sources: ["Composites & Restoratives", "Restorative", "Restorative & Cosmetic", "Cosmetic Dentistry", "Surgical & Restoratives"],
@@ -105,8 +106,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "bonding-etching",
+    image: "https://www.pearsondental.com/catalog/img/S15-0430.jpg",
     name: "Bonding Agents & Etchants",
-    icon: "icon-tag",
     tint: "green",
     description: "Adhesives, etchants, primers, and silane.",
     sources: ["Bonding Agents & Etchants", "Bonding Agents", "Etchants"],
@@ -120,8 +121,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "matrix-materials",
+    image: "https://www.dcdental.com/images/148322664323.01.png",
     name: "Matrix Materials",
-    icon: "icon-package",
     tint: "cyan",
     description: "Bands, retainers, sectional systems, rings, and wedges.",
     sources: ["Matrix Materials", "Matrix Bands", "Matrix Systems"],
@@ -135,8 +136,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "endodontics",
+    image: "https://www.darbydental.com/media/catalog/product/9/5/9514336_large_3.jpg",
     name: "Endodontics",
-    icon: "icon-bolt",
     tint: "slate",
     description: "Files, obturation, irrigants, sealers, and root canal supplies.",
     sources: ["Endodontics", "Endo"],
@@ -150,8 +151,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "preventive",
+    image: "https://www.dcdental.com/images/321008518725.01.png",
     name: "Preventive",
-    icon: "icon-check-circle",
     tint: "sky",
     description: "Prophylaxis, fluoride, sealants, and caries prevention.",
     sources: ["Preventive", "Preventives", "Preventive & Hygiene", "Hygiene"],
@@ -165,8 +166,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "impression-materials",
+    image: "https://www.darbydental.com/media/catalog/product/8/1/8131706_large_3.jpg",
     name: "Impression Materials",
-    icon: "icon-image",
     tint: "blue",
     description: "Alginate, VPS/PVS, bite registration, and tray adhesives.",
     sources: ["Impression Materials", "Impression Material"],
@@ -180,8 +181,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "evacuation",
+    image: "https://www.darbydental.com/media/catalog/product/4/9/4952089_large_3.jpg",
     name: "Evacuation",
-    icon: "icon-truck",
     tint: "violet",
     description: "Saliva ejectors, HVE tips, aspirator tips, and suction adapters.",
     sources: ["Evacuation", "Saliva Ejectors", "Suction"],
@@ -195,8 +196,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "instruments",
+    image: "https://www.pearsondental.com/catalog/img_ext/A914999_Item.jpg",
     name: "Instruments",
-    icon: "icon-package",
     tint: "rose",
     description: "Hand instruments for diagnostic, restorative, hygiene, and surgical procedures.",
     sources: ["Instruments", "Hand Instruments"],
@@ -210,8 +211,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "oral-surgery",
+    image: "https://www.dcdental.com/images/515302415600.01.png",
     name: "Oral Surgery",
-    icon: "icon-plus",
     tint: "amber",
     description: "Sutures, blades, surgical instruments, and hemostatic supplies.",
     sources: ["Oral Surgery", "Surgical"],
@@ -225,8 +226,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "orthodontics",
+    image: "https://www.pearsondental.com/catalog/img/O43-0194.jpg",
     name: "Orthodontics",
-    icon: "icon-package",
     tint: "cyan",
     description: "Brackets, archwires, elastics, ligatures, and retainer supplies.",
     sources: ["Orthodontics", "Ortho"],
@@ -240,8 +241,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "anesthetics",
+    image: "https://www.dcdental.com/images/505678186624.01.png",
     name: "Anesthetics",
-    icon: "icon-bolt",
     tint: "indigo",
     description: "Local and topical anesthetics, needles, and syringes.",
     sources: ["Anesthetics", "Anesthetic", "Anesthesia"],
@@ -255,8 +256,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "crown-bridge",
+    image: "https://www.dcdental.com/images/865082522563.01.png",
     name: "Crown & Bridge",
-    icon: "icon-tag",
     tint: "teal",
     description: "Cements, provisional materials, crown forms, and core build-up.",
     sources: ["Crown & Bridge", "Crown and Bridge", "Temporary Crowns"],
@@ -270,8 +271,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "laboratory",
+    image: "https://www.pearsondental.com/catalog/img/S240104.JPG",
     name: "Laboratory",
-    icon: "icon-store",
     tint: "slate",
     description: "Gypsum, waxes, acrylics, and lab fabrication supplies.",
     sources: ["Laboratory", "Laboratory Products", "Lab"],
@@ -285,8 +286,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "xray-imaging",
+    image: "https://www.darbydental.com/media/catalog/product/9/5/9522828_large_3.jpg",
     name: "X-Ray & Imaging",
-    icon: "icon-scan",
     tint: "sky",
     description: "Sensors, film, phosphor plates, and radiography supplies.",
     sources: ["X-Ray & Imaging", "Imaging & X-Ray", "X-Ray", "Xray", "Imaging"],
@@ -300,8 +301,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "small-equipment",
+    image: "https://www.dcdental.com/images/757540867548.01.png",
     name: "Small Equipment",
-    icon: "icon-truck",
     tint: "green",
     description: "Handpieces, curing lights, motors, ultrasonic units, and chairside equipment.",
     sources: ["Small Equipment", "Equipment"],
@@ -315,8 +316,8 @@ export const CATALOG_CATEGORIES = [
   },
   {
     slug: "other-dental-supplies",
+    image: "https://www.dcdental.com/images/062500558511.01.png",
     name: "Other Dental Supplies",
-    icon: "icon-list",
     tint: "slate",
     description: "General dental products that need more specific taxonomy review.",
     sources: ["Other Dental Supplies", "Dental Supplies"],
