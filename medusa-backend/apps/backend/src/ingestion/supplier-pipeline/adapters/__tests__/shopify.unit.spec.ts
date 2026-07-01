@@ -46,6 +46,35 @@ describe("Shopify adapter matching", () => {
     expect(adapterForCandidate(candidate()).id).toBe("shopify")
   })
 
+  it("matches Wisdom Dental Supply product URLs and by distributor name", () => {
+    expect(
+      shopifyAdapter.matches(
+        candidate({
+          distributor: "Wisdom Dental Supply",
+          website_url: "https://wisdomdentalsupply.com",
+          origin: "https://wisdomdentalsupply.com",
+          url: "https://wisdomdentalsupply.com/products/ds50-split-cartridge-dispensing-gun-for-50ml-cartridges",
+        })
+      )
+    ).toBe(true)
+    expect(
+      shopifyAdapter.matches(
+        candidate({ distributor: "Wisdom Dental Supply", url: "https://supplier.test/x" })
+      )
+    ).toBe(true)
+  })
+
+  it("routes Wisdom Dental Supply candidates to the Shopify adapter so the full /products.json catalog path runs", () => {
+    expect(
+      adapterForCandidate(
+        candidate({
+          distributor: "Wisdom Dental Supply",
+          url: "https://wisdomdentalsupply.com/products/ds50-split-cartridge-dispensing-gun-for-50ml-cartridges",
+        })
+      ).id
+    ).toBe("shopify")
+  })
+
   it("still matches the existing Shopify-sourced suppliers", () => {
     expect(
       shopifyAdapter.matches(
