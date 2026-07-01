@@ -20,7 +20,7 @@ import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHis
 import { CurrentReorderList, MobileItemDetail, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
 import StyleGuide from "./styleguide";
-import { ConfirmModal, DesktopOnlyHint } from "./ui";
+import { ConfirmModal, DesktopOnlyHint, PracticePaywall } from "./ui";
 
 // Scan feedback (audio + haptic) lives in ./scanSound so the reorder scanner
 // here and the receiving/shelf-audit scanner in scansessions.jsx share one
@@ -70,6 +70,9 @@ export default function Home() {
   const [uploadError, setUploadError] = useState("");
   const uploadAbortRef = useRef(null);
   const uploadCancelledRef = useRef(false);
+  // Set when a gated Practice feature (invoice matching, savings) returns 402 for
+  // a practice without an active subscription — raises the Unlock Practice paywall.
+  const [billingLocked, setBillingLocked] = useState(false);
   const [isDraggingInvoice, setIsDraggingInvoice] = useState(false);
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
@@ -699,6 +702,23 @@ export default function Home() {
     return () => controller.abort();
   }, [view, draftItems, uploadedDocs, buyingPrefs, recordLiveStock]);
 
+  // Entitlement gate. Savings is a paid Practice feature; probe the gated backend
+  // route on entry and raise the paywall on a 402. Leaving any view drops the lock
+  // so it never bleeds onto an unrelated surface (the upload flow re-raises it on
+  // its own 402). In prod BILLING_ENFORCE is off, so this never fires until billing
+  // goes live.
+  useEffect(() => {
+    if (view !== "savings") {
+      setBillingLocked(false);
+      return;
+    }
+    const controller = new AbortController();
+    fetch("/api/savings", { signal: controller.signal })
+      .then((response) => { if (response.status === 402) setBillingLocked(true); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [view]);
+
   // Real summary of the current reorder list for the product-page rail (matches
   // how saveCurrentList tallies items/suppliers/spend).
   const listSummary = useMemo(() => {
@@ -925,6 +945,15 @@ export default function Home() {
         body: formData,
         signal: controller.signal,
       });
+
+      if (response.status === 402) {
+        // Invoice matching is gated — raise the paywall over the reorder list
+        // instead of showing a raw error, and close the upload modal so the lock
+        // is the focus.
+        setAddMode("");
+        setBillingLocked(true);
+        return;
+      }
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -1857,7 +1886,7 @@ export default function Home() {
           </button>
         </aside>
 
-        <main className="app-main">
+        <main className="app-main" inert={billingLocked} aria-hidden={billingLocked || undefined}>
           {isMobile && MANAGEMENT_VIEWS.has(view) && <DesktopOnlyHint onBack={() => navigate("/app")} />}
           {view === "home" && (
             mobileAddItemRoute ? (
@@ -2064,6 +2093,7 @@ export default function Home() {
             />
           )}
         </main>
+        {billingLocked && <PracticePaywall onClose={() => setBillingLocked(false)} />}
         </div>
       </div>
 
