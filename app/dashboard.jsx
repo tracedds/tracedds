@@ -1,13 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Icon } from "./icons";
-import { money } from "./lib";
+import { traceApi, traceErrorMessage } from "./lib";
 import s from "./dashboard.module.css";
 
 // The overview surface a practice lands on first: at-a-glance stats, the items
 // that need attention, recent activity, and the handful of actions most people
-// start their day with. Self-contained — renders standalone off the MOCK below,
-// so the parent can drop it in and swap `data` for real practice data later.
+// start their day with. `DashboardView` is presentational — it renders standalone
+// off the MOCK below. `OverviewRoute` at the bottom is the wired container: it
+// pulls the practice's real /api/locations feed and derives the whole surface
+// from it (see `buildDashboardData`).
 
 const MOCK = {
   practiceName: "Bright Smiles Dental",
@@ -84,8 +87,9 @@ export function DashboardView({ data = MOCK, onStartScan, onAddLocation, onViewS
           value={stats.needsAttention}
           alert={stats.needsAttention > 0}
         />
-        <Stat label="Audit readiness" value="" ring={stats.auditReadiness} />
-        <Stat icon="icon-dollar-circle" label="Potential savings" value={money.format(stats.potentialSavings)} />
+        {stats.auditReadiness != null && (
+          <Stat label="Audit readiness" value="" ring={stats.auditReadiness} />
+        )}
       </div>
 
       <div className={s.grid}>
@@ -158,5 +162,122 @@ export function DashboardView({ data = MOCK, onStartScan, onAddLocation, onViewS
         </button>
       </div>
     </div>
+  );
+}
+
+// Human labels for the location `type` enum the backend stores, used to caption
+// the needs-attention preview rows.
+const LOCATION_TYPE_LABELS = {
+  operatory: "Operatory",
+  cabinet: "Cabinet",
+  sterilization: "Sterilization",
+  lab: "Lab",
+  storage: "Storage",
+  emergency_kit: "Emergency kit",
+  other: "Location",
+};
+
+// "2 hr ago" style stamp for the activity feed (local copy — the Locations board
+// has its own; nothing shared to import).
+function relativeTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+// Derive the whole dashboard from the practice's real locations feed
+// (/api/locations). Each location carries item_count, needs_attention_count and
+// last_scanned_at, so the stats, the needs-attention preview and the activity
+// feed all come from the same signal the Locations board uses — no fabricated
+// numbers. Potential savings has no clean per-practice source yet, so that card
+// is dropped rather than faked; audit readiness is computed from the real
+// attention signal (see below).
+export function buildDashboardData(practiceName, locations) {
+  const items = locations.reduce((n, l) => n + (l.item_count || 0), 0);
+  const needsAttentionCount = locations.reduce((n, l) => n + (l.needs_attention_count || 0), 0);
+
+  const needsAttention = locations
+    .filter((l) => (l.needs_attention_count || 0) > 0)
+    .sort((a, b) => (b.needs_attention_count || 0) - (a.needs_attention_count || 0))
+    .slice(0, 4)
+    .map((l) => ({
+      id: l.id,
+      name: l.name,
+      location: LOCATION_TYPE_LABELS[l.type] || LOCATION_TYPE_LABELS.other,
+      issue: `${l.needs_attention_count} need${l.needs_attention_count === 1 ? "s" : ""} attention`,
+    }));
+
+  const activity = locations
+    .filter((l) => l.last_scanned_at)
+    .sort((a, b) => new Date(b.last_scanned_at) - new Date(a.last_scanned_at))
+    .slice(0, 5)
+    .map((l) => ({
+      id: l.id,
+      text: `${l.name} scanned — ${l.item_count || 0} item${(l.item_count || 0) === 1 ? "" : "s"}`,
+      time: relativeTime(l.last_scanned_at),
+    }));
+
+  return {
+    practiceName: practiceName || "your practice",
+    stats: {
+      locations: locations.length,
+      items,
+      needsAttention: needsAttentionCount,
+      // Audit readiness = the share of tracked lots that are fully traceable and
+      // not expired — i.e. NOT flagged for attention (attention = unidentified,
+      // expired, expiring soon, or missing lot/expiry). Null when nothing's
+      // tracked yet, which hides the ring rather than showing a hollow 0%.
+      auditReadiness: items > 0 ? Math.round(((items - needsAttentionCount) / items) * 100) : null,
+    },
+    needsAttention,
+    activity,
+  };
+}
+
+// Wired container: loads the practice's locations and renders DashboardView off
+// real data. `practiceName` comes from the app shell (already fetched via
+// /api/auth/me), so this only needs the one locations call.
+export function OverviewRoute({ practiceName, onStartScan, onNavigate }) {
+  const [locations, setLocations] = useState(null);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    traceApi.listLocations()
+      .then((res) => {
+        if (!alive) return;
+        setLocations(res.locations || []);
+        setLoadError("");
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setLocations([]);
+        setLoadError(traceErrorMessage(err, "Couldn't load your dashboard."));
+      });
+    return () => { alive = false; };
+  }, []);
+
+  if (locations === null) {
+    return <div className={s.dash}><p className={s.empty}>Loading your dashboard…</p></div>;
+  }
+  if (loadError) {
+    return <div className={s.dash}><p className={s.empty}>{loadError}</p></div>;
+  }
+
+  return (
+    <DashboardView
+      data={buildDashboardData(practiceName, locations)}
+      onStartScan={onStartScan}
+      onAddLocation={() => onNavigate?.("/app/locations/new")}
+      onViewSavings={() => onNavigate?.("/app/savings")}
+      onViewNeedsAttention={() => onNavigate?.("/app/needs-attention")}
+    />
   );
 }
