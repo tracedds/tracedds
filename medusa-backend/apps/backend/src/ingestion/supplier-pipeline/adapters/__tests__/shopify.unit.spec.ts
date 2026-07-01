@@ -46,6 +46,33 @@ describe("Shopify adapter matching", () => {
     expect(adapterForCandidate(candidate()).id).toBe("shopify")
   })
 
+  it("matches Primo Dental product URLs and distributor name", () => {
+    expect(
+      shopifyAdapter.matches(
+        candidate({
+          distributor: "Primo Dental Products",
+          url: "https://primodentalproducts.com/products/primo-powder-free-nitrile-gloves",
+        })
+      )
+    ).toBe(true)
+    expect(
+      shopifyAdapter.matches(
+        candidate({ distributor: "Primo Dental Products", url: "https://supplier.test/x" })
+      )
+    ).toBe(true)
+  })
+
+  it("routes Primo Dental candidates to the Shopify adapter so the full /products.json catalog path runs", () => {
+    expect(
+      adapterForCandidate(
+        candidate({
+          distributor: "Primo Dental Products",
+          url: "https://primodentalproducts.com/products/primo-powder-free-nitrile-gloves",
+        })
+      ).id
+    ).toBe("shopify")
+  })
+
   it("still matches the existing Shopify-sourced suppliers", () => {
     expect(
       shopifyAdapter.matches(
