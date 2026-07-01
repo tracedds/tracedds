@@ -9263,6 +9263,30 @@ th {
 
 .crl-modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 16px 20px; border-top: 1px solid var(--line); }
 
+/* ── Unlock Practice paywall ──────────────────────────────────────────
+   Locked feature (invoice matching, savings) → a card over the real content.
+   The backdrop blur leaves the value legible-but-inert behind the lock; the
+   underlying <main> also carries `inert`/`aria-hidden` for a11y. */
+.paywall-overlay { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; padding: 24px; background: rgba(11, 21, 51, 0.32); backdrop-filter: blur(3px); }
+.paywall-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: min(400px, 94vw); padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.paywall-lock { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-bottom: 4px; border-radius: 10px; background: var(--blue-2); color: var(--blue); }
+.paywall-lock svg { display: block; width: 20px; height: 20px; }
+.paywall-title { margin: 0; font-size: 19px; font-weight: 600; color: var(--ink); }
+.paywall-benefit { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.paywall-price { margin: 4px 0 12px; color: var(--ink); font-size: 14px; }
+.paywall-price strong { font-size: 20px; font-weight: 600; }
+.paywall-error { margin: 0 0 8px; color: var(--red); font-size: 13px; }
+.paywall-upgrade { width: 100%; min-height: 44px; }
+.paywall-dismiss { width: 100%; min-height: 40px; padding: 0 12px; border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 500; }
+.paywall-dismiss:hover { color: var(--ink); }
+
+/* Mobile (≤900px): dock the card as a bottom sheet with 44px tap targets. */
+@media (max-width: 900px) {
+  .paywall-overlay { place-items: end stretch; padding: 0; }
+  .paywall-card { width: 100%; border-width: 1px 0 0; border-radius: 16px 16px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); }
+  .paywall-dismiss { min-height: 44px; }
+}
+
 /* Buying preferences: edit link + static form */
 .crl-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .crl-edit-link { padding: 0; border: 0; background: none; color: var(--blue); font-size: 12px; font-weight: 500; line-height: 1; }
