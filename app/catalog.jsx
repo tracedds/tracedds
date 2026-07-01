@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "./icons";
 import { CATALOG_RECENT_KEY, availabilityInfo, brandLogoSrc, canonPackUnit, cap, catMoney, compactSizeLabel, formatPackLabel, initials, money, normalizePackText, parseAttributes, supplierInitials, supplierLogoSrc, titleCase, variantAxisLabel, variantOptionList } from "./lib";
 import { CatalogSupplierAvatar, QtyStepper } from "./ui";
-import { CATALOG_CATEGORIES, CATALOG_TINTS, bucketCategories, categoryBySlug, departmentForCategory } from "./catalogData";
+import { bucketCategories, categoryBySlug, departmentForCategory } from "./catalogData";
 
 export function SearchResults({ results, query = "", loading, onNavigate }) {
   const headerLabel = loading && !results.length
@@ -127,25 +127,47 @@ export function CatBestPrice({ best, showBadge, hidePack = false }) {
 }
 
 
-export function CatalogStat({ icon, tint, label, value, sub }) {
+// Fetch a representative product photo for a category (optionally narrowed to a
+// subcategory `pattern`). The listing is ranked cheapest-first and the cheapest
+// SKUs often have no photo, so scan the first page for the first offer that
+// carries one. Returns "" when nothing usable is found (callers fall back to the
+// category icon). Real product imagery reads far better than the abstract icon
+// tiles it replaces.
+async function fetchRepresentativeImage(source, pattern, signal) {
+  if (!source) return "";
+  const params = new URLSearchParams({ category: source, limit: "12" });
+  if (pattern) params.set("pattern", pattern);
+  try {
+    const res = await fetch(`/api/canonical-products?${params}`, { signal }).then((r) => r.json());
+    return (res.canonical_products || []).find((p) => p.image_url)?.image_url || "";
+  } catch {
+    return "";
+  }
+}
+
+// Category/subcategory thumbnail: a representative product photo when we have
+// one, else the curated icon tile as a graceful fallback.
+export function CatTile({ image, icon, tint, size }) {
+  const sizeClass = size ? ` ${size}` : "";
+  if (image) {
+    return (
+      <span className={`cat-tile has-image${sizeClass}`}>
+        <img src={image} alt="" loading="lazy" />
+      </span>
+    );
+  }
   return (
-    <div className="cat-stat">
-      <span className={`cat-stat-icon tint-${tint}`}><Icon name={icon} className="nav-icon" /></span>
-      <div>
-        <small>{label}</small>
-        <strong>{value}{sub && <em>{sub}</em>}</strong>
-      </div>
-    </div>
+    <span className={`cat-tile tint-${tint}${sizeClass}`}><Icon name={icon} className="nav-icon" /></span>
   );
 }
 
 
-export function CatalogCard({ category, onNavigate }) {
+export function CatalogCard({ category, image, onNavigate }) {
   const open = () => onNavigate(`/app/catalog/${category.slug}`);
   return (
     <article className="cat-card">
       <button type="button" className="cat-card-open" onClick={open}>
-        <span className={`cat-tile tint-${category.tint}`}><Icon name={category.icon} className="nav-icon" /></span>
+        <CatTile image={image} icon={category.icon} tint={category.tint} />
         <span className="cat-card-headtext">
           <strong>{category.name}</strong>
           <small>{category.description}</small>
@@ -184,6 +206,7 @@ export function CatalogView({ onNavigate }) {
   const [layout, setLayout] = useState("grid");
   const [recent, setRecent] = useState([]);
   const [showAllSuppliers, setShowAllSuppliers] = useState(false);
+  const [catImages, setCatImages] = useState({});
 
   useEffect(() => {
     let active = true;
@@ -212,8 +235,21 @@ export function CatalogView({ onNavigate }) {
     }
   }, []);
 
-  const totalProducts = categories.reduce((sum, c) => sum + c.product_count, 0);
-  const totalSubcategories = CATALOG_CATEGORIES.reduce((sum, c) => sum + c.subcategories.length, 0);
+  // Pull a representative product photo per category to front each card. The
+  // listing endpoint is a cached, read-model-backed index read, and the browser
+  // caps this fan-out to a few in flight, so cards fill in progressively without
+  // blocking the grid.
+  useEffect(() => {
+    if (!categories.length) return undefined;
+    const controller = new AbortController();
+    categories.forEach((category) => {
+      fetchRepresentativeImage(category.sources[0], null, controller.signal).then((url) => {
+        if (url) setCatImages((prev) => (prev[category.slug] ? prev : { ...prev, [category.slug]: url }));
+      });
+    });
+    return () => controller.abort();
+  }, [categories]);
+
   const popular = categories.slice(0, 6);
 
   return (
@@ -231,13 +267,6 @@ export function CatalogView({ onNavigate }) {
 
       <div className="cat-layout">
         <div className="cat-main">
-          <div className="cat-stats">
-            <CatalogStat icon="icon-grid" tint="blue" label="Top-level categories" value={categories.length || "—"} />
-            <CatalogStat icon="icon-package" tint="green" label="Catalog products" value={totalProducts ? totalProducts.toLocaleString() : "—"} />
-            <CatalogStat icon="icon-users" tint="indigo" label="Suppliers covered" value={suppliers.length || "—"} />
-            <CatalogStat icon="icon-list" tint="amber" label="Subcategories" value={totalSubcategories} />
-          </div>
-
           <div className="cat-section-head">
             <h2>Top-level categories</h2>
             <div className="cat-viewtoggle" role="group" aria-label="View as">
@@ -258,7 +287,7 @@ export function CatalogView({ onNavigate }) {
           ) : categories.length ? (
             <div className={`cat-grid ${layout}`}>
               {categories.map((category) => (
-                <CatalogCard key={category.slug} category={category} onNavigate={onNavigate} />
+                <CatalogCard key={category.slug} category={category} image={catImages[category.slug]} onNavigate={onNavigate} />
               ))}
             </div>
           ) : (
@@ -726,18 +755,30 @@ export function CatalogCategoryView({ slug, onNavigate }) {
   const category = categoryBySlug(slug);
   const [products, setProducts] = useState([]);
   const [productCount, setProductCount] = useState(null);
-  const [supplierCount, setSupplierCount] = useState(null);
   const [topSuppliers, setTopSuppliers] = useState([]);
   const [status, setStatus] = useState("loading");
   const [sub, setSub] = useState("");
   const [productLayout, setProductLayout] = useState("grid");
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [recent, setRecent] = useState([]);
+  // Department-wide product photos (image-bearing only), used to front the
+  // header + each subcategory card. Kept separate from `products` so it stays
+  // stable while the visible listing is filtered by subcategory.
+  const [gallery, setGallery] = useState([]);
   const productsRef = useRef(null);
 
-  const tintFor = (index) => {
-    const base = category ? CATALOG_TINTS.indexOf(category.tint) : 0;
-    return CATALOG_TINTS[(Math.max(base, 0) + index) % CATALOG_TINTS.length];
+  // Pick a representative photo for a subcategory from the department gallery by
+  // matching its curated name pattern; fall back to the department's first photo.
+  const subImage = (option) => {
+    if (!gallery.length) return "";
+    try {
+      const re = new RegExp(option.match, "i");
+      const hit = gallery.find((p) => re.test(p.name));
+      if (hit) return hit.image_url;
+    } catch {
+      // malformed pattern — fall back below
+    }
+    return gallery[0]?.image_url || "";
   };
 
   // Remember this category for the landing page's "Recently viewed" rail, and
@@ -759,18 +800,12 @@ export function CatalogCategoryView({ slug, onNavigate }) {
     setSub(initial);
   }, [slug]);
 
-  // Supplier coverage (from the bucketed category summary) + top suppliers for
-  // the rail. These don't depend on the active subcategory filter.
+  // Top suppliers for the rail. Doesn't depend on the active subcategory filter.
   useEffect(() => {
     if (!category) return undefined;
     let active = true;
-    Promise.all([
-      fetch("/api/catalog?all=1").then((r) => r.json()).catch(() => ({ categories: [] })),
-      fetch("/api/suppliers").then((r) => r.json()).catch(() => ({ suppliers: [] })),
-    ]).then(([catRes, supRes]) => {
+    fetch("/api/suppliers").then((r) => r.json()).catch(() => ({ suppliers: [] })).then((supRes) => {
       if (!active) return;
-      const bucket = bucketCategories(catRes.categories || []).find((c) => c.slug === slug);
-      setSupplierCount(bucket ? bucket.supplier_count : null);
       setTopSuppliers(
         (supRes.suppliers || [])
           .slice()
@@ -778,6 +813,37 @@ export function CatalogCategoryView({ slug, onNavigate }) {
       );
     });
     return () => { active = false; };
+  }, [slug, category]);
+
+  // Department-wide gallery for the header + subcategory thumbnails. Fetches the
+  // whole department (all sources merged), keeping only image-bearing products,
+  // independent of the subcategory filter so the thumbnails stay put as the user
+  // filters the listing below. Same URLs the unfiltered listing uses, so these
+  // are edge-cache hits.
+  useEffect(() => {
+    if (!category) return undefined;
+    const controller = new AbortController();
+    Promise.all(
+      category.sources.map((source) =>
+        fetch(`/api/canonical-products?category=${encodeURIComponent(source)}&limit=24`, { signal: controller.signal })
+          .then((r) => r.json())
+          .catch(() => ({ canonical_products: [] }))
+      )
+    ).then((responses) => {
+      if (controller.signal.aborted) return;
+      const seen = new Set();
+      const merged = [];
+      responses.forEach(({ canonical_products }) => {
+        (canonical_products || []).forEach((product) => {
+          if (product.image_url && !seen.has(product.id)) {
+            seen.add(product.id);
+            merged.push(product);
+          }
+        });
+      });
+      setGallery(merged);
+    });
+    return () => controller.abort();
   }, [slug, category]);
 
   useEffect(() => {
@@ -854,13 +920,13 @@ export function CatalogCategoryView({ slug, onNavigate }) {
   };
   const visibleProducts = showAllProducts ? products : products.slice(0, 8);
   // The grid is image-biased, so the first card isn't necessarily the cheapest.
-  // Derive the lowest offer explicitly for the "Best price" stat + card badge.
+  // Derive the lowest offer explicitly for the "Best price" card badge.
   const cheapest = products.reduce((acc, p) => {
     const cents = p.best_offer?.price_cents;
     if (typeof cents !== "number") return acc;
     return !acc || cents < acc.price ? { id: p.id, price: cents } : acc;
   }, null);
-  const bestPrice = cheapest?.price;
+  const headImage = gallery[0]?.image_url || "";
   const productsTitle = sub ? `Products in ${sub}` : `Popular products in ${category.name}`;
   const fmt = (value) => (typeof value === "number" ? value.toLocaleString() : "—");
   const viewAllBtn = !showAllProducts && products.length > 8 ? (
@@ -888,7 +954,7 @@ export function CatalogCategoryView({ slug, onNavigate }) {
         )}
       </nav>
       <div className="cat-cat-head">
-        <span className={`cat-tile lg tint-${category.tint}`}><Icon name={category.icon} className="nav-icon" /></span>
+        <CatTile image={headImage} icon={category.icon} tint={category.tint} size="lg" />
         <div>
           <h1 className="cat-title">{category.name}</h1>
           <p className="cat-lede">{category.description}</p>
@@ -897,32 +963,24 @@ export function CatalogCategoryView({ slug, onNavigate }) {
 
       <div className="cat-layout">
         <div className="cat-main">
-          <div className="cat-stats">
-            <CatalogStat icon="icon-list" tint="blue" label="Subcategories" value={category.subcategories.length} />
-            <CatalogStat icon="icon-package" tint="green" label="Products" value={status === "loading" ? "—" : fmt(productCount)} />
-            <CatalogStat icon="icon-users" tint="indigo" label="Suppliers covered" value={fmt(supplierCount)} />
-            <CatalogStat icon="icon-dollar-circle" tint="amber" label="Best price" value={typeof bestPrice === "number" ? catMoney(bestPrice) : "—"} sub={typeof bestPrice === "number" ? "lowest offer" : null} />
-          </div>
-
           <div className="cat-section-head">
             <h2>Subcategories</h2>
           </div>
 
           <div className="cat-grid cat-subgrid">
-            {category.subcategories.map((option, index) => (
-              <article className={`cat-card ${sub === option.name ? "active" : ""}`} key={option.name}>
-                <button type="button" className="cat-card-open" onClick={() => browseSub(option.name)}>
-                  <span className={`cat-tile tint-${tintFor(index)}`}><Icon name={category.icon} className="nav-icon" /></span>
-                  <span className="cat-card-headtext">
-                    <strong>{option.name}</strong>
-                    <small>{option.blurb}</small>
-                  </span>
-                </button>
-                <button type="button" className="cat-browse" onClick={() => browseSub(option.name)}>
-                  {sub === option.name ? "Clear filter" : "Browse subcategory"}
-                  <Icon name="icon-chevron-right" className="button-icon" />
-                </button>
-              </article>
+            {category.subcategories.map((option) => (
+              <button
+                type="button"
+                className={`cat-card cat-subcard ${sub === option.name ? "active" : ""}`}
+                key={option.name}
+                onClick={() => browseSub(option.name)}
+              >
+                <CatTile image={subImage(option)} icon={category.icon} tint={category.tint} />
+                <span className="cat-card-headtext">
+                  <strong>{option.name}</strong>
+                  <small>{option.blurb}</small>
+                </span>
+              </button>
             ))}
           </div>
 
