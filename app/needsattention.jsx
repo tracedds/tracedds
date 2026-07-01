@@ -216,7 +216,7 @@ export function NeedsAttentionView({ data = NEEDS_ATTENTION_MOCK, onToast, onNav
     <div className={s.page}>
       {isMobile && <MobileHeader onBack={() => onNavigate?.("/app")} />}
       <header className={s.head}>
-        <h1 className={s.title}>Dashboard</h1>
+        <h1 className={s.title}>Needs Attention</h1>
         <p className={s.subtitle}>Items and issues that require your review and action to keep operations running smoothly.</p>
       </header>
 
