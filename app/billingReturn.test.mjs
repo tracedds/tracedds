@@ -19,13 +19,14 @@ const isEntitled = extract(libSource, "isEntitled", /export function isEntitled\
 const billingReturnState = extract(libSource, "billingReturnState", /export function billingReturnState\([\s\S]*?\n\}/);
 const safeReturnTo = extract(billingSource, "safeReturnTo", /function safeReturnTo\([\s\S]*?\n\}/);
 
-test("isEntitled unlocks only active + trialing subscriptions", () => {
+test("isEntitled unlocks only an active subscription", () => {
   assert.equal(isEntitled({ status: "active" }), true);
-  assert.equal(isEntitled({ status: "trialing" }), true);
 });
 
-test("isEntitled keeps every non-paid status (and a missing sub) locked", () => {
-  for (const status of ["past_due", "canceled", "incomplete", "incomplete_expired", "unpaid", "paused"]) {
+test("isEntitled keeps every non-active status (and a missing sub) locked", () => {
+  // Matches the backend entitlement() — trialing is deliberately NOT entitled,
+  // so the FE never unlocks a feature the paywall still gates.
+  for (const status of ["trialing", "past_due", "canceled", "incomplete", "incomplete_expired", "unpaid", "paused"]) {
     assert.equal(isEntitled({ status }), false, `${status} should not unlock`);
   }
   assert.equal(isEntitled(null), false);

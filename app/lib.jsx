@@ -167,13 +167,13 @@ export function pathForView(view) {
 }
 
 
-// A practice is entitled to the paid features while its subscription is in a
-// paid-active Stripe state. `trialing` and `active` unlock; every other status
-// (past_due, canceled, incomplete, unpaid, paused, …) or a missing subscription
-// does not. Kept in sync with the backend medmkp_practice_subscription enum.
+// A practice is entitled to the paid features only while its subscription is
+// `active`. Every other status (trialing, past_due, canceled, incomplete,
+// unpaid, paused, …) or a missing subscription is not entitled. Kept in lockstep
+// with the backend's authoritative entitlement() (utils/practice.ts) so the
+// post-checkout unlock never drops a buyer into a feature the paywall still gates.
 export function isEntitled(subscription) {
-  const status = subscription?.status;
-  return status === "active" || status === "trialing";
+  return subscription?.status === "active";
 }
 
 
