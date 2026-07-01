@@ -14,13 +14,15 @@ import { getScanAudioCtx, loadMatchChime, playMatchChime, vibrateNoMatch } from 
 import { EvidenceView, EvidenceBinderView, EvidenceMatchReview, RedlineView } from "./evidence";
 import { EvidenceMobileViewer } from "./evidenceviewer";
 import { ReportsView } from "./reports";
+import { OverviewRoute } from "./dashboard";
 import { NeedsAttentionView, NEEDS_ATTENTION_BADGE } from "./needsattention";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage, PublicProductView, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
 import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHistoryView, SupplierHandoffView } from "./procurement";
 import { CurrentReorderList, MobileItemDetail, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
+import { BillingReturnView } from "./billing";
 import StyleGuide from "./styleguide";
-import { BillingBanner, ConfirmModal, DesktopOnlyHint } from "./ui";
+import { BillingBanner, ConfirmModal, DesktopOnlyHint, PracticePaywall } from "./ui";
 
 // Scan feedback (audio + haptic) lives in ./scanSound so the reorder scanner
 // here and the receiving/shelf-audit scanner in scansessions.jsx share one
@@ -33,6 +35,7 @@ import { BillingBanner, ConfirmModal, DesktopOnlyHint } from "./ui";
 // (scanner, locations, needs-attention dashboard, reorder list, evidence
 // VIEWER) is deliberately excluded.
 const MANAGEMENT_VIEWS = new Set([
+  "overview",
   "evidence", "evidenceBinder", "evidenceRedline", "evidenceReview",
   "reports", "savings", "history", "historyDetail", "plan", "handoff",
   "catalog", "catalogCategory", "catalogSupplier", "catalogSearch", "productDetail",
@@ -58,6 +61,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [evidenceContext, setEvidenceContext] = useState(null);
   const [evidenceSample, setEvidenceSample] = useState("");
+  const [billingReturnStatus, setBillingReturnStatus] = useState("");
+  const [billingReturnTo, setBillingReturnTo] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -70,6 +75,9 @@ export default function Home() {
   const [uploadError, setUploadError] = useState("");
   const uploadAbortRef = useRef(null);
   const uploadCancelledRef = useRef(false);
+  // Set when a gated Practice feature (invoice matching, savings) returns 402 for
+  // a practice without an active subscription — raises the Unlock Practice paywall.
+  const [billingLocked, setBillingLocked] = useState(false);
   const [isDraggingInvoice, setIsDraggingInvoice] = useState(false);
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
@@ -475,6 +483,8 @@ export default function Home() {
       setSearchQuery(nextRoute.searchQuery || "");
       setEvidenceContext(nextRoute.evidenceContext || null);
       setEvidenceSample(nextRoute.evidenceSample || "");
+      setBillingReturnStatus(nextRoute.billingReturnStatus || "");
+      setBillingReturnTo(nextRoute.billingReturnTo || "");
       setMobileAddItemRoute(Boolean(nextRoute.mobileAddItemRoute));
       setMenuOpen(false);
     }
@@ -485,15 +495,27 @@ export default function Home() {
     return () => window.removeEventListener("popstate", syncViewFromLocation);
   }, []);
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((response) => response.json())
-      .then((data) => {
-        setAuthed(Boolean(data.authenticated));
-        setMe(data.authenticated ? { customer: data.customer || null, practice: data.practice || null, subscription: data.subscription || null } : null);
-      })
-      .catch(() => setAuthed(false));
+  // Fetch the signed-in profile + entitlement, mirror it into state, and return
+  // the fresh value so callers (the post-checkout poll) can react to it without
+  // waiting on a re-render.
+  const refreshMe = useCallback(async () => {
+    try {
+      const data = await fetch("/api/auth/me", { cache: "no-store" }).then((response) => response.json());
+      setAuthed(Boolean(data.authenticated));
+      const next = data.authenticated
+        ? { customer: data.customer || null, practice: data.practice || null, subscription: data.subscription || null }
+        : null;
+      setMe(next);
+      return next;
+    } catch {
+      setAuthed(false);
+      return null;
+    }
   }, []);
+
+  useEffect(() => {
+    refreshMe();
+  }, [refreshMe]);
 
   // Keep unauthenticated visitors out of the authenticated app routes, and send
   // already-signed-in visitors from the public free-scan page into the real app.
@@ -700,6 +722,23 @@ export default function Home() {
     return () => controller.abort();
   }, [view, draftItems, uploadedDocs, buyingPrefs, recordLiveStock]);
 
+  // Entitlement gate. Savings is a paid Practice feature; probe the gated backend
+  // route on entry and raise the paywall on a 402. Leaving any view drops the lock
+  // so it never bleeds onto an unrelated surface (the upload flow re-raises it on
+  // its own 402). In prod BILLING_ENFORCE is off, so this never fires until billing
+  // goes live.
+  useEffect(() => {
+    if (view !== "savings") {
+      setBillingLocked(false);
+      return;
+    }
+    const controller = new AbortController();
+    fetch("/api/savings", { signal: controller.signal })
+      .then((response) => { if (response.status === 402) setBillingLocked(true); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [view]);
+
   // Real summary of the current reorder list for the product-page rail (matches
   // how saveCurrentList tallies items/suppliers/spend).
   const listSummary = useMemo(() => {
@@ -838,6 +877,8 @@ export default function Home() {
     setSearchQuery(next.searchQuery || "");
     setEvidenceContext(next.evidenceContext || null);
     setEvidenceSample(next.evidenceSample || "");
+    setBillingReturnStatus(next.billingReturnStatus || "");
+    setBillingReturnTo(next.billingReturnTo || "");
     setMobileAddItemRoute(Boolean(next.mobileAddItemRoute));
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -933,6 +974,15 @@ export default function Home() {
         body: formData,
         signal: controller.signal,
       });
+
+      if (response.status === 402) {
+        // Invoice matching is gated — raise the paywall over the reorder list
+        // instead of showing a raw error, and close the upload modal so the lock
+        // is the focus.
+        setAddMode("");
+        setBillingLocked(true);
+        return;
+      }
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -1547,6 +1597,7 @@ export default function Home() {
   // from the old IA becomes unreachable (Savings is kept but demoted).
   const navItems = [
     ["home", "icon-home", "Dashboard", false, NEEDS_ATTENTION_BADGE],
+    ["overview", "icon-grid", "Overview"],
     ["reorderList", "icon-cart", "Reorder list"],
     ["locations", "icon-map-pin", "Locations"],
     ["savings", "icon-dollar-circle", "Savings"],
@@ -1865,7 +1916,7 @@ export default function Home() {
           </button>
         </aside>
 
-        <main className="app-main">
+        <main className="app-main" inert={billingLocked} aria-hidden={billingLocked || undefined}>
           <BillingBanner status={subStatus} onManageBilling={goToBilling} />
           {isMobile && MANAGEMENT_VIEWS.has(view) && <DesktopOnlyHint onBack={() => navigate("/app")} />}
           {view === "home" && (
@@ -1893,6 +1944,14 @@ export default function Home() {
           )}
 
           {view === "dashboard" && <NeedsAttentionView onToast={showToast} onNavigate={navigate} />}
+
+          {view === "overview" && (
+            <OverviewRoute
+              practiceName={practiceName}
+              onStartScan={startScan}
+              onNavigate={navigate}
+            />
+          )}
 
           {view === "reorderList" && reorderListEl}
 
@@ -2075,7 +2134,18 @@ export default function Home() {
               onToast={showToast}
             />
           )}
+
+          {view === "billingReturn" && (
+            <BillingReturnView
+              status={billingReturnStatus}
+              returnTo={billingReturnTo}
+              me={me}
+              onRefreshMe={refreshMe}
+              onNavigate={navigate}
+            />
+          )}
         </main>
+        {billingLocked && <PracticePaywall onClose={() => setBillingLocked(false)} />}
         </div>
       </div>
 

@@ -49,6 +49,7 @@ export const routeByView = {
   resetPassword: "/reset-password",
   styleguide: "/styleguide",
   home: "/app",
+  overview: "/app/overview",
   dashboard: "/app/needs-attention",
   reorderList: "/app/reorder-list",
   locations: "/app/locations",
@@ -67,6 +68,7 @@ export const routeByView = {
   savings: "/app/savings",
   history: "/app/history",
   settings: "/app/settings",
+  billingReturn: "/app/billing/return",
 };
 
 
@@ -93,6 +95,9 @@ export function viewFromPath(pathname = "/") {
 
   // Authenticated app
   if (path === "/app") return { view: "home", isLoggedIn: true };
+  // The at-a-glance overview surface (stats, needs-attention preview, activity),
+  // derived from the practice's real locations feed.
+  if (path === "/app/overview") return { view: "overview", isLoggedIn: true };
   // The Needs Attention dashboard is its own destination, reachable on every
   // device (the mobile scanner hub and the bell CTA link here). Desktop /app
   // also renders this content via the "home" view.
@@ -146,6 +151,16 @@ export function viewFromPath(pathname = "/") {
   if (path.startsWith("/app/catalog/")) return { view: "catalogCategory", isLoggedIn: true, categorySlug: decodeURIComponent(path.split("/")[3] || "") };
   if (path.startsWith("/app/product/")) return { view: "productDetail", isLoggedIn: true, productHandle: decodeURIComponent(path.split("/")[3] || "") };
   if (path === "/app/settings") return { view: "settings", isLoggedIn: true };
+  // Landing spot after Stripe hosted Checkout. `status` (success|canceled) is set
+  // by the checkout route's success_url/cancel_url; `returnTo` is where to drop the
+  // buyer once their plan activates (defaults to the app home).
+  if (path === "/app/billing/return")
+    return {
+      view: "billingReturn",
+      isLoggedIn: true,
+      billingReturnStatus: query.get("status") || "",
+      billingReturnTo: query.get("returnTo") || "",
+    };
 
   return { view: "home", isLoggedIn: true };
 }
@@ -153,6 +168,26 @@ export function viewFromPath(pathname = "/") {
 
 export function pathForView(view) {
   return routeByView[view] || "/app";
+}
+
+
+// A practice is entitled to the paid features only while its subscription is
+// `active`. Every other status (trialing, past_due, canceled, incomplete,
+// unpaid, paused, …) or a missing subscription is not entitled. Kept in lockstep
+// with the backend's authoritative entitlement() (utils/practice.ts) so the
+// post-checkout unlock never drops a buyer into a feature the paywall still gates.
+export function isEntitled(subscription) {
+  return subscription?.status === "active";
+}
+
+
+// Resolve which post-checkout landing state to show from the `status` query
+// param the checkout route stamps onto its cancel_url. Anything that isn't an
+// explicit cancel is treated as a successful return, so a missing/garbled param
+// still lands the just-paid buyer on the reassuring "Activating…" path rather
+// than a false "canceled".
+export function billingReturnState(status) {
+  return status === "canceled" ? "canceled" : "activating";
 }
 
 
@@ -1890,11 +1925,59 @@ export const SETTINGS_TABS = [
 
 export const SETTINGS_TAB_STUBS = {
   users: { icon: "icon-users", title: "Team & users", body: "Invite teammates, assign buyer or approver roles, and manage who can place orders for your practice." },
-  billing: { icon: "icon-credit-card", title: "Billing & payment", body: "Manage payment methods, billing contacts, and download invoices for your TraceDDS subscription." },
   notifications: { icon: "icon-bell", title: "Notifications", body: "Choose which emails and alerts you receive. Order-related email toggles live under Profile → Preferences for now." },
   integrations: { icon: "icon-plug", title: "Integrations", body: "Connect your practice-management system and accounting tools to sync orders and invoices automatically." },
   security: { icon: "icon-shield-check", title: "Security", body: "Two-factor authentication, active sessions, and audit history. Password changes live under Profile → Change password." },
 };
+
+
+// Subscription presentation for the Settings → Billing tab. The paid tier is
+// "Practice" ($149/mo per location); the marketing plan name is the same for
+// every paid `medmkp_practice_subscription`, so we key display off status.
+export const PRACTICE_PLAN_NAME = "Practice";
+export const PRACTICE_MONTHLY_FEE_CENTS = 14900;
+
+const BILLING_STATUS_LABELS = {
+  active: "Active",
+  trialing: "Trial",
+  past_due: "Past due",
+  unpaid: "Past due",
+  paused: "Paused",
+  canceled: "Canceled",
+  incomplete: "Incomplete",
+  incomplete_expired: "Expired",
+};
+
+// One-word status badge + a token tone (green = good, gold = needs attention,
+// red = lapsed) for the plan card.
+export function billingStatusDisplay(status) {
+  if (!status) return null;
+  const label = BILLING_STATUS_LABELS[status] || "Active";
+  const tone =
+    status === "active" || status === "trialing"
+      ? "green"
+      : status === "past_due" || status === "unpaid" || status === "incomplete"
+        ? "gold"
+        : "red";
+  return { label, tone };
+}
+
+// "$149/mo" from cents; falls back to the standard Practice fee.
+export function billingMonthlyLabel(cents) {
+  const value = Number.isFinite(cents) && cents > 0 ? cents : PRACTICE_MONTHLY_FEE_CENTS;
+  const dollars = value / 100;
+  const formatted = dollars % 1 === 0 ? String(dollars) : dollars.toFixed(2);
+  return `$${formatted}/mo`;
+}
+
+// Renewal date like "Aug 1, 2026" from an ISO string or timestamp; null if unset
+// or unparseable, so callers just omit the renewal line.
+export function billingRenewalLabel(renewsAt) {
+  if (!renewsAt) return null;
+  const date = new Date(renewsAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 
 export const DEFAULT_PREFERENCES = {
