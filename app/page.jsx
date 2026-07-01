@@ -20,7 +20,7 @@ import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHis
 import { CurrentReorderList, MobileItemDetail, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
 import StyleGuide from "./styleguide";
-import { ConfirmModal, DesktopOnlyHint } from "./ui";
+import { BillingBanner, ConfirmModal, DesktopOnlyHint } from "./ui";
 
 // Scan feedback (audio + haptic) lives in ./scanSound so the reorder scanner
 // here and the receiving/shelf-audit scanner in scansessions.jsx share one
@@ -73,6 +73,7 @@ export default function Home() {
   const [isDraggingInvoice, setIsDraggingInvoice] = useState(false);
   const [selectedInvoiceName, setSelectedInvoiceName] = useState("");
   const [hasUploadedInvoice, setHasUploadedInvoice] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("profile");
   const [mobileAddItemRoute, setMobileAddItemRoute] = useState(false);
   const [addMode, setAddMode] = useState("");
   const [scanResult, setScanResult] = useState(null);
@@ -489,7 +490,7 @@ export default function Home() {
       .then((response) => response.json())
       .then((data) => {
         setAuthed(Boolean(data.authenticated));
-        setMe(data.authenticated ? { customer: data.customer || null, practice: data.practice || null } : null);
+        setMe(data.authenticated ? { customer: data.customer || null, practice: data.practice || null, subscription: data.subscription || null } : null);
       })
       .catch(() => setAuthed(false));
   }, []);
@@ -765,6 +766,13 @@ export default function Home() {
   const buyerInitials = buyerName
     ? buyerName.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()
     : "";
+  // Subscription lifecycle. `past_due` keeps full access behind a soft nudge to
+  // fix the card; `canceled` (lapsed) keeps saved history viewable but read-only
+  // and sends new paid actions to the resubscribe paywall. Any other status (or
+  // no subscription row) is treated as fully active.
+  const subStatus = me?.subscription?.status || null;
+  const lapsed = subStatus === "canceled";
+  const goToBilling = useCallback(() => { setSettingsTab("billing"); setView("settings"); }, []);
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const catalogMatches = useMemo(() => {
     if (!catalog.length) return [];
@@ -1858,6 +1866,7 @@ export default function Home() {
         </aside>
 
         <main className="app-main">
+          <BillingBanner status={subStatus} onManageBilling={goToBilling} />
           {isMobile && MANAGEMENT_VIEWS.has(view) && <DesktopOnlyHint onBack={() => navigate("/app")} />}
           {view === "home" && (
             mobileAddItemRoute ? (
@@ -2025,6 +2034,8 @@ export default function Home() {
               archivedLists={archivedLists}
               onNavigate={navigate}
               onImportInvoice={() => { setAddMode("upload"); navigate("/app/reorder-list"); }}
+              lapsed={lapsed}
+              onManageBilling={goToBilling}
             />
           )}
 
@@ -2056,6 +2067,7 @@ export default function Home() {
           {view === "settings" && (
             <SettingsView
               me={me}
+              initialTab={settingsTab}
               onMeUpdate={setMe}
               defaultBuyingPrefs={defaultBuyingPrefs}
               onSaveDefaults={setDefaultBuyingPrefs}
