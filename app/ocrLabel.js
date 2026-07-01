@@ -86,6 +86,22 @@ export function normalizeExpiry(raw, { shortYear = false } = {}) {
   // it; the month is range-checked by isoFrom so a non-month pair ("50/50", "28/34")
   // falls through. Runs after every 4-digit-year form so "06/2027" stays MM-YYYY.
   if (shortYear) {
+    // DD.MM.YY / DD/MM/YY (day precision, 2-digit year) — the compact stamp EU
+    // cartons print ("EXP 31.12.26"). Must run before the 2-group MM/YY below, which
+    // would otherwise grab the leading "31.12" and reject it (month 31), losing the
+    // date. Same US-first-then-swap disambiguation as the 4-digit DD-MM-YYYY path: try
+    // the US month/day reading, fall back to day/month only when the US one fails
+    // isoFrom's range check — so "31.12.26" resolves European (day 31) while a genuine
+    // "03.15.26" stays US order. Strict 2/2/2 groups so a 4-digit-year form never
+    // reaches here; isoFrom range-checks both readings, so a non-date triple falls
+    // through. Still gated behind the keyword `shortYear` — a bare "31.12.26" is too
+    // ambiguous to trust.
+    m = t.match(/\b(\d{2})\s*[-/.]\s*(\d{2})\s*[-/.]\s*(\d{2})\b/);
+    if (m) {
+      const yr = 2000 + +m[3];
+      const iso = isoFrom(yr, +m[1], +m[2]) || isoFrom(yr, +m[2], +m[1]);
+      if (iso) return iso;
+    }
     m = t.match(/\b(\d{2})\s*[-/.]\s*(\d{2})\b/);
     if (m) {
       const iso = isoFrom(2000 + +m[2], +m[1], 0);
