@@ -86,6 +86,22 @@ export function normalizeExpiry(raw, { shortYear = false } = {}) {
   // it; the month is range-checked by isoFrom so a non-month pair ("50/50", "28/34")
   // falls through. Runs after every 4-digit-year form so "06/2027" stays MM-YYYY.
   if (shortYear) {
+    // DD.MM.YY / DD/MM/YY (day precision, 2-digit year) — the compact stamp EU
+    // cartons print ("EXP 31.12.26"). Must run before the 2-group MM/YY below, which
+    // would otherwise grab the leading "31.12" and reject it (month 31), losing the
+    // date. Same US-first-then-swap disambiguation as the 4-digit DD-MM-YYYY path: try
+    // the US month/day reading, fall back to day/month only when the US one fails
+    // isoFrom's range check — so "31.12.26" resolves European (day 31) while a genuine
+    // "03.15.26" stays US order. Strict 2/2/2 groups so a 4-digit-year form never
+    // reaches here; isoFrom range-checks both readings, so a non-date triple falls
+    // through. Still gated behind the keyword `shortYear` — a bare "31.12.26" is too
+    // ambiguous to trust.
+    m = t.match(/\b(\d{2})\s*[-/.]\s*(\d{2})\s*[-/.]\s*(\d{2})\b/);
+    if (m) {
+      const yr = 2000 + +m[3];
+      const iso = isoFrom(yr, +m[1], +m[2]) || isoFrom(yr, +m[2], +m[1]);
+      if (iso) return iso;
+    }
     m = t.match(/\b(\d{2})\s*[-/.]\s*(\d{2})\b/);
     if (m) {
       const iso = isoFrom(2000 + +m[2], +m[1], 0);
@@ -274,7 +290,14 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // after "LOT": non-US pharma/medical labels stamp the batch as "Batch No." rather
   // than "Lot" (a real Difenac/Diclofenac carton prints "BATCH NO : BJ11529"), and the
   // shape fallback can't recover an alphanumeric value like that — it isn't a bare
-  // digit run nor a single-letter+digits stamp. Some labels spell the descriptor as
+  // digit run nor a single-letter+digits stamp. The Romance-language equivalents are
+  // accepted as standalone markers too: Spanish/Portuguese cartons stamp the batch as
+  // "LOTE" and Italian ones as "LOTTO" (a real Novocol/Clorexidina import prints "LOTE
+  // L2F5A" / "LOTTO 7A2208"), and the shape fallback can't recover an alphanumeric
+  // value like that either. They share the "LOT" stem, so the marker just allows an
+  // optional "E" (LOTE) or "TO" (LOTTO) suffix; the `\b` after it still keeps "LOTION"
+  // and "LOTS" out (neither is LOT + one of those suffixes at a word boundary).
+  // Some labels spell the descriptor as
   // "LOT Batch Code <value>", and OCR can drop "Batch" and leave "LOT Code <value>",
   // so skip that wording before taking the value. The descriptor is also a *chain*:
   // pharma boxes pack the field names into one header row ("Lot No./ Mfg. Date/ Exp
@@ -283,7 +306,7 @@ export function parseLotExpiry(text, { barcode } = {}) {
   // / DATE / EXP …) and their "/"-style separators to reach the first value. Value
   // allows common batch separators (A-219, 13593092, M607840).
   const lotMatch = flat.match(
-    /\b(?:L[O0D][T1I]|BATCH)\b[\s.:#)\]\[|/]*(?:(?:N[O0]\.?|NUMBER|BATCH(?:\s+CODE)?|CODE|MF[GD]|MANUF(?:ACTURE)?D?|DATE|EXP(?:IRY|IRES|IRATION)?|USE\s+BY|BEST\s+BEFORE)[\s.:#)\]\[|/]*)*([A-Z0-9][A-Z0-9\-/]{2,19})/,
+    /\b(?:L[O0D][T1I](?:E|T[O0])?|BATCH)\b[\s.:#)\]\[|/]*(?:(?:N[O0]\.?|NUMBER|BATCH(?:\s+CODE)?|CODE|MF[GD]|MANUF(?:ACTURE)?D?|DATE|EXP(?:IRY|IRES|IRATION)?|USE\s+BY|BEST\s+BEFORE)[\s.:#)\]\[|/]*)*([A-Z0-9][A-Z0-9\-/]{2,19})/,
   );
   if (
     lotMatch &&
@@ -363,8 +386,15 @@ export function parseLotExpiry(text, { barcode } = {}) {
     // "2016 - 01"), and the trailing groups allow OCR look-alike letters AND the
     // box-edge punctuation ";:|" in the year/month ("07.20N1" for 07.2011, "2016 -
     // 0:" for "2016 - 01"), which normalizeExpiry coerces before validating. The
-    // two MON-anchored alternatives keep the 3-letter-month case.
-    for (const m of flat.matchAll(/(?:^|[^A-Z0-9])(\d{1,4}(?:\s*[-/.]\s*[\dA-Z;!:|]{1,4}){1,2})(?=$|[^A-Z0-9])|\b([A-Z]{3}[-/. ]20\d{2})\b|\b(20\d{2}[-/. ][A-Z]{3})\b/g)) {
+    // two MON-anchored alternatives keep the 3-letter-month case. The first of them
+    // ("MON YYYY") carries a `(?![-/.]\d)` guard so it can't swallow a year that is
+    // really the head of a longer numeric date: without it a non-month 3-letter word
+    // sitting right before a bare ISO date ("CAD 2026-09" — the Spanish "caducidad"
+    // marker, or any stray "USP"/"REF"-style triplet) matched "CAD 2026", consumed the
+    // year, and — since MONTHS rejects "CAD" — dropped it, leaving only "-09" for the
+    // real date, so the expiry was lost entirely. A genuine "MAR 2028" (nothing but a
+    // space/end after the year) is unaffected.
+    for (const m of flat.matchAll(/(?:^|[^A-Z0-9])(\d{1,4}(?:\s*[-/.]\s*[\dA-Z;!:|]{1,4}){1,2})(?=$|[^A-Z0-9])|\b([A-Z]{3}[-/. ]20\d{2})\b(?![-/.]\d)|\b(20\d{2}[-/. ][A-Z]{3})\b/g)) {
       const val = m[1] || m[2] || m[3];
       const iso = normalizeExpiry(val);
       if (!iso) continue;
