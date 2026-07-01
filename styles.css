@@ -10088,16 +10088,6 @@ th {
 .cat-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
 .cat-main { min-width: 0; }
 
-/* Stat row */
-.cat-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 28px; }
-.cat-stat { display: flex; align-items: center; gap: 13px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
-.cat-stat > div { min-width: 0; }
-.cat-stat-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto; }
-.cat-stat-icon .nav-icon { width: 22px; height: 22px; }
-.cat-stat small { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
-.cat-stat strong { font-size: 22px; line-height: 1; display: flex; align-items: baseline; gap: 6px; }
-.cat-stat strong em { font-size: 12px; font-style: normal; font-weight: 500; color: var(--muted); }
-
 .cat-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .cat-section-head h2 { font-size: 17px; margin: 0; }
 .cat-viewtoggle { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
@@ -10115,31 +10105,44 @@ th {
 .cat-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease; }
 .cat-card:hover { transform: translateY(-2px); border-color: #cfd9ec; box-shadow: 0 22px 48px rgba(23, 44, 92, 0.12); }
 .cat-card-open { display: flex; gap: 13px; align-items: flex-start; width: 100%; padding: 0; border: 0; background: none; text-align: left; }
+/* Landing category card: the whole card is one click target (no separate "Browse
+   category" link). Keeps .cat-card's column layout; just resets button chrome. */
+.cat-catcard { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+/* Subcategory card: the whole card is the click target (no separate "Browse"
+   button), so it lays its tile + text out in a row like .cat-card-open. */
+.cat-subcard { flex-direction: row; align-items: flex-start; gap: 13px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
 .cat-card-headtext { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cat-card-headtext strong { font-size: 15.5px; color: var(--ink); }
 .cat-card-headtext small { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
 .cat-tile { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 13px; flex: 0 0 auto; }
 .cat-tile.sm { width: 28px; height: 28px; border-radius: 8px; }
-.cat-tile.sm .nav-icon { width: 16px; height: 16px; }
 .cat-tile.lg { width: 56px; height: 56px; border-radius: 15px; }
-.cat-tile.lg .nav-icon { width: 27px; height: 27px; }
+/* Representative product photo variant: white card so the cut-out product photo
+   reads cleanly, replacing the abstract tinted icon tile. */
+.cat-tile.has-image { background: #fff; border: 1px solid var(--line); overflow: hidden; padding: 4px; }
+.cat-tile.has-image img { width: 100%; height: 100%; object-fit: contain; }
+/* Monogram fallback when a category has no photo (or it fails to load): the
+   tinted tile shows the category initials — never an icon. Color comes from the
+   tint-* class. */
+.cat-tile.mono { font-weight: 600; font-size: 16px; letter-spacing: 0.02em; }
+.cat-tile.mono.sm { font-size: 11px; }
+.cat-tile.mono.lg { font-size: 20px; }
 .cat-card-count { margin: 0; font-size: 13px; font-weight: 600; color: var(--blue); }
 .cat-card-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .cat-chip { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: #46536d; font-size: 12px; font-weight: 500; }
 .cat-chip:hover { border-color: #cfe0ff; background: var(--blue-2); color: var(--blue); }
 .cat-chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
-.cat-browse { margin-top: auto; display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; padding: 0; border: 0; background: none; color: var(--blue); font-weight: 600; font-size: 13px; }
-.cat-browse .button-icon { width: 16px; height: 16px; }
-.cat-browse:hover { gap: 8px; }
+/* Product-thumbnail monogram: fills its container (search/grid/table thumbs) with
+   the product initials when there's no photo. Replaces the old image-icon glyph. */
+.thumb-mono { display: grid; place-items: center; width: 100%; height: 100%; color: #8a96ab; font-weight: 600; font-size: 13px; background: var(--surface-2); }
+.cat-pcard-media .thumb-mono { font-size: 26px; }
 .cat-card-skeleton { min-height: 188px; background: linear-gradient(100deg, var(--surface-2) 30%, #eef2fa 50%, var(--surface-2) 70%); background-size: 200% 100%; animation: catShimmer 1.2s infinite; border-color: transparent; box-shadow: none; }
 @keyframes catShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 /* List layout variant */
 .cat-grid.list .cat-card { flex-direction: row; align-items: center; flex-wrap: wrap; }
 .cat-grid.list .cat-card-open { width: auto; flex: 1 1 320px; }
-.cat-grid.list .cat-card-count { order: 3; }
-.cat-grid.list .cat-card-chips { order: 4; flex: 1 1 100%; }
-.cat-grid.list .cat-browse { margin: 0; }
+.cat-grid.list .cat-card-count { order: 3; margin-left: auto; }
 
 /* Right rail */
 .cat-rail { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 96px; }
@@ -10187,25 +10190,16 @@ th {
 .tint-slate { background: #eef1f6; color: #475569; }
 .tint-sky { background: #e4f1ff; color: #0284c7; }
 
-/* The stat row shares its row with the 320px right rail, so it only has room
-   for four cards on wide screens. Below ~1440px the main column can't hold all
-   four without spilling over the rail — drop to a 2×2 grid before that happens. */
-@media (max-width: 1439px) {
-  .cat-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 @media (max-width: 1100px) {
   .cat-layout { grid-template-columns: 1fr; }
   .cat-rail { position: static; flex-direction: row; flex-wrap: wrap; }
   .cat-rail > * { flex: 1 1 240px; }
-  .cat-stats { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 840px) {
   .cat-subgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
   .cat-title { font-size: 24px; }
-  .cat-stats { grid-template-columns: 1fr 1fr; }
   .cat-grid.grid { grid-template-columns: 1fr; }
   .cat-subgrid { grid-template-columns: 1fr; }
   .cat-pgrid { grid-template-columns: 1fr; }
