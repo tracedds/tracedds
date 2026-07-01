@@ -24,6 +24,27 @@ export function stripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY)
 }
 
+// Whether the inbound webhook is wired — needs both the API key (to build the
+// client) and the endpoint's signing secret (to verify the payload). The webhook
+// route 503s when this is false so a mis-provisioned deploy fails loudly rather
+// than silently accepting unverified events.
+export function webhookConfigured(): boolean {
+  return Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET)
+}
+
+// Verify + parse a raw Stripe webhook payload. Throws on a bad/absent signature
+// (Stripe's own error) so the route can answer 400; throws if the signing secret
+// is unset. Centralised here so env access stays in one place and the route is
+// easy to unit-test by mocking this module.
+export function constructWebhookEvent(
+  rawBody: Buffer | string,
+  signature: string
+): Stripe.Event {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET is not set")
+  return getStripe().webhooks.constructEvent(rawBody, signature, secret)
+}
+
 // The subset of the persisted subscription row this module reads/writes.
 export type SubscriptionRow = {
   id: string
