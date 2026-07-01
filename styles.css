@@ -10703,6 +10703,35 @@ th {
 }
 @keyframes cart-spin { to { transform: rotate(360deg); } }
 
+/* Post-checkout return landing (Activating… / Checkout canceled). A calm,
+   centered card in the app content area — one shadow, token colors only. */
+.billing-return {
+  max-width: 460px; margin: 48px auto; padding: 40px 32px;
+  display: grid; justify-items: center; gap: 14px; text-align: center;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.billing-return h1 { font-size: 22px; font-weight: 600; color: var(--ink); }
+.billing-return p { color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 42ch; }
+.billing-return-spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--blue);
+  animation: cart-spin 0.8s linear infinite;
+}
+.billing-return-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; }
+.billing-return-icon .icon { width: 28px; height: 28px; }
+.billing-return-icon.ok { background: #e3f6ed; }
+.billing-return-icon.ok .icon { color: var(--green); }
+.billing-return-icon.muted { background: var(--surface-2); }
+.billing-return-icon.muted .icon { color: var(--muted); }
+.billing-return-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 6px; }
+@media (max-width: 520px) {
+  .billing-return { margin: 24px auto; padding: 32px 20px; }
+  .billing-return-actions { width: 100%; }
+  .billing-return-actions .primary-action,
+  .billing-return-actions .secondary-action { width: 100%; }
+}
+
 .cart-prefill {
   display: grid; justify-items: center; gap: 6px; text-align: center;
   padding: 18px 16px; border: 1px solid var(--blue); border-radius: 12px; background: var(--blue-2);

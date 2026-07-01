@@ -16,8 +16,10 @@ export async function GET() {
       cache: "no-store",
     });
     if (response.ok) {
-      const { customer, practice } = await response.json();
-      return NextResponse.json({ authenticated: true, customer, practice });
+      // `subscription` is forwarded when the backend emits it (billing) so the
+      // app can read entitlement; absent today, it's simply undefined.
+      const { customer, practice, subscription } = await response.json();
+      return NextResponse.json({ authenticated: true, customer, practice, subscription });
     }
   } catch {
     // fall through — still authenticated, just without profile details
