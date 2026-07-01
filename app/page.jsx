@@ -19,6 +19,7 @@ import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage
 import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHistoryView, SupplierHandoffView } from "./procurement";
 import { CurrentReorderList, MobileItemDetail, SavingsView } from "./reorder";
 import { SettingsView } from "./settings";
+import { BillingReturnView } from "./billing";
 import StyleGuide from "./styleguide";
 import { ConfirmModal, DesktopOnlyHint } from "./ui";
 
@@ -58,6 +59,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [evidenceContext, setEvidenceContext] = useState(null);
   const [evidenceSample, setEvidenceSample] = useState("");
+  const [billingReturnStatus, setBillingReturnStatus] = useState("");
+  const [billingReturnTo, setBillingReturnTo] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -474,6 +477,8 @@ export default function Home() {
       setSearchQuery(nextRoute.searchQuery || "");
       setEvidenceContext(nextRoute.evidenceContext || null);
       setEvidenceSample(nextRoute.evidenceSample || "");
+      setBillingReturnStatus(nextRoute.billingReturnStatus || "");
+      setBillingReturnTo(nextRoute.billingReturnTo || "");
       setMobileAddItemRoute(Boolean(nextRoute.mobileAddItemRoute));
       setMenuOpen(false);
     }
@@ -484,15 +489,27 @@ export default function Home() {
     return () => window.removeEventListener("popstate", syncViewFromLocation);
   }, []);
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((response) => response.json())
-      .then((data) => {
-        setAuthed(Boolean(data.authenticated));
-        setMe(data.authenticated ? { customer: data.customer || null, practice: data.practice || null } : null);
-      })
-      .catch(() => setAuthed(false));
+  // Fetch the signed-in profile + entitlement, mirror it into state, and return
+  // the fresh value so callers (the post-checkout poll) can react to it without
+  // waiting on a re-render.
+  const refreshMe = useCallback(async () => {
+    try {
+      const data = await fetch("/api/auth/me", { cache: "no-store" }).then((response) => response.json());
+      setAuthed(Boolean(data.authenticated));
+      const next = data.authenticated
+        ? { customer: data.customer || null, practice: data.practice || null, subscription: data.subscription || null }
+        : null;
+      setMe(next);
+      return next;
+    } catch {
+      setAuthed(false);
+      return null;
+    }
   }, []);
+
+  useEffect(() => {
+    refreshMe();
+  }, [refreshMe]);
 
   // Keep unauthenticated visitors out of the authenticated app routes, and send
   // already-signed-in visitors from the public free-scan page into the real app.
@@ -830,6 +847,8 @@ export default function Home() {
     setSearchQuery(next.searchQuery || "");
     setEvidenceContext(next.evidenceContext || null);
     setEvidenceSample(next.evidenceSample || "");
+    setBillingReturnStatus(next.billingReturnStatus || "");
+    setBillingReturnTo(next.billingReturnTo || "");
     setMobileAddItemRoute(Boolean(next.mobileAddItemRoute));
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2061,6 +2080,16 @@ export default function Home() {
               onSaveDefaults={setDefaultBuyingPrefs}
               supplierOptions={supplierOptions}
               onToast={showToast}
+            />
+          )}
+
+          {view === "billingReturn" && (
+            <BillingReturnView
+              status={billingReturnStatus}
+              returnTo={billingReturnTo}
+              me={me}
+              onRefreshMe={refreshMe}
+              onNavigate={navigate}
             />
           )}
         </main>
