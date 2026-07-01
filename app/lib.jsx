@@ -49,6 +49,7 @@ export const routeByView = {
   resetPassword: "/reset-password",
   styleguide: "/styleguide",
   home: "/app",
+  overview: "/app/overview",
   dashboard: "/app/needs-attention",
   reorderList: "/app/reorder-list",
   locations: "/app/locations",
@@ -93,6 +94,9 @@ export function viewFromPath(pathname = "/") {
 
   // Authenticated app
   if (path === "/app") return { view: "home", isLoggedIn: true };
+  // The at-a-glance overview surface (stats, needs-attention preview, activity),
+  // derived from the practice's real locations feed.
+  if (path === "/app/overview") return { view: "overview", isLoggedIn: true };
   // The Needs Attention dashboard is its own destination, reachable on every
   // device (the mobile scanner hub and the bell CTA link here). Desktop /app
   // also renders this content via the "home" view.

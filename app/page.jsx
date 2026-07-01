@@ -14,6 +14,7 @@ import { getScanAudioCtx, loadMatchChime, playMatchChime, vibrateNoMatch } from 
 import { EvidenceView, EvidenceBinderView, EvidenceMatchReview, RedlineView } from "./evidence";
 import { EvidenceMobileViewer } from "./evidenceviewer";
 import { ReportsView } from "./reports";
+import { OverviewRoute } from "./dashboard";
 import { NeedsAttentionView, NEEDS_ATTENTION_BADGE } from "./needsattention";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage, PublicProductView, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
 import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHistoryView, SupplierHandoffView } from "./procurement";
@@ -33,6 +34,7 @@ import { ConfirmModal, DesktopOnlyHint } from "./ui";
 // (scanner, locations, needs-attention dashboard, reorder list, evidence
 // VIEWER) is deliberately excluded.
 const MANAGEMENT_VIEWS = new Set([
+  "overview",
   "evidence", "evidenceBinder", "evidenceRedline", "evidenceReview",
   "reports", "savings", "history", "historyDetail", "plan", "handoff",
   "catalog", "catalogCategory", "catalogSupplier", "catalogSearch", "productDetail",
@@ -1539,6 +1541,7 @@ export default function Home() {
   // from the old IA becomes unreachable (Savings is kept but demoted).
   const navItems = [
     ["home", "icon-home", "Dashboard", false, NEEDS_ATTENTION_BADGE],
+    ["overview", "icon-grid", "Overview"],
     ["reorderList", "icon-cart", "Reorder list"],
     ["locations", "icon-map-pin", "Locations"],
     ["savings", "icon-dollar-circle", "Savings"],
@@ -1884,6 +1887,14 @@ export default function Home() {
           )}
 
           {view === "dashboard" && <NeedsAttentionView onToast={showToast} onNavigate={navigate} />}
+
+          {view === "overview" && (
+            <OverviewRoute
+              practiceName={practiceName}
+              onStartScan={startScan}
+              onNavigate={navigate}
+            />
+          )}
 
           {view === "reorderList" && reorderListEl}
 
