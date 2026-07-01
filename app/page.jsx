@@ -14,7 +14,6 @@ import { getScanAudioCtx, loadMatchChime, playMatchChime, vibrateNoMatch } from 
 import { EvidenceView, EvidenceBinderView, EvidenceMatchReview, RedlineView } from "./evidence";
 import { EvidenceMobileViewer } from "./evidenceviewer";
 import { ReportsView } from "./reports";
-import { OverviewRoute } from "./dashboard";
 import { NeedsAttentionView, NEEDS_ATTENTION_BADGE } from "./needsattention";
 import { AboutPage, ForgotPasswordPage, LoggedOutLanding, LoginPage, PricingPage, PublicProductView, PublicScanView, ResetPasswordPage, SampleReorderList, SignupPage } from "./marketing";
 import { CartBuilderModal, ProcurementPlanView, ReorderHistoryDetail, ReorderHistoryView, SupplierHandoffView } from "./procurement";
@@ -35,7 +34,6 @@ import { BillingBanner, ConfirmModal, DesktopOnlyHint, PracticePaywall } from ".
 // (scanner, locations, needs-attention dashboard, reorder list, evidence
 // VIEWER) is deliberately excluded.
 const MANAGEMENT_VIEWS = new Set([
-  "overview",
   "evidence", "evidenceBinder", "evidenceRedline", "evidenceReview",
   "reports", "savings", "history", "historyDetail", "plan", "handoff",
   "catalog", "catalogCategory", "catalogSupplier", "catalogSearch", "productDetail",
@@ -1596,8 +1594,7 @@ export default function Home() {
   // but disabled until their phase lands. Catalog + reorder history stay live so nothing
   // from the old IA becomes unreachable (Savings is kept but demoted).
   const navItems = [
-    ["home", "icon-home", "Dashboard", false, NEEDS_ATTENTION_BADGE],
-    ["overview", "icon-grid", "Overview"],
+    ["home", "icon-home", "Needs Attention", false, NEEDS_ATTENTION_BADGE],
     ["reorderList", "icon-cart", "Reorder list"],
     ["locations", "icon-map-pin", "Locations"],
     ["savings", "icon-dollar-circle", "Savings"],
@@ -1809,7 +1806,7 @@ export default function Home() {
                 <div className="topbar-alerts-menu" role="menu">
                   <div className="topbar-menu-head">
                     <strong>Alerts</strong>
-                    <small>{alerts.length ? `${alerts.length} on your dashboard` : "Nothing needs attention"}</small>
+                    <small>{alerts.length ? `${alerts.length} need${alerts.length === 1 ? "s" : ""} attention` : "Nothing needs attention"}</small>
                   </div>
                   {alerts.length === 0 ? (
                     <div className="topbar-alerts-empty">
@@ -1845,7 +1842,7 @@ export default function Home() {
                         type="button"
                         onClick={() => { setAlertsOpen(false); navigate("/app/needs-attention"); }}
                       >
-                        {alerts.length > 6 ? `View all ${alerts.length} on dashboard` : "Open dashboard"}
+                        {alerts.length > 6 ? `View all ${alerts.length} in Needs Attention` : "Open Needs Attention"}
                         <Icon name="icon-arrow-right" className="button-icon" />
                       </button>
                     </>
@@ -1944,14 +1941,6 @@ export default function Home() {
           )}
 
           {view === "dashboard" && <NeedsAttentionView onToast={showToast} onNavigate={navigate} />}
-
-          {view === "overview" && (
-            <OverviewRoute
-              practiceName={practiceName}
-              onStartScan={startScan}
-              onNavigate={navigate}
-            />
-          )}
 
           {view === "reorderList" && reorderListEl}
 
